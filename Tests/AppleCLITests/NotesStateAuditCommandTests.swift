@@ -477,11 +477,12 @@ struct NotesStateAuditCommandTests {
   }
 
   @Test func unlockUsesPrivateAuthenticationStateAndSecretSourceBoundary() throws {
+    let environmentKey = "NOTES_TEST_UNLOCK_PASSPHRASE_\(UUID().uuidString)"
     let secret = "correct horse battery staple"
     let dryRunImplementation = StateAuditImplementation()
     let dryRunCommand = NotesCommand(implementation: dryRunImplementation)
     let dryRun = try #require(try dryRunCommand.run(options: try CLIOptionsFixture.parse([
-      "state", "unlock", "--id", "note-locked", "--passphrase-env", "NOTES_TEST_PASSPHRASE",
+      "state", "unlock", "--id", "note-locked", "--passphrase-env", environmentKey,
       "--dry-run", "--json",
     ])))
     let dryRunObject = try jsonObject(dryRun.stdout ?? "")
@@ -496,17 +497,17 @@ struct NotesStateAuditCommandTests {
     #expect(dryRunArgs["passphrase_source_kind"] as? String == "env")
     #expect((dryRunArgs["passphrase_source_sha256"] as? String)?.count == 64)
     #expect(dryRunRequirements["allowFlags"] as? [String] == ["--allow-persistent-action"])
-    #expect((dryRun.stdout ?? "").contains("NOTES_TEST_PASSPHRASE") == false)
+    #expect((dryRun.stdout ?? "").contains(environmentKey) == false)
     #expect((dryRun.stdout ?? "").contains(secret) == false)
     #expect(dryRunImplementation.noteUnlockDrafts.isEmpty)
 
     let missingAllowImplementation = StateAuditImplementation()
     let missingAllowCommand = NotesCommand(implementation: missingAllowImplementation)
-    setenv("NOTES_TEST_PASSPHRASE", secret, 1)
-    defer { unsetenv("NOTES_TEST_PASSPHRASE") }
+    setenv(environmentKey, secret, 1)
+    defer { unsetenv(environmentKey) }
     do {
       _ = try missingAllowCommand.run(options: try CLIOptionsFixture.parse([
-        "state", "unlock", "--id", "note-locked", "--passphrase-env", "NOTES_TEST_PASSPHRASE", "--json",
+        "state", "unlock", "--id", "note-locked", "--passphrase-env", environmentKey, "--json",
       ]))
       Issue.record("Expected state unlock without --allow-persistent-action to be refused.")
     } catch let error as CLIError {
@@ -518,7 +519,7 @@ struct NotesStateAuditCommandTests {
     let implementation = StateAuditImplementation()
     let command = NotesCommand(implementation: implementation)
     let executed = try #require(try command.run(options: try CLIOptionsFixture.parse([
-      "state", "unlock", "--id", "note-locked", "--passphrase-env", "NOTES_TEST_PASSPHRASE",
+      "state", "unlock", "--id", "note-locked", "--passphrase-env", environmentKey,
       "--allow-persistent-action", "--json",
     ])))
     let object = try jsonObject(executed.stdout ?? "")
@@ -549,17 +550,18 @@ struct NotesStateAuditCommandTests {
     #expect(implementation.noteUnlockDrafts.first?.passphrase == secret)
     #expect(executed.stdout?.contains(secret) == false)
     #expect(executed.stdout?.contains("Private locked body") == false)
-    #expect(executed.stdout?.contains("NOTES_TEST_PASSPHRASE") == false)
+    #expect(executed.stdout?.contains(environmentKey) == false)
   }
 
   @Test func settingsLockedNotesCustomPasswordUsesPrivatePassphraseManagerAndSecretBoundary() throws {
+    let environmentKey = "NOTES_TEST_CUSTOM_PASSPHRASE_\(UUID().uuidString)"
     let secret = "correct horse battery staple"
     let hint = "project hint"
     let dryRunImplementation = StateAuditImplementation()
     let dryRunCommand = NotesCommand(implementation: dryRunImplementation)
     let dryRun = try #require(try dryRunCommand.run(options: try CLIOptionsFixture.parse([
       "settings", "locked-notes", "--account", "iCloud", "--scope", "custom",
-      "--passphrase-env", "NOTES_TEST_PASSPHRASE", "--hint", hint,
+      "--passphrase-env", environmentKey, "--hint", hint,
       "--dry-run", "--json",
     ])))
     let dryRunObject = try jsonObject(dryRun.stdout ?? "")
@@ -581,18 +583,18 @@ struct NotesStateAuditCommandTests {
     #expect(dryRunRequirements["allowFlags"] as? [String] == ["--allow-persistent-action"])
     #expect(dryRunImplementation.customPassphraseDrafts.isEmpty)
     #expect(dryRunOutput.contains("iCloud") == false)
-    #expect(dryRunOutput.contains("NOTES_TEST_PASSPHRASE") == false)
+    #expect(dryRunOutput.contains(environmentKey) == false)
     #expect(dryRunOutput.contains(secret) == false)
     #expect(dryRunOutput.contains(hint) == false)
 
-    setenv("NOTES_TEST_PASSPHRASE", secret, 1)
-    defer { unsetenv("NOTES_TEST_PASSPHRASE") }
+    setenv(environmentKey, secret, 1)
+    defer { unsetenv(environmentKey) }
     let missingAllowImplementation = StateAuditImplementation()
     let missingAllowCommand = NotesCommand(implementation: missingAllowImplementation)
     do {
       _ = try missingAllowCommand.run(options: try CLIOptionsFixture.parse([
         "settings", "locked-notes", "--account", "iCloud", "--scope", "custom",
-        "--passphrase-env", "NOTES_TEST_PASSPHRASE", "--hint", hint, "--json",
+        "--passphrase-env", environmentKey, "--hint", hint, "--json",
       ]))
       Issue.record("Expected locked-notes password setup without --allow-persistent-action to be refused.")
     } catch let error as CLIError {
@@ -605,7 +607,7 @@ struct NotesStateAuditCommandTests {
     let command = NotesCommand(implementation: implementation)
     let executed = try #require(try command.run(options: try CLIOptionsFixture.parse([
       "settings", "locked-notes", "--account", "iCloud", "--scope", "custom",
-      "--passphrase-env", "NOTES_TEST_PASSPHRASE", "--hint", hint,
+      "--passphrase-env", environmentKey, "--hint", hint,
       "--allow-persistent-action", "--json",
     ])))
     let object = try jsonObject(executed.stdout ?? "")
@@ -639,7 +641,7 @@ struct NotesStateAuditCommandTests {
     #expect(implementation.customPassphraseDrafts.first?.passphrase == secret)
     #expect(implementation.customPassphraseDrafts.first?.hint == hint)
     #expect(output.contains("iCloud") == false)
-    #expect(output.contains("NOTES_TEST_PASSPHRASE") == false)
+    #expect(output.contains(environmentKey) == false)
     #expect(output.contains(secret) == false)
     #expect(output.contains(hint) == false)
 
@@ -648,7 +650,7 @@ struct NotesStateAuditCommandTests {
     do {
       _ = try invalidLoginMethodCommand.run(options: try CLIOptionsFixture.parse([
         "settings", "locked-notes", "--account", "iCloud", "--scope", "login-password",
-        "--passphrase-env", "NOTES_TEST_PASSPHRASE", "--json",
+        "--passphrase-env", environmentKey, "--json",
       ]))
       Issue.record("Expected login-password Notes method selection to reject custom passphrase input.")
     } catch let error as CLIError {
@@ -736,7 +738,6 @@ struct NotesStateAuditCommandTests {
     #expect(implementation.lockedNotesMethodDrafts.first?.modeRawValue == 2)
     #expect((implementation.lockedNotesMethodDrafts.first?.modeSHA256.count ?? 0) == 64)
     #expect(output.contains("iCloud") == false)
-    #expect(output.contains("NOTES_TEST_PASSPHRASE") == false)
   }
 
   @Test func settingsResetPasswordUsesPrivatePassphraseManagerResetBoundary() throws {
