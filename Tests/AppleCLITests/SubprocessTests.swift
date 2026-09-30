@@ -114,7 +114,7 @@ struct SubprocessTests {
         : try CLISubprocess.run(.path("/bin/sh"), arguments: arguments, timeoutSeconds: 1)
       Issue.record("Expected timeout.")
     } catch let error as CLIError { #expect(error.code == .timeout) }
-    #expect(start.duration(to: .now) < .seconds(4))
+    #expect(start.duration(to: .now) < cleanupTimeLimit)
     let pid = try #require(Int32(String(contentsOf: pidFile, encoding: .utf8)))
     #expect(kill(pid, 0) == -1 && errno == ESRCH)
   }
@@ -126,7 +126,7 @@ struct SubprocessTests {
       _ = try await runShell("exec 1>&- 2>&-; sleep 30", asynchronous: asynchronous, timeout: 1)
       Issue.record("Expected lifetime timeout.")
     } catch let error as CLIError { #expect(error.code == .timeout) }
-    #expect(start.duration(to: .now) < .seconds(4))
+    #expect(start.duration(to: .now) < cleanupTimeLimit)
   }
 
   @Test(arguments: [false, true])
@@ -136,7 +136,7 @@ struct SubprocessTests {
       _ = try await runShell("(trap '' TERM; sleep 30) & exit 0", asynchronous: asynchronous)
       Issue.record("Expected incomplete drainage error.")
     } catch let error as CLIError { #expect(error.code == .backendUnavailable) }
-    #expect(start.duration(to: .now) < .seconds(4))
+    #expect(start.duration(to: .now) < cleanupTimeLimit)
   }
 
   @Test func cancellationPropagatesAndReapsChild() async throws {
@@ -187,9 +187,13 @@ struct SubprocessTests {
         : try CLISubprocess.run(.path(executable.path), arguments: [pidFile.path])
       Issue.record("Expected incomplete drainage error.")
     } catch let error as CLIError { #expect(error.code == .backendUnavailable) }
-    #expect(start.duration(to: .now) < .seconds(4))
+    #expect(start.duration(to: .now) < cleanupTimeLimit)
   }
 }
+
+// Includes executor contention and SDK spawn/reap time; remains below the
+// fixtures' 30-second lifetime so natural exit cannot satisfy cleanup checks.
+private let cleanupTimeLimit: Duration = .seconds(10)
 
 private func runShell(
   _ script: String, asynchronous: Bool, timeout: Int? = nil, limit: Int = 1_048_576
