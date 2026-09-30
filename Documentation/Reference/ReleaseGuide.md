@@ -21,6 +21,11 @@ distinct from permission to read a particular account. Intelligence retains
 its documented OS eligibility gates; Notifications retains its documented
 backend policy.
 
+Notes startup diagnostics distinguish missing API implementations from dynamic
+Core Data accessors described by the installed model. `deferred_model_accessors`
+remain unverified in an operation context and retain a readiness warning.
+Model metadata does not establish account access or a successful app operation.
+
 ## Build From Source
 
 Use an Xcode toolchain with Swift 6.3 or newer and a macOS SDK containing

@@ -16,6 +16,8 @@ adapter for macOS.
   integration-test opt-in.
 - Local release packaging records source, dependency, toolchain and binary
   provenance alongside SHA-256 checksums.
+- Notes readiness diagnostics distinguish missing APIs from model-backed
+  dynamic accessors that require operation-context verification.
 
 Compatibility and per-target limitations are described in the
 [Release Guide](Documentation/Reference/ReleaseGuide.md) and target manuals.

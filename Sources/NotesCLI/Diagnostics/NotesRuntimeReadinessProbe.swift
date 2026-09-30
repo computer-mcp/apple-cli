@@ -21,8 +21,12 @@ struct NotesRuntimeReadinessResult: Equatable, Sendable {
     }
   }
 
+  var deferredSelectors: [String] {
+    classes.flatMap { result in result.deferredSelectors.map { "\(result.className).\($0)" } }
+  }
+
   var isReady: Bool {
-    failedFrameworks.isEmpty && missingClasses.isEmpty && missingSelectors.isEmpty
+    failedFrameworks.isEmpty && missingClasses.isEmpty && missingSelectors.isEmpty && deferredSelectors.isEmpty
   }
 }
 
@@ -38,12 +42,14 @@ struct NotesRuntimeClassProbeResult: Equatable, Sendable {
   var available: Bool
   var requiredSelectors: [String]
   var missingSelectors: [String]
+  var deferredSelectors: [String] = []
 }
 
 struct NotesRuntimeReadinessProbe: Sendable {
   func run() -> NotesRuntimeReadinessResult {
     let frameworks = Self.frameworks.map(loadFramework)
-    let classes = Self.classes.map(probeClass)
+    let accessors = NotesManagedAccessorProbe.installedModel()
+    let classes = Self.classes.map { probeClass($0, accessors: accessors) }
     return NotesRuntimeReadinessResult(frameworks: frameworks, classes: classes)
   }
 
@@ -67,7 +73,7 @@ struct NotesRuntimeReadinessProbe: Sendable {
     )
   }
 
-  private func probeClass(_ definition: ClassDefinition) -> NotesRuntimeClassProbeResult {
+  private func probeClass(_ definition: ClassDefinition, accessors: NotesManagedAccessorProbe) -> NotesRuntimeClassProbeResult {
     guard let loadedClass = NSClassFromString(definition.name) else {
       return NotesRuntimeClassProbeResult(
         className: definition.name,
@@ -77,15 +83,17 @@ struct NotesRuntimeReadinessProbe: Sendable {
       )
     }
 
-    let missingSelectors = definition.instanceSelectors.filter { selectorName in
+    let unresolved = definition.instanceSelectors.filter { selectorName in
       class_getInstanceMethod(loadedClass, NSSelectorFromString(selectorName)) == nil
     }
+    let deferred = unresolved.filter { accessors.isDeferred(loadedClass, selector: $0) }
+    let missingSelectors = unresolved.filter { !deferred.contains($0) }
 
     return NotesRuntimeClassProbeResult(
       className: definition.name,
       available: true,
       requiredSelectors: definition.instanceSelectors,
-      missingSelectors: missingSelectors
+      missingSelectors: missingSelectors, deferredSelectors: deferred
     )
   }
 
@@ -185,6 +193,7 @@ func notesRuntimeReadinessDoctorCheck() -> CLIDoctorCheck {
     "available_classes": availableClasses.joined(separator: ","),
     "missing_classes": missingClasses.joined(separator: ","),
     "missing_selectors": missingSelectors.joined(separator: ","),
+    "deferred_model_accessors": result.deferredSelectors.sorted().joined(separator: ","),
   ]
 
   for framework in result.failedFrameworks {
@@ -198,7 +207,9 @@ func notesRuntimeReadinessDoctorCheck() -> CLIDoctorCheck {
     status: result.isReady ? .ok : .warning,
     message: result.isReady
       ? "Notes framework modules runtime-load and key NotesShared/NotesSupport classes are registered."
-      : "Notes runtime readiness is incomplete; default Notes commands require framework module readiness.",
+      : result.failedFrameworks.isEmpty && result.missingClasses.isEmpty && result.missingSelectors.isEmpty
+        ? "Notes classes and model properties are present; deferred Core Data accessors require operation-context verification."
+        : "Notes runtime readiness is incomplete; default Notes commands require framework module readiness.",
     details: details
   )
 }
@@ -689,15 +700,19 @@ struct NotesRichCapabilityProbeResult: Equatable, Sendable {
   }
 
   var missingCandidates: [NotesRichCapabilityCandidateProbeResult] {
-    candidates.filter { !$0.available }
+    candidates.filter { !$0.available && !$0.deferred }
   }
 
   var missingRequiredCandidates: [NotesRichCapabilityCandidateProbeResult] {
-    candidates.filter { $0.required && !$0.available }
+    candidates.filter { $0.required && !$0.available && !$0.deferred }
+  }
+
+  var deferredCandidates: [NotesRichCapabilityCandidateProbeResult] {
+    candidates.filter { $0.deferred }
   }
 
   var isReady: Bool {
-    missingRequiredCandidates.isEmpty
+    missingRequiredCandidates.isEmpty && !deferredCandidates.contains { $0.required }
   }
 }
 
@@ -708,6 +723,7 @@ struct NotesRichCapabilityCandidateProbeResult: Equatable, Sendable {
   var kind: String
   var required: Bool
   var available: Bool
+  var deferred: Bool = false
 
   var label: String {
     if let selector {
@@ -722,12 +738,13 @@ struct NotesRichCapabilityProbe: Sendable {
     let frameworkProbe = NotesRuntimeReadinessProbe()
     _ = frameworkProbe.run()
 
+    let accessors = NotesManagedAccessorProbe.installedModel()
     return NotesRichCapabilityProbeResult(
-      candidates: Self.candidates.map(probeCandidate)
+      candidates: Self.candidates.map { probeCandidate($0, accessors: accessors) }
     )
   }
 
-  private func probeCandidate(_ candidate: CandidateDefinition)
+  private func probeCandidate(_ candidate: CandidateDefinition, accessors: NotesManagedAccessorProbe)
     -> NotesRichCapabilityCandidateProbeResult
   {
     guard let loadedClass = NSClassFromString(candidate.owner) else {
@@ -749,10 +766,12 @@ struct NotesRichCapabilityProbe: Sendable {
         class_getInstanceMethod(loadedClass, runtimeSelector) != nil
       }
 
-    return result(candidate, available: available)
+    let deferred = !available && candidate.kind == .instanceMethod
+      && accessors.isDeferred(loadedClass, selector: selectorName)
+    return result(candidate, available: available, deferred: deferred)
   }
 
-  private func result(_ candidate: CandidateDefinition, available: Bool)
+  private func result(_ candidate: CandidateDefinition, available: Bool, deferred: Bool = false)
     -> NotesRichCapabilityCandidateProbeResult
   {
     NotesRichCapabilityCandidateProbeResult(
@@ -761,7 +780,7 @@ struct NotesRichCapabilityProbe: Sendable {
       selector: candidate.selector,
       kind: candidate.kind.rawValue,
       required: candidate.required,
-      available: available
+      available: available, deferred: deferred
     )
   }
 
@@ -1162,6 +1181,7 @@ func notesRichCapabilityDoctorCheck() -> CLIDoctorCheck {
     "families": result.families.joined(separator: ","),
     "family_count": "\(result.families.count)",
     "candidate_count": "\(result.candidates.count)",
+    "deferred_model_accessors": result.deferredCandidates.map(\.label).sorted().joined(separator: ","),
     "required_candidate_count": "\(result.candidates.filter { $0.required }.count)",
     "available_candidate_count": "\(availableCandidates.count)",
     "missing_candidate_count": "\(missingCandidates.count)",
@@ -1192,7 +1212,7 @@ func notesRichCapabilityDoctorCheck() -> CLIDoctorCheck {
     details["family_\(family)_candidate_count"] = "\(candidates.count)"
     details["family_\(family)_available_count"] = "\(candidates.filter { $0.available }.count)"
     details["family_\(family)_missing_required"] = candidates
-      .filter { $0.required && !$0.available }
+      .filter { $0.required && !$0.available && !$0.deferred }
       .map(\.label)
       .sorted()
       .joined(separator: ",")
@@ -1203,7 +1223,9 @@ func notesRichCapabilityDoctorCheck() -> CLIDoctorCheck {
     status: result.isReady ? .ok : .warning,
     message: result.isReady
       ? "Notes private rich capability candidates are present; no rich write was executed."
-      : "Notes private rich capability candidates are incomplete; rich capability promotion remains gated.",
+      : result.missingRequiredCandidates.isEmpty
+        ? "Notes rich candidates include deferred Core Data accessors; operation-context verification is required."
+        : "Notes private rich capability candidates are incomplete; required API readiness is not established.",
     details: details
   )
 }
