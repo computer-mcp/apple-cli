@@ -78,6 +78,56 @@ func writeJSON(_ value: [String: Any], to url: URL) throws {
   try (bytes + Data([10])).write(to: url, options: .atomic)
 }
 
+func linkedLibraries(_ executable: URL) throws -> [String] {
+  try run("/usr/bin/otool", ["-L", executable.path]).split(separator: "\n")
+    .dropFirst().map {
+      $0.trimmingCharacters(in: .whitespaces)
+        .components(separatedBy: " (compatibility version")[0]
+    }
+}
+
+func runPaths(_ executable: URL) throws -> [String] {
+  let lines = try run("/usr/bin/otool", ["-l", executable.path]).split(separator: "\n")
+    .map { $0.trimmingCharacters(in: .whitespaces) }
+  return lines.indices.compactMap { index in
+    guard lines[index] == "cmd LC_RPATH", index + 2 < lines.count,
+      lines[index + 2].hasPrefix("path ")
+    else { return nil }
+    return String(lines[index + 2].dropFirst(5)).components(separatedBy: " (offset ")[0]
+  }
+}
+
+func isSystemLibrary(_ path: String) -> Bool {
+  path.hasPrefix("/System/Library/") || path.hasPrefix("/usr/lib/")
+}
+
+func relocate(_ executable: URL) throws {
+  let paths = try runPaths(executable)
+  for path in paths where path != "/usr/lib/swift" && path != "@loader_path" {
+    try run("/usr/bin/install_name_tool", ["-delete_rpath", path, executable.path])
+  }
+  if !paths.contains("@loader_path") {
+    try run("/usr/bin/install_name_tool", ["-add_rpath", "@loader_path", executable.path])
+  }
+  try run("/usr/bin/codesign", ["--force", "--sign", "-", executable.path])
+}
+
+func requireStandalone(_ executable: URL, runtimeNames: Set<String>) throws -> [String] {
+  let libraries = try linkedLibraries(executable)
+  guard
+    libraries.allSatisfy({ path in
+      if isSystemLibrary(path) { return true }
+      guard path.hasPrefix("@rpath/") else { return false }
+      return runtimeNames.contains(String(path.dropFirst("@rpath/".count)))
+    }), try runPaths(executable).allSatisfy({ $0 == "/usr/lib/swift" || $0 == "@loader_path" })
+  else {
+    throw ReleaseError.invalid(
+      "\(executable.lastPathComponent) has an unresolved library or external run path.")
+  }
+  try run("/usr/bin/codesign", ["--verify", "--strict", executable.path])
+  return libraries
+}
+
 func main() throws {
   var output = root.appendingPathComponent(".build/releases", isDirectory: true)
   var tag: String?
@@ -104,7 +154,10 @@ func main() throws {
     }
   }
   let revision = try requireCleanCommit()
-  for file in ["LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", "Package.resolved"] {
+  for file in [
+    "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", "Package.resolved",
+    "Documentation/Reference/ThirdPartyLicenses/swift-runtime/LICENSE.txt",
+  ] {
     guard manager.fileExists(atPath: root.appendingPathComponent(file).path) else {
       throw ReleaseError.invalid("Missing release input: \(file).")
     }
@@ -173,6 +226,9 @@ func main() throws {
   testEnvironment.removeValue(forKey: "APPLE_CLI_RUN_NOTES_INTEGRATION_TESTS")
   testEnvironment.removeValue(forKey: "APPLE_CLI_BIN")
   testEnvironment.removeValue(forKey: "APPLE_CLI_MCP_BIN")
+  for key in testEnvironment.keys.filter({ $0.hasPrefix("DYLD_") }) {
+    testEnvironment.removeValue(forKey: key)
+  }
   try validate("build-tests", ["swift", "build", "--build-tests", "--force-resolved-versions"])
   try validate(
     "default-concurrent-tests", ["swift", "test", "--skip-build", "--force-resolved-versions"],
@@ -182,33 +238,72 @@ func main() throws {
     fileURLWithPath: try run(
       "/usr/bin/xcrun",
       ["swift", "build", "-c", "release", "--show-bin-path", "--force-resolved-versions"]))
-  var binaries: [[String: Any]] = []
   for name in ["apple", "apple-cli-mcp"] {
     let executable = releaseBin.appendingPathComponent(name)
-    guard try run(executable.path, ["--version"], directory: staging) == version else {
-      throw ReleaseError.invalid("\(name) does not match the source version.")
-    }
     guard try run("/usr/bin/lipo", ["-archs", executable.path]) == architecture else {
       throw ReleaseError.invalid("Unexpected architecture in \(name).")
     }
-    let libraries = try run("/usr/bin/otool", ["-L", executable.path]).split(separator: "\n")
-      .dropFirst().compactMap { line -> String? in
-        line.trimmingCharacters(in: .whitespaces).components(separatedBy: " (compatibility version")
-          .first
-      }
-    guard libraries.allSatisfy({ $0.hasPrefix("/System/Library/") || $0.hasPrefix("/usr/lib/") })
-    else {
-      throw ReleaseError.invalid(
-        "\(name) links a non-system library; the archive would not be standalone.")
-    }
-    try run("/usr/bin/codesign", ["--verify", "--strict", executable.path])
     let destination = bin.appendingPathComponent(name)
     try manager.copyItem(at: executable, to: destination)
     guard try digest(executable) == digest(destination) else {
       throw ReleaseError.invalid("Binary copy changed bytes.")
     }
+  }
+  message("Collect Swift runtime libraries and relocate staged executables")
+  var scanArguments = ["--platform", "macosx"]
+  for name in ["apple", "apple-cli-mcp"] {
+    scanArguments += ["--scan-executable", bin.appendingPathComponent(name).path]
+  }
+  let toolchain = URL(fileURLWithPath: try run("/usr/bin/xcrun", ["--find", "swift"]))
+    .resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent()
+  let runtimeSources = try run("/usr/bin/xcrun", ["swift-stdlib-tool", "--print"] + scanArguments)
+    .split(separator: "\n").map { URL(fileURLWithPath: String($0)).resolvingSymlinksInPath() }
+  let runtimeNames = Set(runtimeSources.map(\.lastPathComponent))
+  guard runtimeNames.count == runtimeSources.count,
+    runtimeSources.allSatisfy({
+      $0.path.hasPrefix(toolchain.appendingPathComponent("lib").path + "/")
+        && $0.lastPathComponent.hasPrefix("libswift") && $0.pathExtension == "dylib"
+    })
+  else {
+    throw ReleaseError.invalid("Swift runtime inputs must come from the selected toolchain.")
+  }
+  try run(
+    "/usr/bin/xcrun",
+    ["swift-stdlib-tool", "--copy"] + scanArguments + ["--destination", bin.path])
+  guard
+    Set(try manager.contentsOfDirectory(atPath: bin.path))
+      == runtimeNames.union(["apple", "apple-cli-mcp"])
+  else { throw ReleaseError.invalid("Unexpected Swift runtime copy contents.") }
+  var runtimes: [[String: Any]] = []
+  for source in runtimeSources.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+    let destination = bin.appendingPathComponent(source.lastPathComponent)
+    guard try digest(source) == digest(destination) else {
+      throw ReleaseError.invalid("Swift runtime copy changed bytes.")
+    }
+    let architectures = try run("/usr/bin/lipo", ["-archs", destination.path])
+      .split(separator: " ").map(String.init)
+    guard architectures.contains(architecture) else {
+      throw ReleaseError.invalid("Swift runtime does not include \(architecture).")
+    }
+    let libraries = try requireStandalone(destination, runtimeNames: runtimeNames)
+    runtimes.append([
+      "path": "bin/" + destination.lastPathComponent, "sha256": try digest(destination),
+      "architectures": architectures, "dynamic_libraries": libraries,
+    ])
+  }
+  var binaries: [[String: Any]] = []
+  for name in ["apple", "apple-cli-mcp"] {
+    let executable = bin.appendingPathComponent(name)
+    try relocate(executable)
+    let libraries = try requireStandalone(executable, runtimeNames: runtimeNames)
+    guard
+      try run(
+        executable.path, ["--version"], directory: staging, environment: testEnvironment) == version
+    else { throw ReleaseError.invalid("\(name) does not match the source version.") }
     binaries.append([
-      "path": "bin/" + name, "sha256": try digest(destination), "dynamic_libraries": libraries,
+      "path": "bin/" + name, "sha256": try digest(executable), "dynamic_libraries": libraries,
+      "run_paths": try runPaths(executable),
+      "build_sha256": try digest(releaseBin.appendingPathComponent(name)),
     ])
   }
   testEnvironment["APPLE_CLI_BIN"] = bin.appendingPathComponent("apple").path
@@ -242,7 +337,7 @@ func main() throws {
     Build and test environment details are in provenance.json. The macOS 13
     deployment declaration is not a tested runtime compatibility claim.
 
-    Add the extracted bin directory to PATH, keeping both executables together:
+    Add the extracted bin directory to PATH, keeping its complete contents together:
 
         export PATH="$PWD/bin:$PATH"
         apple --version
@@ -252,8 +347,9 @@ func main() throws {
 
     Read ReleaseGuide.md for installation, compatibility, signature and permission
     guidance. Per-target doctor and help commands explain the available behavior.
-    The binaries have compiler-generated local signatures; Developer ID signing
-    and notarization are not part of this package.
+    Executables have local ad-hoc signatures after relocation. Required Swift
+    runtime libraries are included alongside them with their original signatures.
+    Project Developer ID signing and notarization are not part of this package.
 
     Documentation: https://github.com/computer-mcp/apple-cli
     License: LICENSE. Dependency notices: THIRD_PARTY_NOTICES.md and Documentation/Reference/ThirdPartyLicenses/.
@@ -282,8 +378,10 @@ func main() throws {
     "sdk_version": try run("/usr/bin/xcrun", ["--sdk", "macosx", "--show-sdk-version"]),
     "sdk_build": try run("/usr/bin/xcrun", ["--sdk", "macosx", "--show-sdk-build-version"]),
     "package_resolved_sha256": try digest(lock), "dependencies": pins,
-    "notes_link_inputs": stubProvenance, "binaries": binaries, "validation": validation,
-    "signing": "compiler-generated local signature; no Developer ID or notarization",
+    "notes_link_inputs": stubProvenance, "binaries": binaries, "swift_runtime_libraries": runtimes,
+    "validation": validation,
+    "signing":
+      "local ad-hoc executable signatures after relocation; original Swift runtime signatures; no project Developer ID or notarization",
     "compatibility":
       "Validated on the recorded macOS/architecture. Individual private-framework capabilities and permissions require target-specific doctor checks.",
   ]

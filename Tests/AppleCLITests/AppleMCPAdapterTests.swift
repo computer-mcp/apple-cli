@@ -1248,7 +1248,7 @@ struct AppleMCPAdapterTests {
 }
 
 private func stagedMCPInstallation(separateCLI: Bool) throws -> (root: URL, server: URL, cliDirectory: URL) {
-  let source = try appleMCPExecutablePath()
+  let source = try appleMCPExecutablePath().resolvingSymlinksInPath()
   let manager = FileManager.default
   let root = manager.temporaryDirectory.appendingPathComponent("apple-cli-install-test-\(UUID().uuidString)")
   let bin = root.appendingPathComponent("bin")
@@ -1261,6 +1261,19 @@ private func stagedMCPInstallation(separateCLI: Bool) throws -> (root: URL, serv
     let cli = ProcessInfo.processInfo.environment["APPLE_CLI_BIN"].map { URL(fileURLWithPath: $0) }
       ?? source.deletingLastPathComponent().appendingPathComponent("apple")
     try manager.copyItem(at: cli, to: cliDirectory.appendingPathComponent("apple"))
+    for (executable, destination) in [(source, bin), (cli.resolvingSymlinksInPath(), cliDirectory)] {
+      let libraries = try manager.contentsOfDirectory(
+        at: executable.deletingLastPathComponent(), includingPropertiesForKeys: nil
+      ).filter { $0.lastPathComponent.hasPrefix("libswift") && $0.pathExtension == "dylib" }
+      for library in libraries {
+        let copy = destination.appendingPathComponent(library.lastPathComponent)
+        if manager.fileExists(atPath: copy.path) {
+          #expect(try Data(contentsOf: library) == Data(contentsOf: copy))
+        } else {
+          try manager.copyItem(at: library, to: copy)
+        }
+      }
+    }
     return (root, server, cliDirectory)
   } catch {
     try? manager.removeItem(at: root)

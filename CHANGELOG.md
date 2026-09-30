@@ -14,8 +14,9 @@ adapter for macOS.
   CLI installation for the adapter.
 - Default tests use fixtures and mocks; host Notes reads require explicit
   integration-test opt-in.
-- Local release packaging records source, dependency, toolchain and binary
-  provenance alongside SHA-256 checksums.
+- Local release packaging includes required Swift compatibility runtime libraries
+  and records source, dependency, toolchain and binary provenance alongside
+  SHA-256 checksums.
 - Notes readiness diagnostics distinguish missing APIs from model-backed
   dynamic accessors that require operation-context verification.
 
