@@ -329,13 +329,18 @@ func main() throws {
     at: root.appendingPathComponent("Documentation/Reference/ThirdPartyLicenses"), to: licenses)
   try manager.copyItem(
     at: root.appendingPathComponent("Documentation/Reference/ReleaseGuide.md"),
-    to: package.appendingPathComponent("ReleaseGuide.md"))
+    to: licenses.deletingLastPathComponent().appendingPathComponent("ReleaseGuide.md"))
   let readme = """
     # apple-cli \(version)
 
     This preview contains the apple CLI and its apple-cli-mcp adapter for macOS arm64.
     Build and test environment details are in provenance.json. The macOS 13
     deployment declaration is not a tested runtime compatibility claim.
+
+    The apple-cli Source-Visible License in LICENSE permits personal,
+    non-commercial use of unmodified official releases. Commercial use, source
+    builds, modifications and redistribution require prior written permission
+    from the copyright holder. Third-party components retain their own licenses.
 
     Add the extracted bin directory to PATH, keeping its complete contents together:
 
@@ -345,8 +350,9 @@ func main() throws {
         apple notes doctor --json
         apple-cli-mcp stdio
 
-    Read ReleaseGuide.md for installation, compatibility, signature and permission
-    guidance. Per-target doctor and help commands explain the available behavior.
+    Read Documentation/Reference/ReleaseGuide.md for installation, compatibility,
+    signature and permission guidance. Per-target doctor and help commands
+    explain the available behavior.
     Executables have local ad-hoc signatures after relocation. Required Swift
     runtime libraries are included alongside them with their original signatures.
     Project Developer ID signing and notarization are not part of this package.
