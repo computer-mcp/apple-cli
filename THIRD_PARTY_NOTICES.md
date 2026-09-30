@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-This inventory follows the versions and revisions in `Package.resolved`.
+The package dependency inventory follows the versions and revisions in `Package.resolved`.
 It includes direct and transitive dependencies, including packages that may
 not be linked into both products on every platform. Dependency terms remain
 owned by their respective authors; the project license does not replace them.
@@ -51,6 +51,17 @@ Review this inventory and the copied texts whenever changing the lockfile.
 The MCP SDK's copied license preserves its Apache-2.0/MIT code transition and
 CC-BY-4.0 documentation statement. Its complete text governs the respective
 contributions.
+
+## Swift Runtime Libraries
+
+The release packager uses the selected toolchain's `swift-stdlib-tool` to collect
+required Swift compatibility libraries alongside the executables. These libraries
+are part of the Swift standard library, copyright Apple Inc. and the Swift project
+authors, licensed under Apache-2.0 with the Runtime Library Exception.
+The [copied license](Documentation/Reference/ThirdPartyLicenses/swift-runtime/LICENSE.txt)
+preserves the [upstream license document at revision `cc852042c9da5892fb5cdedfb6cf49740004755c`](https://github.com/swiftlang/swift/blob/cc852042c9da5892fb5cdedfb6cf49740004755c/LICENSE.txt).
+That is the license document's revision; the actual toolchain version and library
+byte hashes belong to the packaged provenance, independently of `Package.resolved`.
 
 ## Apple System Software
 

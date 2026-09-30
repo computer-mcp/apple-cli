@@ -80,9 +80,14 @@ stdio and loopback HTTP. They cover PATH/symlink installation and explicit
 
 Output defaults to `.build/releases`. Use `--output DIRECTORY` for another
 location. Existing output names are refused. The archive includes both binaries,
-installation guidance, the project license and dependency notices. The adjacent
+required Swift runtime libraries, installation guidance, the project license and
+dependency notices. `swift-stdlib-tool` selects runtime libraries from the same
+toolchain used to build. The packager removes toolchain run paths from staged
+executables and applies local ad-hoc signatures before testing those bytes.
+Every linked library must resolve through a system path or the bundled Swift
+libraries; runtime collection does not expand the tested macOS range. The adjacent
 manifest records the source commit/tree, lockfile hash, toolchain, SDK, link-input
-hashes, linked system libraries, binary hashes and successful validation-log
+hashes, linked libraries, run paths, executable and runtime library hashes, and successful validation-log
 hashes. The checksum covers the actual archive bytes. Build timestamps and
 compiler output can vary; this process does not claim bit-for-bit rebuilds.
 
@@ -110,12 +115,14 @@ apple --help
 apple-cli-mcp stdio
 ```
 
-Keep `apple` beside `apple-cli-mcp` when installing elsewhere. The adapter
+Keep the complete contents of `bin`, including any Swift runtime libraries,
+together when installing elsewhere. The adapter
 resolves its actual executable location, including symlinks, to find that sibling.
 For a separate CLI directory, set `APPLE_CLI_BIN_DIR` to the directory containing
 `apple`. It is a directory override, not an executable filename.
 
-Current packages use compiler-generated local signatures. Developer ID signing
+Packaged executables use local ad-hoc signatures after relocation; Swift runtime
+libraries retain their toolchain signatures. Project Developer ID signing
 and notarization are not established by checksum verification, and macOS may
 apply its download-origin checks. A build from the inspected source is another
 installation route. Do not disable system security protections as an installation
