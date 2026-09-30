@@ -7,11 +7,9 @@ Its canonical GitHub identity is `computer-mcp/apple-cli`. This is an initial
 preview; see the [Release Guide](Documentation/Reference/ReleaseGuide.md) for
 build, installation and compatibility details.
 
-The [apple-cli Source-Visible License](LICENSE) permits source inspection and
-personal, non-commercial use of unmodified official releases. Commercial use,
-paid or hosted services, source builds, modifications and redistribution require
-prior written permission from the copyright holder. Third-party components retain
-their own licenses; see [Third-Party Notices](THIRD_PARTY_NOTICES.md).
+Copyright (c) 2026 Xudong Xu. Licensed under the [Apache License 2.0](LICENSE).
+Third-party components retain their own licenses; see
+[Third-Party Notices](THIRD_PARTY_NOTICES.md).
 
 The package turns Apple app capabilities into one scriptable Swift executable
 with target-first subcommands. The complete target catalog is documented in
@@ -122,9 +120,6 @@ SwiftPM target/module names use Swift identifier style, such as
 
 ## Source Build Requirements
 
-Source builds are for the copyright holder and developers with prior written
-permission under the project license.
-
 - A macOS host with an Xcode toolchain providing Swift 6.3 or newer.
 - A macOS SDK containing the six Notes private frameworks used by the package.
   Run the bootstrap below before building. Generated link inputs remain local.
@@ -135,8 +130,8 @@ deployment declaration alone is not a tested support claim.
 
 ## Install And Invocation
 
-Use an official release for personal, non-commercial use. Verify its checksum
-and follow the [Release Guide](Documentation/Reference/ReleaseGuide.md) to add
+Verify a release archive's checksum and follow the
+[Release Guide](Documentation/Reference/ReleaseGuide.md) to add
 the complete extracted `bin` directory to `PATH`. Keep both executables and any
 bundled Swift runtime libraries together, then run:
 
@@ -145,7 +140,7 @@ apple notes doctor --json
 apple notes search --query "Project" --json
 ```
 
-## Authorized Source Builds
+## Build From Source
 
 From the repository root, prepare the selected SDK's link inputs, then build
 with SwiftPM. Rerun bootstrap after changing Xcode or the SDK:
@@ -776,10 +771,7 @@ and option metadata from CLI help output.
 The adapter does not add hidden Apple app capabilities. Mutations and external
 actions still require the target-local safety policy defined by the CLI.
 
-## Authorized Development Tests
-
-The following validation steps are for the copyright holder and developers
-with the required written permission.
+## Test
 
 ```bash
 Scripts/bootstrap

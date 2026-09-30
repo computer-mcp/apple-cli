@@ -337,10 +337,8 @@ func main() throws {
     Build and test environment details are in provenance.json. The macOS 13
     deployment declaration is not a tested runtime compatibility claim.
 
-    The apple-cli Source-Visible License in LICENSE permits personal,
-    non-commercial use of unmodified official releases. Commercial use, source
-    builds, modifications and redistribution require prior written permission
-    from the copyright holder. Third-party components retain their own licenses.
+    Copyright (c) 2026 Xudong Xu. Licensed under the Apache License, Version 2.0.
+    See LICENSE for the full terms. Third-party components retain their own licenses.
 
     Add the extracted bin directory to PATH, keeping its complete contents together:
 
