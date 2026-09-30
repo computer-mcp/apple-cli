@@ -28,17 +28,11 @@ Model metadata does not establish account access or a successful app operation.
 
 ## License And Use
 
-The apple-cli Source-Visible License in `LICENSE` permits inspection of the source
-and personal, non-commercial use of unmodified official releases. Commercial use,
-paid or hosted services, source builds, modifications and redistribution require
-prior written permission from the copyright holder. Third-party components retain
-their own licenses, as listed in `THIRD_PARTY_NOTICES.md`.
+The project is licensed under the [Apache License 2.0](../../LICENSE).
+Third-party components retain their own licenses, as listed in
+[Third-Party Notices](../../THIRD_PARTY_NOTICES.md).
 
-The build and candidate preparation instructions below are for the copyright
-holder and developers with the required written permission. They do not grant
-additional rights to the Software.
-
-## Authorized Source Builds
+## Build From Source
 
 Use an Xcode toolchain with Swift 6.3 or newer and a macOS SDK containing
 NotesSupport, NotesHTML, NotesShared, NotesUI, NotesEditor and NotesPreviewKit.
@@ -136,9 +130,8 @@ For a separate CLI directory, set `APPLE_CLI_BIN_DIR` to the directory containin
 Packaged executables use local ad-hoc signatures after relocation; Swift runtime
 libraries retain their toolchain signatures. Project Developer ID signing
 and notarization are not established by checksum verification, and macOS may
-apply its download-origin checks. A source build is another installation route
-for the copyright holder or a developer with written permission to build.
-Do not disable system security protections as an installation
+apply its download-origin checks. A build from the inspected source is another
+installation route. Do not disable system security protections as an installation
 step. Inspect target help and doctor output for specific permission recovery.
 
 ## GitHub Validation

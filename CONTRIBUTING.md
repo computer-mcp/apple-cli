@@ -1,17 +1,12 @@
 # Contributing
 
-## Permission And Contributions
+## License And Contributions
 
-apple-cli uses the [apple-cli Source-Visible License](LICENSE). You may inspect
-the source and report bugs or security findings. Obtain prior written permission
-from the copyright holder before modifying or building the Software or submitting
-changes derived from it. Source availability and these development instructions
-do not grant those permissions.
-
-Unless a separate written agreement applies, authorized contributions are
-submitted under the project license. Contributors retain copyright in their
-original work and must have the right to submit it under those terms. Preserve
-the licenses and notices of third-party components.
+apple-cli uses the [Apache License 2.0](LICENSE). Unless you explicitly state
+otherwise or a separate agreement applies, contributions intentionally submitted
+for inclusion are licensed under these terms. Contributors retain copyright in
+their original work and must have the right to submit it. Preserve the licenses
+and notices of third-party components.
 
 ## Repository Work
 

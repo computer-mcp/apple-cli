@@ -6,9 +6,7 @@ This guide describes ordinary use of the canonical `apple` executable. It is a
 global CLI guide, not architecture truth and not a target-specific manual.
 Target-specific usage lives in `Documentation/Reference/<Target>/UserGuide.md`.
 
-The [apple-cli Source-Visible License](../../LICENSE) limits official releases to
-personal, non-commercial use. Commercial use, source builds, modifications and
-redistribution require prior written permission from the copyright holder.
+The project is licensed under the [Apache License 2.0](../../LICENSE).
 
 Use CLI help as the first discovery surface:
 
@@ -18,8 +16,7 @@ apple <target> --help
 apple <target> <resource?> <action> --help
 ```
 
-For the copyright holder or developers with written permission to build, run
-from a development checkout with:
+When running from a development checkout, use:
 
 ```bash
 Scripts/bootstrap
@@ -31,7 +28,7 @@ Bootstrap prepares local Notes link inputs from the selected SDK. See the
 [Release Guide](ReleaseGuide.md) for requirements, packaged installation and
 the distinction between deployment floor and tested runtime compatibility.
 
-For an authorized staged release build from that checkout, use:
+For a staged release binary from the checkout, use:
 
 ```bash
 swift build -c release
