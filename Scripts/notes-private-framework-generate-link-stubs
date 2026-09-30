@@ -1,0 +1,161 @@
+#!/usr/bin/xcrun swift
+
+import CryptoKit
+import Darwin
+import Foundation
+
+struct Arguments {
+  var sdkRoot: URL?
+  var outputRoot = URL(fileURLWithPath: ".build/notes-private-framework-link-stubs/current", isDirectory: true)
+  var frameworks = ["NotesSupport", "NotesHTML", "NotesShared", "NotesUI", "NotesEditor", "NotesPreviewKit"]
+}
+
+struct StubError: LocalizedError {
+  let errorDescription: String?
+  init(_ message: String) { errorDescription = message }
+}
+
+func usage() {
+  print("""
+    Usage:
+      Scripts/notes-private-framework-generate-link-stubs [--sdk-root <path>] [--output-root <path>] [--framework <name>]...
+
+    Generates local Notes link inputs from the selected macOS SDK, preserving
+    system install names and removing allowed/allowable-client restrictions.
+    Outputs belong to the build directory and must not be distributed.
+    """)
+}
+
+func parseArguments() throws -> Arguments {
+  var parsed = Arguments()
+  var frameworks: [String] = []
+  let args = Array(CommandLine.arguments.dropFirst())
+  var index = 0
+  while index < args.count {
+    let argument = args[index]
+    if argument == "--help" || argument == "-h" { usage(); exit(0) }
+    guard ["--sdk-root", "--output-root", "--framework"].contains(argument), index + 1 < args.count else {
+      throw StubError("Expected --sdk-root, --output-root or --framework followed by a value. Use --help for usage.")
+    }
+    index += 1
+    let value = args[index]
+    switch argument {
+    case "--sdk-root": parsed.sdkRoot = URL(fileURLWithPath: value, isDirectory: true)
+    case "--output-root": parsed.outputRoot = URL(fileURLWithPath: value, isDirectory: true)
+    default:
+      guard value.range(of: #"^[A-Za-z_][A-Za-z_0-9]*$"#, options: .regularExpression) != nil else {
+        throw StubError("Framework names must be identifiers.")
+      }
+      frameworks.append(value)
+    }
+    index += 1
+  }
+  if !frameworks.isEmpty { parsed.frameworks = frameworks }
+  guard Set(parsed.frameworks).count == parsed.frameworks.count else { throw StubError("Duplicate framework names.") }
+  return parsed
+}
+
+func run(_ arguments: [String]) throws -> String {
+  let process = Process()
+  process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+  process.arguments = arguments
+  let pipe = Pipe()
+  process.standardOutput = pipe
+  process.standardError = pipe
+  try process.run()
+  let data = pipe.fileHandleForReading.readDataToEndOfFile()
+  process.waitUntilExit()
+  let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+  guard process.terminationStatus == 0 else { throw StubError(text) }
+  return text
+}
+
+func sourceTBD(_ framework: String, sdk: URL) throws -> URL {
+  let root = sdk.appendingPathComponent("System/Library/PrivateFrameworks/\(framework).framework")
+  for suffix in ["\(framework).tbd", "Versions/A/\(framework).tbd"] {
+    let candidate = root.appendingPathComponent(suffix)
+    if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+  }
+  throw StubError("Selected SDK \(sdk.path) is missing \(framework).tbd. Select an SDK containing all six Notes frameworks, then rerun Scripts/bootstrap.")
+}
+
+func removingAllowedClients(_ text: String) -> (text: String, removed: Int) {
+  var output: [String] = []
+  var count = 0
+  var skipping = false
+  for line in text.components(separatedBy: .newlines) {
+    let topLevel = !line.isEmpty && !line.hasPrefix(" ") && !line.hasPrefix("\t")
+    if skipping {
+      if topLevel { skipping = false } else { continue }
+    }
+    let trimmed = line.trimmingCharacters(in: .whitespaces)
+    if trimmed == "allowed-clients:" || trimmed == "allowable-clients:" {
+      count += 1
+      skipping = true
+    } else { output.append(line) }
+  }
+  return (output.joined(separator: "\n"), count)
+}
+
+func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
+
+func generate(_ arguments: Arguments) throws {
+  let manager = FileManager.default
+  let sdk = try arguments.sdkRoot ?? URL(fileURLWithPath: run(["--sdk", "macosx", "--show-sdk-path"]))
+  let resolvedSDK = sdk.resolvingSymlinksInPath().standardizedFileURL
+  let output = arguments.outputRoot.resolvingSymlinksInPath().standardizedFileURL
+  guard output.path != "/", output.path != resolvedSDK.path, !output.path.hasPrefix(resolvedSDK.path + "/") else {
+    throw StubError("Output must be a dedicated generated directory outside the system SDK.")
+  }
+  if manager.fileExists(atPath: output.path) {
+    let marker = output.appendingPathComponent("provenance.json")
+    guard let data = try? Data(contentsOf: marker),
+      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      json["generator"] as? String == "apple-cli-notes-link-stubs"
+    else { throw StubError("Refusing to replace an unowned directory. Choose an empty output path.") }
+  }
+
+  // Read all inputs before writing any output, so a missing framework is an atomic failure.
+  let inputs = try arguments.frameworks.map { name -> (String, Data, String, Int) in
+    let source = try sourceTBD(name, sdk: sdk)
+    let data = try Data(contentsOf: source)
+    guard let text = String(data: data, encoding: .utf8), text.contains("install-name:") else {
+      throw StubError("Invalid framework TBD: \(name).")
+    }
+    let transformed = removingAllowedClients(text)
+    return (name, data, transformed.text, transformed.removed)
+  }
+  let parent = output.deletingLastPathComponent()
+  try manager.createDirectory(at: parent, withIntermediateDirectories: true)
+  let staging = parent.appendingPathComponent(".notes-stubs-\(UUID().uuidString)", isDirectory: true)
+  try manager.createDirectory(at: staging, withIntermediateDirectories: false)
+  defer { try? manager.removeItem(at: staging) }
+  var records: [[String: Any]] = []
+  for (name, input, text, removed) in inputs {
+    let directory = staging.appendingPathComponent("\(name).framework")
+    try manager.createDirectory(at: directory, withIntermediateDirectories: false)
+    let bytes = Data(text.utf8)
+    try bytes.write(to: directory.appendingPathComponent("\(name).tbd"), options: .atomic)
+    records.append(["framework": name, "input_sha256": hash(input), "output_sha256": hash(bytes), "removed_client_blocks": removed])
+  }
+  let provenance: [String: Any] = [
+    "schema_version": 1, "generator": "apple-cli-notes-link-stubs", "transformation_version": 1,
+    "sdk_version": try run(["--sdk", sdk.path, "--show-sdk-version"]),
+    "sdk_build": try run(["--sdk", sdk.path, "--show-sdk-build-version"]),
+    "swift_version": try run(["swift", "--version"]), "frameworks": records,
+  ]
+  let receipt = try JSONSerialization.data(withJSONObject: provenance, options: [.prettyPrinted, .sortedKeys])
+  try receipt.write(to: staging.appendingPathComponent("provenance.json"), options: .atomic)
+  if manager.fileExists(atPath: output.path) {
+    guard renamex_np(staging.path, output.path, UInt32(RENAME_SWAP)) == 0 else {
+      throw StubError("Could not atomically replace generated stubs (errno \(errno)).")
+    }
+  } else { try manager.moveItem(at: staging, to: output) }
+  print("Generated \(inputs.count) Notes link stubs with provenance at \(output.path)")
+}
+
+do { try generate(parseArguments()) }
+catch {
+  FileHandle.standardError.write(Data("error: \(error.localizedDescription)\n".utf8))
+  exit(1)
+}

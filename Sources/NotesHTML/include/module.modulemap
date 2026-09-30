@@ -1,0 +1,4 @@
+module NotesHTML [system] {
+  umbrella header "NotesHTML.h"
+  export *
+}

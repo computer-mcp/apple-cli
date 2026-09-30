@@ -1,0 +1,4 @@
+module NotesShared [system] {
+  umbrella header "NotesShared.h"
+  export *
+}

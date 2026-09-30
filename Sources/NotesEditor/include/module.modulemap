@@ -1,0 +1,4 @@
+module NotesEditor [system] {
+  umbrella header "NotesEditor.h"
+  export *
+}
