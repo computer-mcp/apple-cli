@@ -89,6 +89,15 @@ generated import readiness, patched link-stub readiness where applicable, group
 container presence, and bounded store/index evidence. It must not print note
 bodies.
 
+The runtime and rich-capability probes report `deferred_model_accessors`
+separately from missing APIs. Core Data can generate accessors after a managed
+object's model/context is established. A deferred result requires both a
+dynamic Objective-C property declaration and the corresponding property in the
+installed framework's model. The probe reads model metadata without opening a
+context or persistent store; required deferred accessors retain a readiness
+warning until operation-context verification. See
+[Apple's managed-object documentation](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/CoreData/LifeofaManagedObject.html).
+
 Current `doctor` includes `notes_store`, a read-only check for the Notes group
 container, `NoteStore.sqlite`, SQLite schema counts, entity row counts, WAL/SHM
 presence, and Notes index-state files. This evidence is diagnostic/verifier
