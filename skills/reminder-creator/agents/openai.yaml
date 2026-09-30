@@ -1,0 +1,7 @@
+interface:
+  display_name: "Reminder Creator"
+  short_description: "Model and organize Apple Reminders content"
+  default_prompt: "Use $reminder-creator to model, classify, create, migrate, or audit Apple Reminders content with preserved fields and readback validation."
+
+policy:
+  allow_implicit_invocation: true

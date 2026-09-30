@@ -1,0 +1,77 @@
+#!/usr/bin/xcrun swift
+import Darwin
+import Foundation
+
+let root = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
+  .resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent()
+
+do {
+  let process = Process()
+  let pipe = Pipe()
+  process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+  process.arguments = ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]
+  process.currentDirectoryURL = root
+  process.standardOutput = pipe
+  process.standardError = FileHandle.standardError
+  try process.run()
+  try? pipe.fileHandleForWriting.close()
+  let bytes = pipe.fileHandleForReading.readDataToEndOfFile()
+  process.waitUntilExit()
+  try pipe.fileHandleForReading.close()
+  guard process.terminationStatus == 0 else { exit(1) }
+  let paths = Set(String(decoding: bytes, as: UTF8.self).split(separator: "\0").map(String.init))
+  let links = try NSRegularExpression(pattern: #"!?\[[^\]]*\]\(([^\n)]+)\)"#)
+  let scheme = try NSRegularExpression(pattern: #"^[a-zA-Z][a-zA-Z0-9+.-]*:"#)
+  let localPath = try NSRegularExpression(pattern: #"/(?:Users|home)/[A-Za-z0-9_.-]+/"#)
+  let credentials = try NSRegularExpression(
+    pattern:
+      #"-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}"#
+  )
+  var failures: [String] = []
+  var markdownCount = 0
+  for path in paths.sorted() {
+    let file = root.appendingPathComponent(path)
+    guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
+    let range = NSRange(text.startIndex..., in: text)
+    // Test fixtures own synthetic paths used to exercise identity and privacy.
+    if !path.hasPrefix("Tests/"), localPath.firstMatch(in: text, range: range) != nil {
+      failures.append("\(path): machine-local absolute path")
+    }
+    if credentials.firstMatch(in: text, range: range) != nil {
+      failures.append("\(path): credential pattern requires review")
+    }
+    if path.hasPrefix("Sources/"), text.contains("0.0.0-dev") {
+      failures.append("\(path): development version bypasses the canonical version")
+    }
+    guard file.pathExtension.lowercased() == "md" else { continue }
+    markdownCount += 1
+    for match in links.matches(in: text, range: range) {
+      guard let substring = Range(match.range(at: 1), in: text) else { continue }
+      var link = String(text[substring]).trimmingCharacters(in: .whitespaces)
+      link = link.components(separatedBy: " \"")[0].trimmingCharacters(
+        in: CharacterSet(charactersIn: "<>"))
+      link = link.components(separatedBy: "#")[0]
+      if link.isEmpty
+        || scheme.firstMatch(in: link, range: NSRange(link.startIndex..., in: link)) != nil
+      {
+        continue
+      }
+      let destination = file.deletingLastPathComponent().appendingPathComponent(
+        link.removingPercentEncoding ?? link
+      ).standardizedFileURL
+      if !FileManager.default.fileExists(atPath: destination.path) {
+        failures.append("\(path): missing local link \(link)")
+      }
+    }
+  }
+  guard failures.isEmpty else {
+    FileHandle.standardError.write(Data((failures.joined(separator: "\n") + "\n").utf8))
+    exit(1)
+  }
+  print(
+    "Validated \(markdownCount) Markdown files and \(paths.count) public file paths. No missing local links or scanned credential/path patterns."
+  )
+} catch {
+  FileHandle.standardError.write(Data(("validate-public-content: \(error)\n").utf8))
+  exit(1)
+}
