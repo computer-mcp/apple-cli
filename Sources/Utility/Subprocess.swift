@@ -128,10 +128,17 @@ public struct CLISubprocess: Sendable {
                 drainageDeadline = .now.advanced(by: .seconds(1))
               }
             }
-            if let drainageDeadline, .now >= drainageDeadline { throw drainageError() }
             let ready = try SubprocessOutputCapture.poll(
               stdout: &output, stderr: &error, limit: outputLimit, waitMilliseconds: 0)
-            if ready { await Task.yield() } else { try await Task.sleep(for: .milliseconds(25)) }
+            if terminated && output.eof && error.eof { break }
+            if let drainageDeadline, .now >= drainageDeadline { throw drainageError() }
+            if ready {
+              // After exit, bounded buffered output can reach EOF without
+              // suspending between the final bytes and their completion.
+              if !terminated { await Task.yield() }
+            } else {
+              try await Task.sleep(for: .milliseconds(25))
+            }
           }
           try Task.checkCancellation()
           return (

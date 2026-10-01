@@ -175,6 +175,24 @@ receipt and archive without running macOS executables, as the publication job
 does on Linux. A development-machine candidate is local validation evidence;
 formal GitHub releases use the files accepted by the release workflow.
 
+## Install With Homebrew
+
+The [organization tap](https://github.com/computer-mcp/homebrew-tap) owns the
+`apple-cli` formula. It consumes the published macOS arm64 archive and its
+accepted checksum, keeps both programs with their bundled runtime libraries,
+and declares the recorded macOS requirement. It does not rebuild the programs
+on the user's machine.
+
+```bash
+brew install computer-mcp/tap/apple-cli
+apple --version
+apple-cli-mcp --version
+```
+
+The formula version follows the product release version. Tap CI validates
+installation before publishing an update. For a client configuration, use
+`apple-cli-mcp` from Homebrew's `bin` directory.
+
 ## Install The Archive
 
 Verify the downloaded archive against its adjacent checksum before extracting:
