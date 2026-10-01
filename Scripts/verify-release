@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""Verify packaged release bytes and optionally accept their macOS executables."""
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import platform
+import re
+import signal
+import subprocess
+import sys
+import tarfile
+import tempfile
+from urllib.parse import unquote, urlsplit
+
+
+REPOSITORY = "computer-mcp/apple-cli"
+BUILD_CHECKS = {
+    "build-tests", "default-concurrent-tests", "release-build",
+    "installed-release-content", "installed-release-cli-and-mcp",
+}
+ARCHIVE_CHECKS = {
+    "archive-integrity", "artifact-content", "installed-signatures", "unpacked-cli-and-mcp",
+}
+MACHINE_LOCAL = re.compile(rb"/(?:Users|home)/[^/\x00\r\n]+/")
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def digest(path):
+    with path.open("rb") as source:
+        return hashlib.file_digest(source, "sha256").hexdigest()
+
+
+def git(source, *arguments):
+    return subprocess.check_output(["git", *arguments], cwd=source, text=True).strip()
+
+
+def checks_passed(checks, required):
+    names = [check["check"] for check in checks]
+    require(len(names) == len(set(names)), "Duplicate validation checks")
+    require(required <= set(names), "Required validation checks are missing")
+    require(all(check["result"] == "passed" for check in checks), "A validation check failed")
+
+
+def verify(directory, source, tag=None, require_verification=False):
+    require(not git(source, "status", "--porcelain", "--untracked-files=all"), "Source checkout contains changes")
+    manifests = list(directory.glob("*.provenance.json"))
+    require(len(manifests) == 1, "Expected exactly one provenance manifest")
+    manifest_path = manifests[0]
+    manifest = json.loads(manifest_path.read_text())
+    require(manifest["schema_version"] == 1, "Unsupported provenance schema")
+    require(manifest["repository"] == REPOSITORY, "Repository identity mismatch")
+    require(manifest["source_commit"] == git(source, "rev-parse", "HEAD"), "Source commit mismatch")
+    require(manifest["source_tree"] == git(source, "rev-parse", "HEAD^{tree}"), "Source tree mismatch")
+    match = re.search(r'static let current = "([^"]+)"', (source / "Sources/Utility/CLIVersion.swift").read_text())
+    require(match is not None and manifest["version"] == match[1], "Source version mismatch")
+    version = manifest["version"]
+    require(re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?", version), "Invalid version")
+    require(manifest["tag"] == tag, "Artifact tag mismatch")
+    if tag:
+        require(tag == "v" + version, "Version tag mismatch")
+        require(git(source, "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}") == manifest["source_commit"], "Tag commit mismatch")
+    require(manifest["architecture"] == "arm64", "Unsupported release architecture")
+    require(manifest["package_resolved_sha256"] == digest(source / "Package.resolved"), "Dependency lockfile mismatch")
+    checks_passed(manifest["validation"], BUILD_CHECKS)
+    require(all(re.fullmatch(r"[0-9a-f]{64}", item["log_sha256"]) for item in manifest["validation"]), "Invalid validation log digest")
+    package_name = f"apple-cli-{version}-macos-arm64"
+    archive = directory / (package_name + ".tar.gz")
+    checksum = directory / (archive.name + ".sha256")
+    verification = directory / (package_name + ".verification.json")
+    expected_names = {archive.name, checksum.name, manifest_path.name}
+    require(manifest_path.name == package_name + ".provenance.json", "Manifest filename mismatch")
+    if verification.exists():
+        expected_names.add(verification.name)
+    require({path.name for path in directory.iterdir()} == expected_names, "Unexpected or missing release files")
+    require(all(path.is_file() and not path.is_symlink() for path in directory.iterdir()), "Release inputs must be regular files")
+    archive_hash = digest(archive)
+    require(manifest["archive"] == {"filename": archive.name, "sha256": archive_hash}, "Archive digest mismatch")
+    require(checksum.read_text() == f"{archive_hash}  {archive.name}\n", "Archive checksum mismatch")
+    binaries = manifest["binaries"]
+    runtimes = manifest["swift_runtime_libraries"]
+    require({item["path"] for item in binaries} == {"bin/apple", "bin/apple-cli-mcp"} and len(binaries) == 2, "Executable inventory mismatch")
+    require(all(re.fullmatch(r"bin/libswift[A-Za-z0-9_]+\.dylib", item["path"]) for item in runtimes), "Unexpected runtime path")
+    records = binaries + runtimes
+    require(len(records) == len({item["path"] for item in records}), "Duplicate binary inventory")
+    require(all("@loader_path" in item["run_paths"] and set(item["run_paths"]) <= {"/usr/lib/swift", "@loader_path"} for item in binaries), "Executable run-path mismatch")
+    for item in records:
+        for library in item["dynamic_libraries"]:
+            require(library.startswith(("/System/Library/", "/usr/lib/")) or "bin/" + library.removeprefix("@rpath/") in {entry["path"] for entry in runtimes} and library.startswith("@rpath/"), "Unresolved dynamic library")
+    with tempfile.TemporaryDirectory(prefix="apple-cli-archive-check-") as temporary:
+        with tarfile.open(archive) as tar:
+            members = tar.getmembers()
+            names = [member.name for member in members]
+            require(len(names) == len(set(names)), "Duplicate archive members")
+            for member in members:
+                path = PurePosixPath(member.name)
+                require(not path.is_absolute() and ".." not in path.parts and path.parts and path.parts[0] == package_name, "Unsafe archive member path")
+                require(member.isfile() or member.isdir(), "Archive links and special files are unsupported")
+                require(not any(part in {".agent", ".build", "tmp"} or part.endswith(".framework") for part in path.parts) and not member.name.endswith(".tbd"), "Unexpected development input in archive")
+            tar.extractall(temporary, filter="data")
+        package = (Path(temporary) / package_name).resolve()
+        embedded = json.loads((package / "provenance.json").read_text())
+        require(embedded == {key: value for key, value in manifest.items() if key != "archive"}, "Embedded provenance mismatch")
+        for name in ["LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", "Documentation/Reference/ReleaseGuide.md"]:
+            require((package / name).read_bytes() == (source / name).read_bytes(), f"Source input mismatch: {name}")
+        license_directory = Path("Documentation/Reference/ThirdPartyLicenses")
+        licenses = {path.relative_to(source) for path in (source / license_directory).rglob("*") if path.is_file()}
+        require({path.relative_to(package) for path in (package / license_directory).rglob("*") if path.is_file()} == licenses, "Dependency license inventory mismatch")
+        for name in licenses:
+            require((package / name).read_bytes() == (source / name).read_bytes(), "Dependency license bytes changed")
+        require({path.relative_to(package).as_posix() for path in (package / "bin").iterdir()} == {item["path"] for item in records}, "Packaged binary inventory mismatch")
+        for item in records:
+            require(digest(package / item["path"]) == item["sha256"], "Packaged binary digest mismatch")
+        files_scanned = 0
+        for path in package.rglob("*"):
+            if path.is_file():
+                files_scanned += 1
+                require(not MACHINE_LOCAL.search(path.read_bytes()), "Packaged file contains a machine-local path")
+            if path.suffix == ".md":
+                for link in re.findall(r'!?\[[^\]]*\]\(([^\n)]+)\)', path.read_text()):
+                    link = link.split(' "')[0].strip("<> ").split("#")[0]
+                    if link and not urlsplit(link).scheme:
+                        target = (path.parent / unquote(link)).resolve()
+                        require(target.is_relative_to(package) and target.exists(), "Missing or escaping packaged Markdown link")
+    if require_verification:
+        receipt = json.loads(verification.read_text())
+        require(receipt["schema_version"] == 1, "Unsupported archive verification schema")
+        for key in ["repository", "version", "tag", "source_commit", "source_tree"]:
+            require(receipt[key] == manifest[key], "Archive verification identity mismatch")
+        require(receipt["archive"] == {"filename": archive.name, "sha256": archive_hash}, "Verification archive digest mismatch")
+        require(receipt["provenance"] == {"filename": manifest_path.name, "sha256": digest(manifest_path)}, "Verification provenance digest mismatch")
+        require(receipt["checksum"] == {"filename": checksum.name, "sha256": digest(checksum)}, "Verification checksum digest mismatch")
+        require(receipt["checker"] == {"path": "Scripts/verify-release", "sha256": digest(Path(__file__))}, "Archive checker identity mismatch")
+        checks_passed(receipt["validation"], ARCHIVE_CHECKS)
+        require(receipt["artifact_content"] == {"files_scanned": files_scanned, "machine_local_path_matches": 0}, "Archive content receipt mismatch")
+        test = next(item for item in receipt["validation"] if item["check"] == "unpacked-cli-and-mcp")
+        require(test["tests"] > 0 and test["suites"] > 0 and re.fullmatch(r"[0-9a-f]{64}", test["log_sha256"]), "Missing unpacked test evidence")
+    return manifest, archive, manifest_path, checksum, verification
+
+
+def accept_executables(source, manifest, archive, manifest_path, checksum, verification):
+    require(platform.system() == "Darwin" and platform.machine() == "arm64", "Executable acceptance requires native macOS arm64")
+    log_directories = (source / ".build/release-validation").glob("*")
+    require(any(all((directory / (item["check"] + ".log")).is_file() and digest(directory / (item["check"] + ".log")) == item["log_sha256"] for item in manifest["validation"]) for directory in log_directories), "Build validation logs do not match provenance")
+    log_directory = source / ".build/release-validation/archive-" / archive.stem
+    log_directory.mkdir(parents=True, exist_ok=True)
+    log = log_directory / "unpacked-cli-and-mcp.log"
+    with tempfile.TemporaryDirectory(prefix="apple-cli-release-install-") as temporary:
+        with tarfile.open(archive) as tar:
+            tar.extractall(temporary, filter="data")
+        package = Path(temporary) / archive.name.removesuffix(".tar.gz")
+        files_scanned = sum(path.is_file() for path in package.rglob("*"))
+        for item in manifest["binaries"] + manifest["swift_runtime_libraries"]:
+            subprocess.run(["codesign", "--verify", "--strict", str(package / item["path"])], check=True, timeout=30)
+        environment = os.environ.copy()
+        for key in list(environment):
+            if key.startswith("DYLD_") or key in {"APPLE_CLI_BIN", "APPLE_CLI_MCP_BIN", "APPLE_CLI_BIN_DIR", "APPLE_CLI_RUN_NOTES_INTEGRATION_TESTS"}:
+                environment.pop(key)
+        environment["APPLE_CLI_BIN"] = str(package / "bin/apple")
+        environment["APPLE_CLI_MCP_BIN"] = str(package / "bin/apple-cli-mcp")
+        with log.open("w") as output:
+            task = subprocess.Popen(["xcrun", "swift", "test", "--skip-build", "--force-resolved-versions", "--filter", "CLIExecutableTests|AppleMCPAdapterTests"], cwd=source, env=environment, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                code = task.wait(timeout=120)
+            except subprocess.TimeoutExpired:
+                os.killpg(task.pid, signal.SIGKILL)
+                task.wait()
+                raise ValueError("Unpacked executable acceptance exceeded its deadline") from None
+        require(code == 0, "Unpacked executable acceptance failed; inspect validation logs")
+    match = re.search(r"Test run with (\d+) tests in (\d+) suites passed", log.read_text())
+    require(match is not None, "Unpacked test summary is missing")
+    receipt = {key: manifest[key] for key in ["repository", "version", "tag", "source_commit", "source_tree"]}
+    receipt.update({
+        "schema_version": 1,
+        "archive": {"filename": archive.name, "sha256": digest(archive)},
+        "provenance": {"filename": manifest_path.name, "sha256": digest(manifest_path)},
+        "checksum": {"filename": checksum.name, "sha256": digest(checksum)},
+        "checker": {"path": "Scripts/verify-release", "sha256": digest(Path(__file__))},
+        "artifact_content": {"files_scanned": files_scanned, "machine_local_path_matches": 0},
+        "tested_macos": subprocess.check_output(["sw_vers", "-productVersion"], text=True).strip(),
+        "architecture": platform.machine(),
+        "validation": [
+            {"check": name, "result": "passed"} for name in ["archive-integrity", "artifact-content", "installed-signatures"]
+        ] + [{"check": "unpacked-cli-and-mcp", "result": "passed", "tests": int(match[1]), "suites": int(match[2]), "log_sha256": digest(log)}],
+    })
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        repository = os.environ["GITHUB_REPOSITORY"]
+        run_id = os.environ["GITHUB_RUN_ID"]
+        receipt["ci"] = {
+            "repository": repository, "run_id": run_id,
+            "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+            "run_url": f"https://github.com/{repository}/actions/runs/{run_id}",
+        }
+    verification.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--directory", type=Path, default=Path(".build/releases"))
+    parser.add_argument("--source", type=Path, default=Path(__file__).resolve().parent.parent)
+    parser.add_argument("--tag")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--run-tests", action="store_true", help="Accept macOS signatures and actual unpacked CLI/MCP executables")
+    modes.add_argument("--require-verification", action="store_true", help="Require the matching executable acceptance receipt")
+    parser.add_argument("--github-output", action="store_true", help="Record validated tag/source/version values in GITHUB_OUTPUT")
+    options = parser.parse_args()
+    source = options.source.resolve()
+    directory = options.directory.resolve()
+    inputs = verify(directory, source, options.tag, options.require_verification)
+    manifest = inputs[0]
+    if options.run_tests:
+        accept_executables(source, *inputs)
+        verify(directory, source, options.tag, True)
+    if options.github_output:
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            for key, value in {"tag": manifest["tag"] or "", "source_commit": manifest["source_commit"], "version": manifest["version"]}.items():
+                output.write(f"{key}={value}\n")
+    print(f"Verified {inputs[1].name}: source {manifest['source_commit']}, SHA-256 {digest(inputs[1])}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, tarfile.TarError) as error:
+        print(f"verify-release: {error}", file=sys.stderr)
+        sys.exit(1)

@@ -132,26 +132,33 @@ func requireStandalone(_ executable: URL, runtimeNames: Set<String>) throws -> [
 func main() throws {
   var output = root.appendingPathComponent(".build/releases", isDirectory: true)
   var tag: String?
+  var jobs: Int?
   var iterator = CommandLine.arguments.dropFirst().makeIterator()
   while let option = iterator.next() {
     if option == "--help" || option == "-h" {
       message(
         """
-        Usage: Scripts/package-release [--output DIRECTORY] [--tag TAG]
-        Build and test a clean, committed source candidate and create a local
+        Usage: Scripts/package-release [--output DIRECTORY] [--tag TAG] [--jobs COUNT]
+        Build and test a clean, committed source candidate and create a
         macOS arm64 archive, SHA-256 checksum, and provenance manifest.
         --tag verifies an existing tag at HEAD against the source version.
+        --jobs limits concurrent SwiftPM build jobs to a positive integer.
         No tag, GitHub release, repository, or remote upload is created.
         """)
       return
     }
-    guard ["--output", "--tag"].contains(option), let value = iterator.next(), !value.isEmpty else {
+    guard ["--output", "--tag", "--jobs"].contains(option), let value = iterator.next(), !value.isEmpty else {
       throw ReleaseError.invalid("Unknown or incomplete option: \(option). Use --help.")
     }
     if option == "--output" {
       output = URL(fileURLWithPath: value, relativeTo: root).standardizedFileURL
-    } else {
+    } else if option == "--tag" {
       tag = value
+    } else {
+      guard let count = Int(value), count > 0 else {
+        throw ReleaseError.invalid("--jobs requires a positive integer.")
+      }
+      jobs = count
     }
   }
   let revision = try requireCleanCommit()
@@ -227,14 +234,18 @@ func main() throws {
   testEnvironment.removeValue(forKey: "APPLE_CLI_RUN_NOTES_INTEGRATION_TESTS")
   testEnvironment.removeValue(forKey: "APPLE_CLI_BIN")
   testEnvironment.removeValue(forKey: "APPLE_CLI_MCP_BIN")
+  testEnvironment.removeValue(forKey: "APPLE_CLI_BIN_DIR")
   for key in testEnvironment.keys.filter({ $0.hasPrefix("DYLD_") }) {
     testEnvironment.removeValue(forKey: key)
   }
-  try validate("build-tests", ["swift", "build", "--build-tests", "--force-resolved-versions"])
+  let buildJobs = jobs.map { ["--jobs", String($0)] } ?? []
+  try validate(
+    "build-tests", ["swift", "build", "--build-tests", "--force-resolved-versions"] + buildJobs)
   try validate(
     "default-concurrent-tests", ["swift", "test", "--skip-build", "--force-resolved-versions"],
     environment: testEnvironment)
-  try validate("release-build", ["swift", "build", "-c", "release", "--force-resolved-versions"])
+  try validate(
+    "release-build", ["swift", "build", "-c", "release", "--force-resolved-versions"] + buildJobs)
   let releaseBin = URL(
     fileURLWithPath: try run(
       "/usr/bin/xcrun",
@@ -358,7 +369,7 @@ func main() throws {
     Read Documentation/Reference/ReleaseGuide.md for installation, compatibility,
     signature and permission guidance. Per-target doctor and help commands
     explain the available behavior.
-    Executables have stripped debug symbols and local ad-hoc signatures after
+    Executables have stripped debug symbols and ad-hoc signatures after
     relocation. Required Swift runtime libraries are included alongside them
     with their original signatures.
     Project Developer ID signing and notarization are not part of this package.
@@ -393,7 +404,7 @@ func main() throws {
     "notes_link_inputs": stubProvenance, "binaries": binaries, "swift_runtime_libraries": runtimes,
     "validation": validation,
     "signing":
-      "debug symbols stripped before local ad-hoc executable signatures; original Swift runtime signatures; no project Developer ID or notarization",
+      "debug symbols stripped before ad-hoc executable signatures; original Swift runtime signatures; no project Developer ID or notarization",
     "compatibility":
       "Validated on the recorded macOS/architecture. Individual private-framework capabilities and permissions require target-specific doctor checks.",
   ]

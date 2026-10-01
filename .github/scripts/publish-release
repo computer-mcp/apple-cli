@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Publish the verified artifacts of the current GitHub Actions run."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import runpy
+import subprocess
+import sys
+import tempfile
+from urllib.parse import quote
+
+
+SOURCE = Path(__file__).resolve().parents[2]
+checker = runpy.run_path(str(SOURCE / "Scripts/verify-release"))
+require = checker["require"]
+digest = checker["digest"]
+
+
+def gh(*arguments, missing=False):
+    result = subprocess.run(["gh", *arguments], text=True, capture_output=True, timeout=120)
+    if missing and result.returncode and "(HTTP 404)" in result.stderr:
+        return None
+    require(result.returncode == 0, result.stderr.strip() or "GitHub operation failed")
+    return result.stdout
+
+
+def api(endpoint, missing=False):
+    response = gh("api", endpoint, missing=missing)
+    return json.loads(response) if response is not None else None
+
+
+def require_remote_tag(repository, tag, commit):
+    reference = api(f"repos/{repository}/git/ref/tags/{quote(tag, safe='')}")["object"]
+    for _ in range(8):
+        if reference["type"] == "commit":
+            require(reference["sha"] == commit, "Remote release tag changed")
+            return
+        require(reference["type"] == "tag", "Unsupported remote tag object")
+        reference = api(f"repos/{repository}/git/tags/{reference['sha']}")["object"]
+    raise ValueError("Remote tag nesting exceeds the supported depth")
+
+
+def release_notes(manifest, receipt):
+    changelog = (SOURCE / "CHANGELOG.md").read_text()
+    heading = re.search(r"^## " + re.escape(manifest["version"]) + r"(?:\s[^\n]*)?\n", changelog, re.MULTILINE)
+    require(heading is not None, "Changelog entry for the release version is missing")
+    body = re.split(r"^## ", changelog[heading.end():], maxsplit=1, flags=re.MULTILINE)[0].strip()
+    require(body, "Changelog release entry is empty")
+    repository = manifest["repository"]
+    tag = manifest["tag"]
+    body = re.sub(r"\]\((?![a-zA-Z][a-zA-Z0-9+.-]*:|#)([^)]+)\)", lambda match: f"](https://github.com/{repository}/blob/{tag}/{match[1]})", body)
+    return body + f"\n\nSource: [{manifest['source_commit'][:12]}](https://github.com/{repository}/commit/{manifest['source_commit']}). Build and acceptance: [GitHub Actions]({receipt['ci']['run_url']}).\n"
+
+
+def verify_uploaded(release, files, repository, tag):
+    assets = release["assets"]
+    require(len(assets) == len({item["name"] for item in assets}), "Duplicate remote assets")
+    require({item["name"] for item in assets} <= set(files), "Release contains unexpected assets")
+    for asset in assets:
+        path = files[asset["name"]]
+        require(asset["state"] == "uploaded" and asset["size"] == path.stat().st_size, "Draft asset is incomplete")
+        expected = "sha256:" + digest(path)
+        if asset.get("digest"):
+            require(asset["digest"] == expected, "Draft asset differs from the accepted bytes")
+        else:
+            with tempfile.TemporaryDirectory(prefix="apple-cli-upload-check-") as temporary:
+                gh("release", "download", tag, "--repo", repository, "--pattern", path.name, "--dir", temporary)
+                require(digest(Path(temporary) / path.name) == expected.removeprefix("sha256:"), "Downloaded draft asset differs from the accepted bytes")
+    return {item["name"] for item in assets}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--directory", type=Path, default=Path(".build/releases"))
+    options = parser.parse_args()
+    require(os.environ.get("GITHUB_ACTIONS") == "true", "Publication belongs to the GitHub Actions release job")
+    repository = os.environ["GITHUB_REPOSITORY"]
+    require(repository == checker["REPOSITORY"], "Publication repository mismatch")
+    tag = os.environ["RELEASE_TAG"]
+    require(tag, "Release tag is required")
+    directory = options.directory.resolve()
+    manifest, archive, provenance, checksum, verification = checker["verify"](directory, SOURCE, tag, True)
+    require(manifest["source_commit"] == os.environ["RELEASE_SOURCE_COMMIT"], "Build-to-publication source handoff mismatch")
+    receipt = json.loads(verification.read_text())
+    require(receipt["ci"]["repository"] == repository and receipt["ci"]["run_id"] == os.environ["GITHUB_RUN_ID"], "Acceptance belongs to another workflow run")
+    require(receipt["ci"]["run_url"] == f"https://github.com/{repository}/actions/runs/{os.environ['GITHUB_RUN_ID']}", "Invalid acceptance run URL")
+    require_remote_tag(repository, tag, manifest["source_commit"])
+    endpoint = f"repos/{repository}/releases/tags/{quote(tag, safe='')}"
+    release = api(endpoint, missing=True)
+    files = {path.name: path for path in [archive, provenance, checksum, verification]}
+    with tempfile.TemporaryDirectory(prefix="apple-cli-release-notes-") as temporary:
+        notes = Path(temporary) / "notes.md"
+        notes.write_text(release_notes(manifest, receipt))
+        prerelease = "-" in manifest["version"]
+        if release is None:
+            arguments = ["release", "create", tag, "--repo", repository, "--verify-tag", "--draft", "--target", manifest["source_commit"], "--title", "apple-cli " + manifest["version"], "--notes-file", str(notes)]
+            if prerelease:
+                arguments += ["--prerelease", "--latest=false"]
+            gh(*arguments)
+            release = api(endpoint)
+        require(release["tag_name"] == tag, "Release tag identity mismatch")
+        uploaded = verify_uploaded(release, files, repository, tag)
+        if not release["draft"]:
+            require(uploaded == set(files), "Published releases cannot be overwritten")
+            print(f"Already published and verified: https://github.com/{repository}/releases/tag/{tag}")
+            return
+        for name, path in files.items():
+            if name not in uploaded:
+                gh("release", "upload", tag, str(path), "--repo", repository)
+        release = api(endpoint)
+        require(release["draft"], "Release was published before upload verification completed")
+        require(verify_uploaded(release, files, repository, tag) == set(files), "Release assets are incomplete")
+        require_remote_tag(repository, tag, manifest["source_commit"])
+        gh("release", "edit", tag, "--repo", repository, "--notes-file", str(notes), "--prerelease=" + str(prerelease).lower(), "--draft=false")
+    print(f"Published https://github.com/{repository}/releases/tag/{tag}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        print(f"publish-release: {error}", file=sys.stderr)
+        sys.exit(1)
