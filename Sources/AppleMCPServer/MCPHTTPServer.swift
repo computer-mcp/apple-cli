@@ -131,6 +131,7 @@ actor MCPHTTPSessionManager {
   private let adapter: AppleMCPAdapter
   private let validationPipeline: any HTTPRequestValidationPipeline
   private var sessions: [String: Session] = [:]
+  private var initializingSessions = 0
 
   init(configuration: MCPHTTPServerConfiguration, adapter: AppleMCPAdapter) {
     self.configuration = configuration
@@ -182,12 +183,16 @@ actor MCPHTTPSessionManager {
       )
     }
 
-    guard sessions.count < configuration.maxSessions else {
+    guard sessions.count + initializingSessions < configuration.maxSessions else {
       return .error(
         statusCode: 503,
         .internalError("Too many active MCP HTTP sessions")
       )
     }
+
+    // Reserve capacity before SDK actor calls can admit another initialization.
+    initializingSessions += 1
+    defer { initializingSessions -= 1 }
 
     let transport = StatefulHTTPServerTransport(validationPipeline: validationPipeline)
     let server = await AppleMCPServerRuntime.makeServer(adapter: adapter)

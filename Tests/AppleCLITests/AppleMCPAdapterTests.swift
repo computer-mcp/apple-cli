@@ -761,6 +761,79 @@ struct AppleMCPAdapterTests {
     await client.disconnect()
   }
 
+  @Test(.timeLimit(.minutes(1)))
+  func mcpHTTPConcurrentInitializationsRespectSessionLimitAndReleaseCapacity() async throws {
+    guard #available(macOS 14.0, *) else { return }
+
+    let installation = try stagedMCPInstallation(separateCLI: false)
+    defer { try? FileManager.default.removeItem(at: installation.root) }
+    let port = try availableLoopbackPort()
+    let endpoint = try #require(URL(string: "http://127.0.0.1:\(port)/mcp"))
+    let process = Process()
+    let stdout = Pipe()
+    let stderr = Pipe()
+    process.executableURL = installation.server
+    process.currentDirectoryURL = installation.root
+    process.arguments = ["serve", "http", "--port", "\(port)", "--max-sessions", "1"]
+    process.standardOutput = stdout
+    process.standardError = stderr
+    try process.run()
+    defer {
+      if process.isRunning { process.terminate() }
+      process.waitUntilExit()
+      try? stdout.fileHandleForReading.close()
+      try? stderr.fileHandleForReading.close()
+    }
+    try await waitForHTTPServer(endpoint: endpoint, process: process, timeoutSeconds: 8)
+
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = 5
+    configuration.timeoutIntervalForResource = 10
+    configuration.httpMaximumConnectionsPerHost = 4
+    let session = URLSession(configuration: configuration)
+    defer { session.invalidateAndCancel() }
+
+    var request = URLRequest(url: endpoint)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+    request.httpBody = try JSONSerialization.data(withJSONObject: [
+      "jsonrpc": "2.0", "id": 1, "method": "initialize",
+      "params": [
+        "protocolVersion": Version.latest, "capabilities": [:],
+        "clientInfo": ["name": "apple-cli-session-tests", "version": "1.0"],
+      ],
+    ])
+    let initialization = request
+
+    var invalid = initialization
+    invalid.setValue("text/plain", forHTTPHeaderField: "Content-Type")
+    let (_, invalidResponse) = try await session.data(for: invalid)
+    #expect((invalidResponse as? HTTPURLResponse)?.statusCode == 415)
+
+    let responses = try await concurrentHTTPInitializations(
+      port: port, request: initialization, count: 4)
+    #expect(responses.filter { $0.0 == 200 }.count == 1)
+    #expect(responses.filter { $0.0 == 503 }.count == 3)
+    let sessionID = try #require(responses.first { $0.0 == 200 }?.1)
+
+    var close = URLRequest(url: endpoint)
+    close.httpMethod = "DELETE"
+    close.setValue(sessionID, forHTTPHeaderField: "Mcp-Session-Id")
+    close.setValue(Version.latest, forHTTPHeaderField: "MCP-Protocol-Version")
+    close.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+    let (_, closeResponse) = try await session.data(for: close)
+    #expect((closeResponse as? HTTPURLResponse)?.statusCode == 200)
+
+    let (_, reopenedResponse) = try await session.data(for: initialization)
+    let reopened = try #require(reopenedResponse as? HTTPURLResponse)
+    #expect(reopened.statusCode == 200)
+    let reopenedSessionID = try #require(reopened.value(forHTTPHeaderField: "Mcp-Session-Id"))
+    close.setValue(reopenedSessionID, forHTTPHeaderField: "Mcp-Session-Id")
+    let (_, finalCloseResponse) = try await session.data(for: close)
+    #expect((finalCloseResponse as? HTTPURLResponse)?.statusCode == 200)
+  }
+
   @Test func mcpCommandCatalogRespectsCommandLimitBeforeProcessLaunchExpansion() async throws {
     let runner = FakeMCPRunner()
     runner.helpOutputs = [
@@ -1382,6 +1455,78 @@ private func availableLoopbackPort() throws -> Int {
   }
 
   return Int(in_port_t(bigEndian: boundAddress.sin_port))
+}
+
+private func concurrentHTTPInitializations(
+  port: Int, request: URLRequest, count: Int
+) async throws -> [(Int, String?)] {
+  var descriptors: [Int32] = []
+  defer { for descriptor in descriptors { close(descriptor) } }
+  for _ in 0..<count {
+    let descriptor = socket(AF_INET, SOCK_STREAM, 0)
+    try #require(descriptor >= 0)
+    descriptors.append(descriptor)
+    var address = sockaddr_in()
+    address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+    address.sin_family = sa_family_t(AF_INET)
+    address.sin_port = in_port_t(port).bigEndian
+    address.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+    let result = withUnsafePointer(to: &address) { pointer in
+      pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+        Darwin.connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+      }
+    }
+    try #require(result == 0)
+    let flags = fcntl(descriptor, F_GETFL)
+    try #require(flags >= 0)
+    try #require(fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0)
+  }
+
+  let body = try #require(request.httpBody)
+  var fields = request.allHTTPHeaderFields ?? [:]
+  fields["Host"] = "127.0.0.1:\(port)"
+  fields["Content-Length"] = "\(body.count)"
+  fields["Connection"] = "close"
+  let headers = fields.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }
+    .joined(separator: "\r\n")
+  let path = try #require(request.url).path
+  var payload = Data("POST \(path) HTTP/1.1\r\n\(headers)\r\n\r\n".utf8)
+  payload.append(body)
+  for descriptor in descriptors {
+    let sent = payload.withUnsafeBytes { Darwin.send(descriptor, $0.baseAddress, $0.count, 0) }
+    try #require(sent == payload.count)
+  }
+
+  return try await withThrowingTaskGroup(of: (Int, String?).self) { group in
+    for descriptor in descriptors {
+      group.addTask {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        let separator = Data("\r\n\r\n".utf8)
+        var received = Data()
+        var buffer = [UInt8](repeating: 0, count: 2_048)
+        while received.range(of: separator) == nil {
+          try #require(ContinuousClock.now < deadline)
+          let bytes = recv(descriptor, &buffer, buffer.count, 0)
+          if bytes > 0 {
+            received.append(contentsOf: buffer.prefix(bytes))
+          } else {
+            try #require(bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+            try await Task.sleep(for: .milliseconds(1))
+          }
+        }
+        let header = String(decoding: received, as: UTF8.self)
+          .components(separatedBy: "\r\n\r\n")[0]
+        let lines = header.components(separatedBy: "\r\n")
+        let status = try #require(Int(lines[0].split(separator: " ").dropFirst().first ?? ""))
+        let sessionID = lines.first { $0.lowercased().hasPrefix("mcp-session-id:") }
+          .map { $0.split(separator: ":", maxSplits: 1)[1].trimmingCharacters(in: .whitespaces) }
+        return (status, sessionID)
+      }
+    }
+    var responses: [(Int, String?)] = []
+    for try await response in group { responses.append(response) }
+    return responses
+  }
 }
 
 private func waitForHTTPServer(endpoint: URL, process: Process, timeoutSeconds: TimeInterval)

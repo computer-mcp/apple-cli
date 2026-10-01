@@ -121,6 +121,9 @@ are derived from the canonical CLI contract and preserve the same validation,
 - Streamable HTTP binds to loopback by default. Non-loopback serving must be an
   explicit opt-in and must be protected by bearer token or deployment-layer
   controls.
+- HTTP session admission counts active sessions and sessions being initialized
+  against `--max-sessions`. Failed initialization and session closure release
+  capacity.
 
 ## Risks / Known Gaps
 
