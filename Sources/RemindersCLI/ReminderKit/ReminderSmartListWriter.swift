@@ -153,7 +153,7 @@ enum ReminderSmartListWriter {
         operation: "convert",
         message: "ReminderKit default list could not be fetched for Smart List conversion.",
         details: details.merging(
-          ["fetch_error": fetchError.map(String.init(describing:)) ?? ""],
+          ["fetch_error": reminderKitErrorSummary(fetchError)],
           uniquingKeysWith: { _, new in new }
         )
       )

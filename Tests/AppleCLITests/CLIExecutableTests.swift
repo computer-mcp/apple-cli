@@ -4,6 +4,26 @@ import Utility
 
 @Suite
 struct CLIExecutableTests {
+  @Test func notesDefaultStatusIsConciseAndCommandsRemainDiscoverable() throws {
+    let result = try cli(["notes", "--json"])
+    #expect(result.exitCode == 0)
+    #expect(result.stderr.isEmpty)
+    let envelope = try #require(JSONSerialization.jsonObject(with: Data(result.stdout.utf8)) as? [String: Any])
+    #expect(envelope["ok"] as? Bool == true)
+    let data = try #require(envelope["data"] as? [String: Any])
+    #expect(data["target"] as? String == "notes")
+    #expect(data["implemented"] as? Bool == true)
+    let status = try #require(data["status"] as? String)
+    #expect(!status.isEmpty && status.count < 512)
+
+    let help = try cli(["notes", "--help"])
+    #expect(help.exitCode == 0)
+    #expect(help.stderr.isEmpty)
+    for command in ["smart-folders", "attachments", "settings"] {
+      #expect(help.stdout.contains(command))
+    }
+  }
+
   @Test func productsAndTargetVersionsAgree() throws {
     let targets = ["notes", "calendar", "reminders", "contacts", "mail", "messages", "maps",
       "finder", "numbers", "pages", "keynote", "facetime", "safari", "photos", "print",
@@ -35,6 +55,24 @@ struct CLIExecutableTests {
       #expect(json["ok"] as? Bool == false)
       #expect((json["error"] as? [String: Any])?["code"] as? String == "validation_error")
     }
+  }
+
+  @Test(arguments: ["", " ", "host/path", "user@host", "host?query", "host#fragment", "http://localhost", "localhost:80", "[localhost]", "[invalid:ipv6]"])
+  func mcpHTTPRejectsInvalidHostBeforeStarting(host: String) throws {
+    let result = try CLISubprocess.run(
+      .path("/usr/bin/env"),
+      arguments: [
+        "APPLE_CLI_SYNTHETIC_HTTP_TOKEN=synthetic-http-token",
+        executable("apple-cli-mcp"), "serve", "http", "--host", host,
+        "--allow-non-loopback", "--token-env", "APPLE_CLI_SYNTHETIC_HTTP_TOKEN",
+      ],
+      timeoutSeconds: 5)
+
+    #expect(result.exitCode == 64)
+    #expect(result.stdout.isEmpty)
+    #expect(result.stderr.contains("--host"))
+    #expect(!result.stderr.contains("synthetic-http-token"))
+    #expect(!result.stderr.contains("Fatal error"))
   }
 }
 

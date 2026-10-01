@@ -1,3 +1,5 @@
+import Foundation
+
 public enum CLIErrorCode: String, Codable, CaseIterable, Sendable {
   case validationError = "validation_error"
   case permissionDenied = "permission_denied"
@@ -66,5 +68,45 @@ public struct CLIError: Error, Equatable, Sendable {
 
   public var payload: CLIErrorPayload {
     CLIErrorPayload(code: code, message: message, details: details)
+  }
+
+  public static func unexpected(_ error: any Error, verbose: Bool = false) -> CLIError {
+    CLIError(
+      code: .internalError,
+      message: "Unhandled CLI error.",
+      details: verbose ? diagnosticDetails(for: error) : [:])
+  }
+
+  public static func diagnosticDetails(for error: any Error) -> [String: String] {
+    // Error descriptions and userInfo may contain selected app content or secret input.
+    let foundationError = error as NSError
+    return [
+      "error_domain": foundationError.domain,
+      "error_code": "\(foundationError.code)",
+    ]
+  }
+
+  public static func appleEventFailure(
+    target: String,
+    code: CLIErrorCode,
+    number: Int?,
+    details: [String: String] = [:]
+  ) -> CLIError {
+    let message: String
+    switch code {
+    case .permissionDenied:
+      message = CLIPermissionWording.automationPermissionRequired(target: target)
+    case .timeout:
+      message = "\(target) did not respond before the operation timed out."
+    case .notFound:
+      message = "The requested \(target) resource was not found."
+    default:
+      message = "\(target) automation failed. Run `apple \(target.lowercased()) doctor` to check readiness."
+    }
+    var details = details
+    if let number {
+      details["apple_event_error"] = "\(number)"
+    }
+    return CLIError(code: code, message: message, details: details)
   }
 }

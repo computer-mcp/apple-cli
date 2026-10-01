@@ -83,7 +83,7 @@ enum ReminderMessagingPersonWriter {
         details: [
           "reminder_id": reminderID,
           "person_selector": personSelector ?? "",
-          "save_error": saveError.map(String.init(describing:)) ?? "",
+          "save_error": reminderKitErrorSummary(saveError),
         ]
       )
     }
@@ -145,7 +145,7 @@ enum ReminderMessagingPersonWriter {
       message: "ReminderKit could not fetch the reminder by external or ReminderKit identifier.",
       details: [
         "reminder_id": reminderID,
-        "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(fetchError),
       ]
     )
   }
@@ -347,7 +347,7 @@ private enum ReminderMessagingContactResolver {
       throw CLIError(
         code: .permissionDenied,
         message: CLIPermissionWording.accessRequestFailed("Contacts"),
-        details: ["error": String(describing: error)]
+        details: CLIError.diagnosticDetails(for: error)
       )
     }
     guard result.granted else {

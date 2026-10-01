@@ -1,5 +1,6 @@
 import AppleMCPAdapter
 import ArgumentParser
+import Darwin
 import Foundation
 import HTTPTypes
 import Hummingbird
@@ -15,6 +16,7 @@ struct MCPHTTPServerConfiguration: Sendable {
   let sessionTimeoutSeconds: Int
   let maxSessions: Int
   let maxBodyBytes: Int
+  let resourceIdentifier: URL
 
   init(
     host: String,
@@ -29,6 +31,24 @@ struct MCPHTTPServerConfiguration: Sendable {
   ) throws {
     guard (1...65_535).contains(port) else {
       throw ValidationError("`--port` must be between 1 and 65535.")
+    }
+    let listenerHost = host.hasPrefix("[") && host.hasSuffix("]")
+      ? String(host.dropFirst().dropLast()) : host
+    if host.contains(":") || host.hasPrefix("[") || host.hasSuffix("]") {
+      var address = in6_addr()
+      guard inet_pton(AF_INET6, listenerHost, &address) == 1 else {
+        throw ValidationError("`--host` must be a hostname or IP address without URL components.")
+      }
+    }
+    let urlHost = listenerHost.contains(":") ? "[\(listenerHost)]" : listenerHost
+    guard !host.isEmpty, !host.contains(where: \.isWhitespace),
+      let address = URLComponents(string: "http://\(urlHost):\(port)"),
+      let addressHost = address.host, !addressHost.isEmpty,
+      address.user == nil, address.password == nil,
+      address.path.isEmpty, address.query == nil, address.fragment == nil,
+      address.port == port, let resourceIdentifier = address.url
+    else {
+      throw ValidationError("`--host` must be a hostname or IP address without URL components.")
     }
     guard path.hasPrefix("/"), !path.contains("?"), !path.contains("#") else {
       throw ValidationError(
@@ -67,13 +87,14 @@ struct MCPHTTPServerConfiguration: Sendable {
       }
     }
 
-    self.host = host
+    self.host = listenerHost
     self.port = port
     self.path = path
     self.bearerToken = token
     self.sessionTimeoutSeconds = sessionTimeoutSeconds
     self.maxSessions = maxSessions
     self.maxBodyBytes = maxBodyBytes
+    self.resourceIdentifier = resourceIdentifier
   }
 
   var isLoopback: Bool {
@@ -201,7 +222,7 @@ actor MCPHTTPSessionManager {
       try await server.start(transport: transport)
     } catch {
       await transport.disconnect()
-      return .error(statusCode: 500, .internalError("Failed to start MCP session: \(error)"))
+      return .error(statusCode: 500, .internalError("Failed to start MCP session"))
     }
 
     let response = await transport.handleRequest(request)
@@ -307,7 +328,7 @@ actor MCPHTTPSessionManager {
       validators.append(
         BearerTokenValidator(
           resourceMetadataURL: resourceMetadataURL(configuration: configuration),
-          resourceIdentifier: resourceIdentifier(configuration: configuration),
+          resourceIdentifier: configuration.resourceIdentifier,
           tokenValidator: { token, _, _ in
             constantTimeEquals(token, bearerToken)
               ? .valid(BearerTokenInfo())
@@ -324,21 +345,10 @@ actor MCPHTTPSessionManager {
     return StandardValidationPipeline(validators: validators)
   }
 
-  private static func resourceIdentifier(configuration: MCPHTTPServerConfiguration) -> URL {
-    URL(string: "http://\(urlHost(configuration.host)):\(configuration.port)")!
-  }
-
   private static func resourceMetadataURL(configuration: MCPHTTPServerConfiguration) -> URL {
-    resourceIdentifier(configuration: configuration)
+    configuration.resourceIdentifier
       .appendingPathComponent(".well-known")
       .appendingPathComponent("oauth-protected-resource")
-  }
-
-  private static func urlHost(_ host: String) -> String {
-    if host == "::1" {
-      return "[::1]"
-    }
-    return host
   }
 
   private static func constantTimeEquals(_ lhs: String, _ rhs: String) -> Bool {

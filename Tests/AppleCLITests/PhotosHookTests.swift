@@ -5,6 +5,60 @@ import Utility
 
 @Suite
 struct PhotosHookTests {
+  @Test func photosPostCommandDrainsOutputBeforeWaitingForExit() throws {
+    let result = try PhotosHookBackend().runPostCommand(
+      command: "/usr/bin/head -c 262144 /dev/zero", category: "test",
+      input: PhotoHookInput(category: "test", photos: []),
+      timeoutSeconds: 2, outputCap: 524_288)
+
+    #expect(result.submitted)
+  }
+
+  @Test func photosPostCommandFailureDoesNotCopyInputFromStderr() throws {
+    let input = PhotoHookInput(
+      category: "test", photos: [PhotosMediaItemRecord(id: "asset:1", uuid: "asset-1", filename: "private-photo-canary.JPG")])
+    do {
+      _ = try PhotosHookBackend().runPostCommand(
+        command: "/bin/cat >&2; exit 9", category: "test", input: input,
+        timeoutSeconds: 2, outputCap: 4096)
+      Issue.record("Expected a failed command.")
+    } catch let error as CLIError {
+      let response = try CLIJSON.encodeString(CLIErrorEnvelope(error: error.payload))
+      #expect(error.code == .backendUnavailable)
+      #expect(error.details["termination_status"] == "9")
+      #expect(!response.contains("private-photo-canary"))
+    }
+  }
+
+  @Test func photosPostCommandEnforcesOutputCapWhileChildIsRunning() throws {
+    do {
+      _ = try PhotosHookBackend().runPostCommand(
+        command: "/usr/bin/head -c 262144 /dev/zero", category: "test",
+        input: PhotoHookInput(category: "test", photos: []),
+        timeoutSeconds: 2, outputCap: 4096)
+      Issue.record("Expected an output cap failure.")
+    } catch let error as CLIError {
+      #expect(error.code == .validationError)
+      #expect(error.details["output_cap"] == "4096")
+    }
+  }
+
+  @Test func photosPostCommandTimeoutIncludesBlockedInput() throws {
+    let input = PhotoHookInput(
+      category: "test",
+      photos: [PhotosMediaItemRecord(
+        id: "asset:1", uuid: "asset-1", filename: "fixture.JPG",
+        description: String(repeating: "a", count: 262_144))])
+    do {
+      _ = try PhotosHookBackend().runPostCommand(
+        command: "exec /bin/sleep 30", category: "test", input: input,
+        timeoutSeconds: 1, outputCap: 4096)
+      Issue.record("Expected an input-blocked child to time out.")
+    } catch let error as CLIError {
+      #expect(error.code == .timeout)
+    }
+  }
+
   @Test func photosHookBackendRunsSwiftEvalWithJSONWire() throws {
     let backend = PhotosHookBackend()
     let source = """
@@ -314,7 +368,4 @@ struct PhotosHookTests {
     #expect(rendered == ["Beach:file-original"])
   }
 }
-
-
-
 

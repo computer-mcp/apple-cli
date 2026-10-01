@@ -274,7 +274,7 @@ enum ReminderListMetadataWriter {
     var saveError: AnyObject?
     guard saveRequest.saveSynchronouslyWithError(&saveError) else {
       var details = additionalDetails
-      details["save_error"] = saveError.map(String.init(describing:)) ?? ""
+      details["save_error"] = reminderKitErrorSummary(saveError)
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -315,7 +315,7 @@ enum ReminderListMetadataWriter {
       message: "ReminderKit could not fetch the list by title or ReminderKit identifier.",
       details: [
         "list_id": listID,
-        "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(fetchError),
       ]
     )
   }

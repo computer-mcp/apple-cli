@@ -217,6 +217,12 @@ backends, fixtures, or executable contract checks.
   verbose logs.
 - Machine-readable result JSON must not be mixed with stderr diagnostics.
 - Sensitive Apple app content should not be duplicated into stderr.
+- Unexpected failures expose a stable message and error category. Verbose
+  diagnostics may add error domain and code, but do not copy exception
+  descriptions or `userInfo` into output.
+- Apple event failures preserve the target-owned category and numeric error
+  code with recovery guidance. Raw automation errors may contain app content
+  and are not emitted.
 
 ## JSON Envelope
 

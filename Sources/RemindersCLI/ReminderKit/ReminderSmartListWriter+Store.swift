@@ -28,7 +28,7 @@ extension ReminderSmartListWriter {
       operation: operation,
       message: "ReminderKit account could not be resolved for Smart List mutation.",
       details: details.merging(
-        ["fetch_error": fetchError.map(String.init(describing:)) ?? ""],
+        ["fetch_error": reminderKitErrorSummary(fetchError)],
         uniquingKeysWith: { _, new in new }
       )
     )
@@ -119,7 +119,7 @@ extension ReminderSmartListWriter {
         operation: operation,
         message: "ReminderKit save failed.",
         details: details.merging(
-          ["save_error": saveError.map(String.init(describing:)) ?? ""],
+          ["save_error": reminderKitErrorSummary(saveError)],
           uniquingKeysWith: { _, new in new }
         )
       )

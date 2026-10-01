@@ -20,6 +20,12 @@ public struct CLISubprocessResult: Equatable, Sendable {
   }
 }
 
+public struct CLISubprocessBytesResult: Equatable, Sendable {
+  public var exitCode: Int32
+  public var stdout: Data
+  public var stderr: Data
+}
+
 public struct CLISubprocess: Sendable {
   public enum Executable: Sendable {
     case name(String)
@@ -41,10 +47,25 @@ public struct CLISubprocess: Sendable {
     timeoutSeconds: Int? = nil,
     outputLimit: Int = 1_048_576
   ) throws -> CLISubprocessResult {
+    let result = try runBytes(
+      executable, arguments: arguments, timeoutSeconds: timeoutSeconds, outputLimit: outputLimit)
+    return CLISubprocessResult(
+      exitCode: result.exitCode,
+      stdout: String(decoding: result.stdout, as: UTF8.self),
+      stderr: String(decoding: result.stderr, as: UTF8.self))
+  }
+
+  public static func runBytes(
+    _ executable: Executable,
+    arguments: [String],
+    input: Data? = nil,
+    timeoutSeconds: Int? = nil,
+    outputLimit: Int = 1_048_576
+  ) throws -> CLISubprocessBytesResult {
     try validate(timeoutSeconds: timeoutSeconds, outputLimit: outputLimit)
     let path = try executable.subprocessExecutable.resolveExecutablePath(in: .inherit)
     return try SynchronousSubprocess.run(
-      path: path.string, arguments: arguments,
+      path: path.string, arguments: arguments, input: input,
       timeoutSeconds: timeoutSeconds, outputLimit: outputLimit
     )
   }

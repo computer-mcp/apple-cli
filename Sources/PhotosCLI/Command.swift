@@ -2211,7 +2211,7 @@ private func photosReadUTF8File(_ path: String) throws -> String {
     throw CLIError(
       code: .validationError,
       message: "Could not read UTF-8 file at `\(path)`.",
-      details: ["underlying_error": String(describing: error)]
+      details: CLIError.diagnosticDetails(for: error)
     )
   }
 }
@@ -3051,69 +3051,29 @@ private func photosDumpDate(_ date: Date?) -> String? {
   date.map { ISO8601DateFormatter().string(from: $0) }
 }
 
-private func photosDumpCSV(_ records: [PhotosMediaItemDumpRecord]) -> String {
-  let rows = [photosDumpColumns] + records.map(photosDumpCSVValues)
+private func photosDumpCSV(_ records: [PhotosMediaItemDumpRecord]) throws -> String {
+  let columns = PhotosMediaItemDumpRecord.CodingKeys.allCases.map(\.rawValue).sorted()
+  let values = try records.map { record in
+    let data = try JSONEncoder().encode(record)
+    guard let fields = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw CLIError(code: .internalError, message: "Photos could not serialize the dump record.")
+    }
+    return try columns.map { column -> String in
+      guard let value = fields[column] else { return "" }
+      if let text = value as? String { return text }
+      if let entries = value as? [String] { return entries.joined(separator: ", ") }
+      let scalar = try JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed)
+      return String(decoding: scalar, as: UTF8.self)
+    }
+  }
+  let rows = [columns] + values
   return rows.map { row in
     row.map(photosCSVField).joined(separator: ",")
   }.joined(separator: "\n")
 }
 
-private let photosDumpColumns = [
-  "uuid", "filename", "original_filename", "date", "description", "title", "keywords",
-  "albums", "persons", "path", "ismissing", "hasadjustments", "external_edit", "favorite",
-  "hidden", "shared", "latitude", "longitude", "path_edited", "isphoto", "ismovie", "uti",
-  "burst", "live_photo", "path_live_photo", "iscloudasset", "incloud", "date_modified",
-  "portrait", "screenshot", "screen_recording", "slow_mo", "time_lapse", "hdr", "selfie",
-  "panorama", "has_raw", "uti_raw", "path_raw", "intrash",
-]
-
-private func photosDumpCSVValues(_ record: PhotosMediaItemDumpRecord) -> [String] {
-  [
-    record.uuid,
-    record.filename,
-    record.originalFilename,
-    record.date ?? "",
-    record.description ?? "",
-    record.title ?? "",
-    record.keywords.joined(separator: ", "),
-    record.albums.joined(separator: ", "),
-    record.persons.joined(separator: ", "),
-    record.path ?? "",
-    "\(record.isMissing)",
-    "\(record.hasAdjustments)",
-    "\(record.externalEdit)",
-    "\(record.favorite)",
-    "\(record.hidden)",
-    record.shared.map { "\($0)" } ?? "",
-    record.latitude.map { "\($0)" } ?? "",
-    record.longitude.map { "\($0)" } ?? "",
-    record.pathEdited ?? "",
-    "\(record.isPhoto)",
-    "\(record.isMovie)",
-    record.uti ?? "",
-    "\(record.burst)",
-    "\(record.livePhoto)",
-    record.pathLivePhoto ?? "",
-    record.isCloudAsset.map { "\($0)" } ?? "",
-    record.inCloud.map { "\($0)" } ?? "",
-    record.dateModified ?? "",
-    "\(record.portrait)",
-    "\(record.screenshot)",
-    "\(record.screenRecording)",
-    "\(record.slowMo)",
-    "\(record.timeLapse)",
-    "\(record.hdr)",
-    "\(record.selfie)",
-    "\(record.panorama)",
-    "\(record.hasRaw)",
-    record.utiRaw ?? "",
-    record.pathRaw ?? "",
-    "\(record.inTrash)",
-  ]
-}
-
 private func photosCSVField(_ value: String) -> String {
-  if value.contains(",") || value.contains("\"") || value.contains("\n") {
+  if value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r") {
     return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
   }
   return value

@@ -165,7 +165,7 @@ extension RemindersCommand {
       "anchor_display_order": anchor?.displayOrder.map(String.init) ?? "",
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(

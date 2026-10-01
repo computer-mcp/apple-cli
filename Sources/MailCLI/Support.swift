@@ -45,19 +45,10 @@ func runRows(_ source: String) throws -> [[String]] {
 }
 
 func automationError(_ errorInfo: NSDictionary) -> CLIError {
-  let originalMessage = errorInfo[NSAppleScript.errorMessage] as? String ?? "Mail automation failed."
   let number = errorInfo[NSAppleScript.errorNumber] as? Int
   let code: CLIErrorCode = number == -1743 ? .permissionDenied : .backendUnavailable
-  var details = number.map { ["apple_event_error": "\($0)"] } ?? [:]
-  if code == .permissionDenied {
-    details["original_error"] = originalMessage
-  }
-  return CLIError(
-    code: code,
-    message: code == .permissionDenied
-      ? CLIPermissionWording.automationPermissionRequired(target: "Mail")
-      : originalMessage,
-    details: details)
+  return CLIError.appleEventFailure(
+    target: "Mail", code: code, number: number)
 }
 
 func validateReadOnly(_ options: CLIOptions) throws {

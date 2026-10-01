@@ -966,6 +966,15 @@ public struct PhotosMediaItemsUpdateResponse: Codable, Equatable, Sendable {
 }
 
 public struct PhotosMediaItemDumpRecord: Codable, Equatable, Sendable {
+  enum CodingKeys: String, CodingKey, CaseIterable {
+    case albums, burst, date, dateModified, description, externalEdit, favorite
+    case filename, hasAdjustments, hasRaw, hdr, hidden, inCloud, inTrash
+    case isCloudAsset, isMissing, isMovie, isPhoto, keywords, latitude, livePhoto
+    case longitude, originalFilename, panorama, path, pathEdited, pathLivePhoto
+    case pathRaw, persons, portrait, screenRecording, screenshot, selfie, shared
+    case slowMo, timeLapse, title, uti, utiRaw, uuid
+  }
+
   public var uuid: String
   public var filename: String
   public var originalFilename: String

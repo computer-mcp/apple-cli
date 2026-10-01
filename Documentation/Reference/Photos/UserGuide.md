@@ -11,6 +11,12 @@ apple photos albums list --json
 apple photos folders list --json
 ```
 
+`apple photos media-items dump` writes CSV with the same field names as the JSON
+dump records, such as `originalFilename`, `isMissing` and `pathEdited`. Columns
+are alphabetical and remain present when no items match. Optional absent values
+are empty; string lists use comma-separated values within a quoted CSV cell.
+Use `--json` for typed values and arrays.
+
 Import/export and metadata mutation workflows use `DryRun` payloads or strong gates
 where command help requires them:
 

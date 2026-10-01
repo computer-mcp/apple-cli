@@ -242,7 +242,7 @@ func writeSlideExportArtifacts(_ artifacts: [SlideExportArtifact], destinationPa
     throw CLIError(
       code: .internalError,
       message: "Failed to write Keynote slide export.",
-      details: ["path": destination.path, "reason": String(describing: error)]
+      details: CLIError.diagnosticDetails(for: error).merging(["path": destination.path]) { _, new in new }
     )
   }
 }

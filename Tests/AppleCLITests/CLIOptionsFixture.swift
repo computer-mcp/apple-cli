@@ -7,15 +7,6 @@ enum CLIOptionsFixture {
 
     while index < arguments.count {
       let argument = arguments[index]
-      let removedOption = "--confirm" + "-" + "re" + "ceipt"
-
-      if argument == removedOption || argument.hasPrefix(removedOption + "=") {
-        throw CLIError(
-          code: .validationError,
-          message: "Removed execution option is not supported; use `--dry-run` for preview."
-        )
-      }
-
       switch argument {
       case "--":
         options.positionals.append(contentsOf: arguments.dropFirst(index + 1))

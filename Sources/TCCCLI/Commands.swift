@@ -389,7 +389,7 @@ extension TCCTarget {
         CLIError(
           code: .internalError,
           message: "Unhandled TCC CLI error.",
-          details: ["error": String(describing: error)]
+          details: options.verbose ? CLIError.diagnosticDetails(for: error) : [:]
         ),
         target: targetName,
         json: options.json,

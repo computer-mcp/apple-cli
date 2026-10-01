@@ -362,8 +362,6 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
   }
 
   private func automationError(_ errorInfo: NSDictionary) -> CLIError {
-    let originalMessage =
-      errorInfo[NSAppleScript.errorMessage] as? String ?? "Numbers automation failed."
     let number = errorInfo[NSAppleScript.errorNumber] as? Int
     let code: CLIErrorCode
     if number == -1743 {
@@ -373,16 +371,8 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
     } else {
       code = .backendUnavailable
     }
-    var details = number.map { ["apple_event_error": "\($0)"] } ?? [:]
-    if code == .permissionDenied {
-      details["original_error"] = originalMessage
-    }
-    return CLIError(
-      code: code,
-      message: code == .permissionDenied
-        ? CLIPermissionWording.automationPermissionRequired(target: "Numbers")
-        : originalMessage,
-      details: details)
+    return CLIError.appleEventFailure(
+      target: "Numbers", code: code, number: number)
   }
 }
 

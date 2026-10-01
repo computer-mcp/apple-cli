@@ -149,7 +149,7 @@ extension RemindersCommand {
       details["match_count"] = "\(lastDebug.privateStoreMatches.count)"
     }
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
     return CLIError(code: .backendUnavailable, message: message, details: details)
   }

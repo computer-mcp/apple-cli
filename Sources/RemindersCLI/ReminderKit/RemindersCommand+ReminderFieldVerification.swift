@@ -32,7 +32,7 @@ extension RemindersCommand {
       details["warning_count"] = "\(lastDebug.warnings.count)"
     }
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -77,7 +77,7 @@ extension RemindersCommand {
       details["warning_count"] = "\(lastDebug.warnings.count)"
     }
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -127,7 +127,7 @@ extension RemindersCommand {
       details["warning_count"] = "\(lastDebug.warnings.count)"
     }
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -178,7 +178,7 @@ extension RemindersCommand {
       details["warning_count"] = "\(lastDebug.warnings.count)"
     }
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -255,7 +255,7 @@ extension RemindersCommand {
       details["warning_count"] = "\(lastDebug.warnings.count)"
     }
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -305,7 +305,7 @@ extension RemindersCommand {
       details["warning_count"] = "\(lastDebug.warnings.count)"
     }
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -395,7 +395,7 @@ extension RemindersCommand {
       details["warning_count"] = "\(lastDebug.warnings.count)"
     }
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(

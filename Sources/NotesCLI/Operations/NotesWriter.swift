@@ -183,9 +183,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     }
 
     try save(note: note, context: context, operation: operation)
-    if let managedObject = note as? NSManagedObject {
-      context.managedObjectContext?.refresh(managedObject, mergeChanges: true)
-    }
+    context.managedObjectContext?.refresh(note, mergeChanges: true)
     let after = try reader.readNoteState(noteID: draft.noteID)
     return NotesNoteLockMutationWriteResult(
       noteID: draft.noteID,
@@ -221,7 +219,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
       guard authenticated else {
         throw CLIError(
           code: .permissionDenied,
-          message: "ICAuthenticationState rejected the supplied passphrase.",
+          message: "Notes could not authenticate the supplied passphrase.",
           details: [
             "operation": operation,
             "capability": "unlock_locked_note",
@@ -236,9 +234,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
       backendCalls = "ICAuthenticationState.noop"
     }
 
-    if let managedObject = note as? NSManagedObject {
-      managedObject.managedObjectContext?.refresh(managedObject, mergeChanges: true)
-    }
+    note.managedObjectContext?.refresh(note, mergeChanges: true)
     let after = try reader.readNoteState(noteID: draft.noteID)
     let afterAuthenticated = try authenticationStateBool(state, selectorName: "isAuthenticated", operation: operation)
     let afterHasAuthenticatedObject = try authenticationStateBool(
@@ -13404,10 +13400,10 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
       "writer": "NotesShared/NotesUI",
       "reason": reason,
     ]
-    if let error {
-      details["private_error"] = String(describing: error)
+    if let error = error as? NSError {
+      details.merge(CLIError.diagnosticDetails(for: error)) { _, new in new }
     }
-    return CLIError(code: .backendUnavailable, message: "Notes private framework write failed.", details: details)
+    return CLIError(code: .backendUnavailable, message: "Notes could not complete the requested change.", details: details)
   }
 }
 

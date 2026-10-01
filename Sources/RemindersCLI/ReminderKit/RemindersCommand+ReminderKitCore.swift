@@ -20,7 +20,7 @@ extension RemindersCommand {
       throw coreReminderKitError(
         operation: "sources",
         message: "ReminderKit could not fetch accounts.",
-        details: ["error": String(describing: error)]
+        details: (error as? NSError).map { CLIError.diagnosticDetails(for: $0) } ?? [:]
       )
     }
     return accounts.map { account in
@@ -51,7 +51,7 @@ extension RemindersCommand {
     throw coreReminderKitError(
       operation: "default-source",
       message: "ReminderKit default account was not available.",
-      details: ["error": error.map(String.init(describing:)) ?? ""]
+      details: ["error": reminderKitErrorSummary(error)]
     )
   }
 
@@ -164,8 +164,8 @@ extension RemindersCommand {
       message: "ReminderKit could not fetch reminder after creation.",
       details: [
         "reminder_object_id": createdObjectID,
-        "direct_fetch_error": lastDirectFetchError.map(String.init(describing:)) ?? "",
-        "list_fetch_error": lastListFetchError.map(String.init(describing:)) ?? "",
+        "direct_fetch_error": reminderKitErrorSummary(lastDirectFetchError),
+        "list_fetch_error": reminderKitErrorSummary(lastListFetchError),
       ]
     )
   }
@@ -394,7 +394,7 @@ extension RemindersCommand {
           ) as? [Any] ?? []
         sectionCount += sections.count
         if let sectionError {
-          sectionErrors.append(String(describing: sectionError))
+          sectionErrors.append(reminderKitErrorSummary(sectionError))
         }
       }
 
@@ -408,16 +408,16 @@ extension RemindersCommand {
         "sampled_lists_for_sections": "\(min(lists.count, 10))",
       ]
       if let accountError {
-        details["accounts_error"] = String(describing: accountError)
+        details["accounts_error"] = reminderKitErrorSummary(accountError)
       }
       if let listFailure {
-        details["lists_error"] = String(describing: listFailure)
+        details["lists_error"] = reminderKitErrorSummary(listFailure)
       }
       if let reminderFailure {
-        details["reminders_error"] = String(describing: reminderFailure)
+        details["reminders_error"] = reminderKitErrorSummary(reminderFailure)
       }
       if let smartListError {
-        details["smart_lists_error"] = String(describing: smartListError)
+        details["smart_lists_error"] = reminderKitErrorSummary(smartListError)
       }
       if !sectionErrors.isEmpty {
         details["section_errors"] = sectionErrors.prefix(3).joined(separator: "\n")
@@ -436,7 +436,7 @@ extension RemindersCommand {
         name: "reminderkit_read_access",
         status: .backendUnavailable,
         message: "ReminderKit read APIs could not be checked.",
-        details: ["error": String(describing: error)]
+        details: CLIError.diagnosticDetails(for: error)
       )
     }
   }

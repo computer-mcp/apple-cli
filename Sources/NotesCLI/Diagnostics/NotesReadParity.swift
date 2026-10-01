@@ -388,8 +388,7 @@ func notesReadParityDoctorCheck() -> CLIDoctorCheck {
       details: [
         "enabled": "true",
         "body_output": "none",
-        "error": String(describing: error),
-      ]
+      ].merging(CLIError.diagnosticDetails(for: error)) { _, new in new }
     )
   }
 }

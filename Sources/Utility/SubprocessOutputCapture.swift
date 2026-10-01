@@ -15,12 +15,16 @@ struct SubprocessOutputCapture {
   }
 
   static func poll(
-    stdout: inout Self, stderr: inout Self, limit: Int, waitMilliseconds: Int32
+    stdout: inout Self, stderr: inout Self, limit: Int, waitMilliseconds: Int32,
+    inputDescriptor: Int32? = nil
   ) throws -> Bool {
     var descriptors = [
       pollfd(fd: stdout.eof ? -1 : stdout.fd, events: Int16(POLLIN), revents: 0),
       pollfd(fd: stderr.eof ? -1 : stderr.fd, events: Int16(POLLIN), revents: 0),
     ]
+    if let inputDescriptor {
+      descriptors.append(pollfd(fd: inputDescriptor, events: Int16(POLLOUT), revents: 0))
+    }
     let ready = Darwin.poll(&descriptors, nfds_t(descriptors.count), waitMilliseconds)
     guard ready >= 0 || errno == EINTR else { throw ioError("poll") }
     if ready > 0 {

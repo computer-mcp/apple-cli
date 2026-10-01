@@ -193,7 +193,7 @@ enum ReminderAssignmentWriter {
       message: "ReminderKit could not fetch the reminder by external or ReminderKit identifier.",
       details: [
         "reminder_id": reminderID,
-        "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(fetchError),
       ]
     )
   }
@@ -239,7 +239,7 @@ enum ReminderAssignmentWriter {
         message: "ReminderKit save failed.",
         details: [
           "reminder_id": reminderID,
-          "save_error": saveError.map(String.init(describing:)) ?? "",
+          "save_error": reminderKitErrorSummary(saveError),
         ]
       )
     }

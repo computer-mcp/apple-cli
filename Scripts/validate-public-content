@@ -11,7 +11,7 @@ do {
   while let option = arguments.next() {
     if option == "--help" || option == "-h" {
       print("Usage: Scripts/validate-public-content [--artifact FILE ...]")
-      print("Check public source files and optional release artifacts for machine-local paths.")
+      print("Check public source files for credential/path patterns and local links; scan optional release artifacts for machine-local paths.")
       exit(0)
     }
     guard option == "--artifact", let path = arguments.next(), !path.isEmpty else {
@@ -39,12 +39,15 @@ do {
   let localPath = try NSRegularExpression(pattern: #"/(?:Users|home)/[^/\x00\r\n]+/"#)
   let credentials = try NSRegularExpression(
     pattern:
-      #"-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}"#
+      #"-----BEGIN (?:RSA |OPENSSH |EC |DSA |ENCRYPTED )?PRIVATE KEY-----|\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{50,}|\b(?:AKIA|ASIA)[0-9A-Z]{16}|\bsk-(?:proj-|svcacct-|ant-)?[A-Za-z0-9_-]{32,}|\bxox[baprs]-[A-Za-z0-9-]{20,}|\bAIza[A-Za-z0-9_-]{35}|\b(?:sk|rk)_live_[A-Za-z0-9]{20,}"#
   )
   var failures: [String] = []
   var markdownCount = 0
   for path in paths.sorted() {
     let file = root.appendingPathComponent(path)
+    if ["p12", "pfx"].contains(file.pathExtension.lowercased()) {
+      failures.append("\(path): signing identity bundle requires review")
+    }
     guard let text = try? String(contentsOf: file, encoding: .utf8) else { continue }
     let range = NSRange(text.startIndex..., in: text)
     // Test fixtures own synthetic paths used to exercise identity and privacy.

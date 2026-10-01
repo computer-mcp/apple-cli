@@ -112,7 +112,7 @@ public struct FileManagerFinderBackend: FinderReading, FinderMutating {
       throw CLIError(
         code: .backendUnavailable,
         message: "Failed to delete Finder file.",
-        details: ["path": url.path, "error": error.localizedDescription]
+        details: CLIError.diagnosticDetails(for: error).merging(["path": url.path]) { _, new in new }
       )
     }
     return true
@@ -154,7 +154,7 @@ public struct FileManagerFinderBackend: FinderReading, FinderMutating {
       throw CLIError(
         code: .backendUnavailable,
         message: "Failed to write Finder text file.",
-        details: ["path": url.path, "error": error.localizedDescription]
+        details: CLIError.diagnosticDetails(for: error).merging(["path": url.path]) { _, new in new }
       )
     }
     return try itemRecord(url)
@@ -182,7 +182,7 @@ public struct FileManagerFinderBackend: FinderReading, FinderMutating {
       throw CLIError(
         code: .backendUnavailable,
         message: "Failed to overwrite Finder text file.",
-        details: ["path": url.path, "error": error.localizedDescription]
+        details: CLIError.diagnosticDetails(for: error).merging(["path": url.path]) { _, new in new }
       )
     }
     return try itemRecord(url)

@@ -654,8 +654,8 @@ struct AppleMCPAdapterTests {
     await client.disconnect()
   }
 
-  @Test(.timeLimit(.minutes(1)))
-  func mcpHTTPExecutableBlackBoxRunsCliThroughSdkClient() async throws {
+  @Test(.timeLimit(.minutes(1)), arguments: ["127.0.0.1", "localhost", "::1", "[::1]"])
+  func mcpHTTPExecutableBlackBoxRunsCliThroughSdkClient(host: String) async throws {
     guard #available(macOS 14.0, *) else {
       return
     }
@@ -664,7 +664,8 @@ struct AppleMCPAdapterTests {
     defer { try? FileManager.default.removeItem(at: installation.root) }
     let port = try availableLoopbackPort()
     let path = "/mcp-test-\(UUID().uuidString)"
-    let endpoint = try #require(URL(string: "http://127.0.0.1:\(port)\(path)"))
+    let endpointHost = host == "::1" ? "[::1]" : host
+    let endpoint = try #require(URL(string: "http://\(endpointHost):\(port)\(path)"))
     let process = Process()
     let stdout = Pipe()
     let stderr = Pipe()
@@ -677,7 +678,7 @@ struct AppleMCPAdapterTests {
       "serve",
       "http",
       "--host",
-      "127.0.0.1",
+      host,
       "--port",
       "\(port)",
       "--path",
@@ -901,6 +902,79 @@ struct AppleMCPAdapterTests {
           timeoutSeconds: 12
         )
       ])
+  }
+
+  @Test func mcpRunDoesNotCopyPrivateRequestArgumentsIntoResponses() async throws {
+    let runner = FakeMCPRunner()
+    let adapter = AppleMCPAdapter(runner: runner)
+    let requests = [
+      ["create", "--body", "private-body-canary", "--dry-run"],
+      [
+        "settings", "locked-notes", "--account", "account-canary", "--scope", "custom",
+        "--passphrase-file", "/tmp/private-passphrase-canary", "--hint", "private-hint-canary",
+        "--dry-run",
+      ],
+    ]
+
+    for arguments in requests {
+      let result = try await adapter.callTool(
+        name: "apple_cli_run",
+        arguments: [
+          "target": .string("notes"),
+          "arguments": .array(arguments.map(Value.string)),
+        ]
+      )
+      let object = try #require(result.structuredContent?.objectValue)
+      let response = String(decoding: try JSONEncoder().encode(result), as: UTF8.self)
+
+      #expect(result.isError == false)
+      #expect(object["target"]?.stringValue == "notes")
+      #expect(object["exitCode"]?.intValue == 0)
+      #expect(object["stdout"]?.stringValue?.contains("stub") == true)
+      #expect(object["arguments"] == nil)
+      for privateValue in arguments.filter({ $0.contains("canary") }) {
+        #expect(!response.contains(privateValue))
+      }
+      #expect(
+        runner.calls.last
+          == FakeMCPRunner.Call(
+            target: "notes", arguments: arguments + ["--json"], timeoutSeconds: 30))
+    }
+  }
+
+  @Test func mcpUnexpectedRunnerErrorsDoNotExposePrivateDescriptions() async throws {
+    let error = NSError(
+      domain: "SyntheticRunnerFailure", code: 42,
+      userInfo: [NSLocalizedDescriptionKey: "private-error-canary /tmp/private-path-canary"])
+    let adapter = AppleMCPAdapter(runner: FailingMCPRunner(error: error))
+    let result = try await adapter.callTool(
+      name: "apple_cli_status", arguments: ["target": .string("notes")])
+    let object = try #require(result.structuredContent?.objectValue)
+    let payload = try #require(object["error"]?.objectValue)
+    let response = String(decoding: try JSONEncoder().encode(result), as: UTF8.self)
+
+    #expect(result.isError == true)
+    #expect(payload["code"]?.stringValue == CLIErrorCode.internalError.rawValue)
+    #expect(!response.contains("private-error-canary"))
+    #expect(!response.contains("private-path-canary"))
+  }
+
+  @Test func mcpTypedRunnerErrorsPreserveRecoveryDetails() async throws {
+    let adapter = AppleMCPAdapter(
+      runner: FailingMCPRunner(
+        error: CLIError(
+          code: .unsafeMutationRefused, message: "Explicit authorization is required.",
+          details: ["required_flag": "allow-persistent-action"])))
+    let result = try await adapter.callTool(
+      name: "apple_cli_status", arguments: ["target": .string("notes")])
+    let object = try #require(result.structuredContent?.objectValue)
+    let payload = try #require(object["error"]?.objectValue)
+
+    #expect(result.isError == true)
+    #expect(payload["code"]?.stringValue == CLIErrorCode.unsafeMutationRefused.rawValue)
+    #expect(payload["message"]?.stringValue == "Explicit authorization is required.")
+    #expect(
+      payload["details"]?.objectValue?["required_flag"]?.stringValue == "allow-persistent-action")
   }
 
   @Test func mcpRunPreservesNotesBodyCollapsibleDryRunArguments() async throws {
@@ -1574,6 +1648,14 @@ private func waitForHTTPServer(endpoint: URL, process: Process, timeoutSeconds: 
       "lastError": lastError ?? "none",
     ]
   )
+}
+
+private struct FailingMCPRunner: CLIProcessRunning {
+  var error: any Error
+
+  func run(target: String, arguments: [String], timeoutSeconds: Int) async throws -> CLIProcessResult {
+    throw error
+  }
 }
 
 private final class FakeMCPRunner: CLIProcessRunning, @unchecked Sendable {

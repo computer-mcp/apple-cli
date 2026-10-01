@@ -69,7 +69,7 @@ extension RemindersCommand {
       "actual_assignments": lastReminder.map { assignmentEvidenceSummary($0.assignments) } ?? "",
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -121,7 +121,7 @@ extension RemindersCommand {
       "actual_assignments": lastReminder.map { assignmentEvidenceSummary($0.assignments) } ?? "",
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(

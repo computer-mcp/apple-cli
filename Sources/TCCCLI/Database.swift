@@ -297,7 +297,7 @@ public struct TCCDatabaseBackend: Sendable {
         schemaColumns: [],
         digest: nil,
         openMode: "read-only",
-        error: String(describing: error)
+        error: "Could not inspect the TCC database."
       )
     }
   }

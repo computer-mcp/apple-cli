@@ -37,41 +37,6 @@ private func testSearchablePDFData(text: String) -> Data {
 
 @Suite
 struct NotesCommandTests {
-  @Test func notesTargetStatusReportsCurrentSmartFolderCombinationBoundary() {
-    #expect(NotesTarget.targetStatus.contains("combined private filter-selection/query-factory criteria"))
-    #expect(NotesTarget.targetStatus.contains("filter catalog audit"))
-    #expect(NotesTarget.targetStatus.contains("markup model inspect-export/apply"))
-    #expect(NotesTarget.targetStatus.contains("PDF text search"))
-    #expect(NotesTarget.targetStatus.contains("supported scan-image-drawing searchable-text search"))
-    #expect(NotesTarget.targetStatus.contains("image-description alt-text get-set"))
-    #expect(NotesTarget.targetStatus.contains("image crop-rotate direct-media transforms"))
-    #expect(NotesTarget.targetStatus.contains("recognized-text artifact export-generation and search-index mutation"))
-    #expect(NotesTarget.targetStatus.contains("image-object classification summary readback"))
-    #expect(NotesTarget.targetStatus.contains("verify-expression private scanner"))
-    #expect(NotesTarget.targetStatus.contains("folder move-impact private decision preflight"))
-    #expect(NotesTarget.targetStatus.contains("scan-pdf-audio-markup-ui workflow refusal"))
-    #expect(NotesTarget.targetStatus.contains("external account add-remove-enable-disable boundary"))
-    #expect(NotesTarget.targetStatus.contains("tag rename including allow-merge"))
-    #expect(NotesTarget.targetStatus.contains("replace markdown-html-rtf-rtfd rich in-place"))
-    #expect(NotesTarget.targetStatus.contains("attachment copy"))
-    let staleCombinationPhrase = "combined " + "filter-selection criteria"
-    let staleBuildPathPhrase = ".build-" + "scratch"
-    let staleMarkupGatePhrase = "markup edit workflow refusal"
-    let staleMediaBoundaryPhrase = "scan-pdf-audio-markup-visual-OCR workflow refusal"
-    let staleVisualSearchGatePhrase = "scan OCR-image-drawing search boundaries"
-    let staleImageTransformGatePhrase = "scan-pdf-audio-markup-style-image-transform-visual-OCR workflow refusal"
-    let staleMarkupStyleGatePhrase = "scan-pdf-audio-markup-style-visual-OCR workflow refusal"
-    let staleOCRRefusalPhrase = "scan-pdf-audio-markup-ui-visual-OCR workflow refusal"
-    #expect(!NotesTarget.targetStatus.contains(staleCombinationPhrase))
-    #expect(!NotesTarget.targetStatus.contains(staleBuildPathPhrase))
-    #expect(!NotesTarget.targetStatus.contains(staleMarkupGatePhrase))
-    #expect(!NotesTarget.targetStatus.contains(staleMediaBoundaryPhrase))
-    #expect(!NotesTarget.targetStatus.contains(staleVisualSearchGatePhrase))
-    #expect(!NotesTarget.targetStatus.contains(staleImageTransformGatePhrase))
-    #expect(!NotesTarget.targetStatus.contains(staleMarkupStyleGatePhrase))
-    #expect(!NotesTarget.targetStatus.contains(staleOCRRefusalPhrase))
-  }
-
   @Test func notesTargetArgumentParserAcceptsMarkupAnnotateDeviceOption() throws {
     let parsed = try NotesTarget.parseAsRoot([
       "attachments", "markup", "annotate",

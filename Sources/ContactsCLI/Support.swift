@@ -760,7 +760,7 @@ func parseVCardContacts(data: Data, limit: Int) throws -> [CNContact] {
     throw CLIError(
       code: .validationError,
       message: "vCard import file could not be parsed.",
-      details: ["underlying_error": error.localizedDescription]
+      details: CLIError.diagnosticDetails(for: error)
     )
   }
 
@@ -843,7 +843,7 @@ func requestContactsAccess(deniedMessage: String) throws -> CNContactStore {
     throw CLIError(
       code: .permissionDenied,
       message: CLIPermissionWording.accessRequestFailed("Contacts"),
-      details: ["error": String(describing: error)]
+      details: CLIError.diagnosticDetails(for: error)
     )
   }
   guard result.granted else {

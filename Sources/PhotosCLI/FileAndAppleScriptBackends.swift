@@ -2524,8 +2524,6 @@ private func photosTimedAppleScriptSource(_ source: String, _ timeoutSeconds: In
 }
 
 private func photosAutomationError(_ errorInfo: NSDictionary) -> CLIError {
-  let originalMessage =
-    errorInfo[NSAppleScript.errorMessage] as? String ?? "Photos automation failed."
   let number = errorInfo[NSAppleScript.errorNumber] as? Int
   let code: CLIErrorCode =
     if number == -1712 {
@@ -2537,19 +2535,9 @@ private func photosAutomationError(_ errorInfo: NSDictionary) -> CLIError {
     } else {
       .backendUnavailable
     }
-  var details = ["executor": "NSAppleScript"]
-  if let number {
-    details["apple_event_error"] = "\(number)"
-  }
-  if code == .permissionDenied {
-    details["original_error"] = originalMessage
-  }
-  return CLIError(
-    code: code,
-    message: code == .permissionDenied
-      ? CLIPermissionWording.automationPermissionRequired(target: "Photos")
-      : originalMessage,
-    details: details)
+  return CLIError.appleEventFailure(
+    target: "Photos", code: code, number: number,
+    details: ["executor": "NSAppleScript"])
 }
 
 private func photosAppleScriptContainerSelector(kind: String, selector: String, variable: String)

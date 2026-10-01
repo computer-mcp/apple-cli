@@ -307,7 +307,7 @@ enum ReminderTagWriter {
         message: "ReminderKit could not fetch the reminder by ReminderKit-compatible identifier.",
         details: [
           "reminder_id": reminderID,
-          "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+          "fetch_error": reminderKitErrorSummary(fetchError),
         ]
       )
     }
@@ -334,7 +334,7 @@ enum ReminderTagWriter {
     var saveError: AnyObject?
     guard saveRequest.saveSynchronouslyWithError(&saveError) else {
       var details = additionalDetails
-      details["save_error"] = saveError.map(String.init(describing:)) ?? ""
+      details["save_error"] = reminderKitErrorSummary(saveError)
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,

@@ -353,6 +353,58 @@ struct PhotosCommandTests {
     #expect(backend.lastQuery?.keywords == ["travel"])
   }
 
+  @Test(arguments: [false, true])
+  func photosMediaItemsDumpCSVUsesStableJSONFieldNames(empty: Bool) throws {
+    let backend = FakePhotosBackend()
+    if empty { backend.mediaItems = [] }
+    let command = PhotosCommand(backend: backend)
+    let output = try #require(try command.run(options: CLIOptionsFixture.parse(["media-items", "dump"])))
+    let lines = try #require(output.stdout).split(separator: "\n", omittingEmptySubsequences: false)
+    let header = try #require(lines.first).split(separator: ",").map(String.init)
+    #expect(header.count == 40)
+    #expect(header == header.sorted())
+    #expect(Set(header).count == header.count)
+    #expect(header.contains("originalFilename"))
+    #expect(header.contains("isMissing"))
+    #expect(header.contains("pathEdited"))
+    if empty {
+      #expect(lines.count == 1)
+      return
+    }
+
+    #expect(lines.count == 2)
+    let values = lines[1].split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+    #expect(values.count == header.count)
+    let row = Dictionary(uniqueKeysWithValues: zip(header, values))
+    #expect(row["filename"] == "IMG_0001.JPG")
+    #expect(row["originalFilename"] == "IMG_0001.JPG")
+    #expect(row["isPhoto"] == "true")
+    #expect(row["hasRaw"] == "true")
+    #expect(row["pathRaw"] == "/tmp/IMG_0001_4.DNG")
+    #expect(row["pathEdited"] == "")
+
+    let jsonOutput = try #require(try command.run(options: CLIOptionsFixture.parse(["media-items", "dump", "--json"])))
+    let envelope = try photosJSONObject(jsonOutput.stdout ?? "")
+    let data = try #require(envelope["data"] as? [String: Any])
+    let record = try #require((data["items"] as? [[String: Any]])?.first)
+    #expect(Set(record.keys).isSubset(of: Set(header)))
+  }
+
+  @Test func photosMediaItemsDumpCSVEscapesTextAndArrayValues() throws {
+    let backend = FakePhotosBackend()
+    backend.mediaItems = [PhotosMediaItemRecord(
+      id: "asset:csv", uuid: "csv-1", filename: "Photo \"A\",1.jpg",
+      title: "return\rline",
+      description: "line one\nline two", mediaType: "image", keywords: ["one", "two"])]
+    let command = PhotosCommand(backend: backend)
+    let output = try #require(try command.run(options: CLIOptionsFixture.parse(["media-items", "dump"])))
+    let csv = try #require(output.stdout)
+    #expect(csv.contains("\"Photo \"\"A\"\",1.jpg\""))
+    #expect(csv.contains("\"line one\nline two\""))
+    #expect(csv.contains("\"one, two\""))
+    #expect(csv.contains("\"return\rline\""))
+  }
+
   @Test func photosMediaItemsInspectReturnsItemAndDumpRecord() throws {
     let backend = FakePhotosBackend()
     let command = PhotosCommand(backend: backend)

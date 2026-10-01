@@ -251,7 +251,7 @@ enum ReminderListGroupWriter {
       operation: operation,
       message: "ReminderKit could not fetch the list by title or ReminderKit identifier.",
       details: details.merging(
-        ["fetch_error": fetchError.map(String.init(describing:)) ?? ""],
+        ["fetch_error": reminderKitErrorSummary(fetchError)],
         uniquingKeysWith: { _, new in new }
       )
     )
@@ -316,7 +316,7 @@ enum ReminderListGroupWriter {
       operation: operation,
       message: "ReminderKit child lists could not be fetched for the group.",
       details: details.merging(
-        ["fetch_error": fetchError.map(String.init(describing:)) ?? ""],
+        ["fetch_error": reminderKitErrorSummary(fetchError)],
         uniquingKeysWith: { _, new in new }
       )
     )
@@ -348,7 +348,7 @@ enum ReminderListGroupWriter {
       operation: operation,
       message: "ReminderKit account could not be resolved.",
       details: details.merging(
-        ["fetch_error": fetchError.map(String.init(describing:)) ?? ""],
+        ["fetch_error": reminderKitErrorSummary(fetchError)],
         uniquingKeysWith: { _, new in new }
       )
     )
@@ -414,7 +414,7 @@ enum ReminderListGroupWriter {
         operation: operation,
         message: "ReminderKit save failed.",
         details: details.merging(
-          ["save_error": saveError.map(String.init(describing:)) ?? ""],
+          ["save_error": reminderKitErrorSummary(saveError)],
           uniquingKeysWith: { _, new in new }
         )
       )

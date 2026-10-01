@@ -14,7 +14,7 @@ func mapGeocodeResult(_ result: Result<[CLPlacemark], Error>?) throws -> [CLPlac
   case .failure(let error):
     throw CLIError(
       code: .backendUnavailable, message: "Maps geocoding failed.",
-      details: ["error": String(describing: error)])
+      details: CLIError.diagnosticDetails(for: error))
   case nil:
     throw CLIError(code: .backendUnavailable, message: "Maps geocoding did not return a result.")
   }

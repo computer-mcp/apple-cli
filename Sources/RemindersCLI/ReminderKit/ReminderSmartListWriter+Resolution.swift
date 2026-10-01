@@ -30,7 +30,7 @@ extension ReminderSmartListWriter {
       message: "ReminderKit could not fetch the custom Smart List.",
       details: [
         "list_id": listID,
-        "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(fetchError),
       ]
     )
   }
@@ -58,7 +58,7 @@ extension ReminderSmartListWriter {
       message: "ReminderKit could not fetch the list by title or ReminderKit identifier.",
       details: [
         "list_id": listID,
-        "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(fetchError),
       ]
     )
   }
@@ -130,7 +130,7 @@ extension ReminderSmartListWriter {
         operation: "convert",
         message: "ReminderKit could not fetch source list reminders for Smart List conversion.",
         details: details.merging(
-          ["fetch_error": fetchError.map(String.init(describing:)) ?? ""],
+          ["fetch_error": reminderKitErrorSummary(fetchError)],
           uniquingKeysWith: { _, new in new }
         )
       )

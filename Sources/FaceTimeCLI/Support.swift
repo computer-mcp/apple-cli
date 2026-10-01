@@ -144,7 +144,7 @@ func requestContactsAccess(deniedMessage: String) throws -> CNContactStore {
     throw CLIError(
       code: .permissionDenied,
       message: CLIPermissionWording.accessRequestFailed("Contacts"),
-      details: ["error": String(describing: error)]
+      details: CLIError.diagnosticDetails(for: error)
     )
   }
   guard result.granted else {

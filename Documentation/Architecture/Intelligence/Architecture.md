@@ -65,7 +65,8 @@ Risk-flag-gated execution commands:
 - `unlock`: remove file locks/flags from known eligibility files. Requires
   `--allow-system-cache-write`.
 - `recompute`: run a bounded one-shot `lldb` recompute flow. Requires
-  `--allow-debug-attach`.
+  `--allow-debug-attach`. It invokes `EligibilityEngine.recomputeAllDomainAnswers`
+  using the daemon's current inputs.
 - `service install`: write this CLI's LaunchDaemon plist with direct Swift CLI
   `recompute` invocation. Requires
   `--allow-debug-attach --allow-persistent-service`.
