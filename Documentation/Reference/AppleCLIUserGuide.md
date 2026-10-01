@@ -83,6 +83,64 @@ not authorize writes or replace the target-local CLI parser.
 Mutating and external-action workflows still go through `apple_cli_run` and the
 same target-local `--dry-run` and `--allow-*` rules as the CLI.
 
+## MCP Setup
+
+The optional `apple-cli-mcp` executable adapts the same CLI commands for MCP
+clients. It uses stdio by default:
+
+```bash
+apple-cli-mcp stdio
+```
+
+Configure a local client with the full path to `apple-cli-mcp` as its command
+and `stdio` as its argument. Keep the complete installed `bin` directory
+together: the adapter resolves its executable location, including symlinks, to
+find the sibling `apple` program and bundled runtime libraries. If the CLI is
+installed separately, set `APPLE_CLI_BIN_DIR` to the directory containing
+`apple`.
+
+The adapter exposes six CLI-derived tools:
+
+| Tool | Purpose |
+| --- | --- |
+| `apple_cli_list_targets` | Discover the target catalog |
+| `apple_cli_doctor` | Check a target's dependencies, permissions and readiness |
+| `apple_cli_status` | Read a target's status |
+| `apple_cli_help` | Read target or subcommand help |
+| `apple_cli_command_catalog` | Discover command paths and CLI-derived input schemas |
+| `apple_cli_run` | Execute a command with the CLI's validation and risk gates |
+
+### Streamable HTTP
+
+Start the HTTP transport on loopback:
+
+```bash
+apple-cli-mcp serve http --host 127.0.0.1 --port 8765 --path /mcp
+```
+
+Connect a compatible client to `http://127.0.0.1:8765/mcp`. For access from
+another machine, an SSH tunnel can reach the loopback server:
+
+```bash
+ssh -L 8765:127.0.0.1:8765 user@mac-host
+```
+
+Binding a non-loopback address requires explicit opt-in and a bearer token:
+
+```bash
+export APPLE_CLI_MCP_TOKEN="replace-with-a-secret"
+apple-cli-mcp serve http \
+  --host 0.0.0.0 \
+  --port 8765 \
+  --path /mcp \
+  --allow-non-loopback \
+  --token-env APPLE_CLI_MCP_TOKEN
+```
+
+Configure the client to send the matching bearer token. TLS and OAuth belong
+in a reverse proxy or deployment layer. This transport retains the CLI's
+target permissions, supported capability boundaries and mutation gates.
+
 ## Diagnostics
 
 Use `doctor` for setup, dependency, permission, implementation mechanism, and

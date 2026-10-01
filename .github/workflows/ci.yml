@@ -32,6 +32,7 @@ jobs:
       - name: Build, test and stage the release candidate
         run: |
           Scripts/validate-public-content
+          python3 -B -m unittest discover -s Tests/ReleaseTools
           Scripts/package-release --jobs 2
           Scripts/verify-release --run-tests
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -51,6 +51,8 @@ contents, also run the repository package validation commands.
 
 ```bash
 Scripts/validate-public-content
+Scripts/validate-version
+python3 -B -m unittest discover -s Tests/ReleaseTools
 Scripts/bootstrap
 xcrun swift build --force-resolved-versions
 xcrun swift test --force-resolved-versions
@@ -63,6 +65,7 @@ fixtures, issue reports and logs. Preserve passphrase and personal-data boundari
 
 Include the problem, resulting behavior and relevant validation in a pull
 request. Dependency changes must update `Package.resolved`, the copied license
-texts and `THIRD_PARTY_NOTICES.md` together. See the
-[Release Guide](Documentation/Reference/ReleaseGuide.md) for candidate packaging,
+texts and `THIRD_PARTY_NOTICES.md` together. Version selection follows
+[Versioning and Release](Documentation/Architecture/VersioningAndRelease.md).
+See the [Release Guide](Documentation/Reference/ReleaseGuide.md) for candidate packaging,
 compatibility evidence and publishing boundaries.

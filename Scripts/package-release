@@ -147,7 +147,9 @@ func main() throws {
         """)
       return
     }
-    guard ["--output", "--tag", "--jobs"].contains(option), let value = iterator.next(), !value.isEmpty else {
+    guard ["--output", "--tag", "--jobs"].contains(option),
+      let value = iterator.next(), !value.isEmpty
+    else {
       throw ReleaseError.invalid("Unknown or incomplete option: \(option). Use --help.")
     }
     if option == "--output" {
@@ -164,35 +166,16 @@ func main() throws {
   let revision = try requireCleanCommit()
   for file in [
     "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", "Package.resolved",
+    "Documentation/Reference/ReleaseGuide.md", "Documentation/Architecture/VersioningAndRelease.md",
     "Documentation/Reference/ThirdPartyLicenses/swift-runtime/LICENSE.txt",
   ] {
     guard manager.fileExists(atPath: root.appendingPathComponent(file).path) else {
       throw ReleaseError.invalid("Missing release input: \(file).")
     }
   }
-  let source = try String(
-    contentsOf: root.appendingPathComponent("Sources/Utility/CLIVersion.swift"), encoding: .utf8)
-  let pattern = #"static let current = "([^"]+)""#
-  let match = try NSRegularExpression(pattern: pattern).firstMatch(
-    in: source, range: NSRange(source.startIndex..., in: source))
-  guard let match, let range = Range(match.range(at: 1), in: source) else {
-    throw ReleaseError.invalid("Cannot read the canonical CLI version.")
-  }
-  let version = String(source[range])
-  guard
-    version.range(
-      of: #"^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$"#, options: .regularExpression)
-      != nil
-  else {
-    throw ReleaseError.invalid("Invalid release version: \(version).")
-  }
-  if let tag {
-    guard tag == "v" + version,
-      try run("/usr/bin/git", ["rev-parse", "--verify", "refs/tags/\(tag)^{commit}"]) == revision
-    else {
-      throw ReleaseError.invalid("The requested tag must be v\(version) at HEAD.")
-    }
-  }
+  var versionArguments = ["python3", root.appendingPathComponent("Scripts/validate-version").path]
+  if let tag { versionArguments += ["--tag", tag] }
+  let version = try run("/usr/bin/env", versionArguments)
   let architecture = try run("/usr/bin/uname", ["-m"])
   guard architecture == "arm64" else {
     throw ReleaseError.invalid(
@@ -348,6 +331,12 @@ func main() throws {
   try manager.copyItem(
     at: root.appendingPathComponent("Documentation/Reference/ReleaseGuide.md"),
     to: licenses.deletingLastPathComponent().appendingPathComponent("ReleaseGuide.md"))
+  let architectureDocs = package.appendingPathComponent(
+    "Documentation/Architecture", isDirectory: true)
+  try manager.createDirectory(at: architectureDocs, withIntermediateDirectories: true)
+  try manager.copyItem(
+    at: root.appendingPathComponent("Documentation/Architecture/VersioningAndRelease.md"),
+    to: architectureDocs.appendingPathComponent("VersioningAndRelease.md"))
   let readme = """
     # apple-cli \(version)
 

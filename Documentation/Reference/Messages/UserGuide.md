@@ -13,7 +13,7 @@ apple messages read --id MESSAGE_ID --json
 Sends use the DryRun safety flow:
 
 ```bash
-apple messages send --to +15555550100 --body "Running late" --dry-run --json
+apple messages send --to +15555550100 --text "Running late" --dry-run --json
 ```
 
 The detailed capability boundary lives in

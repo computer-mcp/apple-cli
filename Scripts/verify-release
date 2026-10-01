@@ -41,6 +41,41 @@ def git(source, *arguments):
     return subprocess.check_output(["git", *arguments], cwd=source, text=True).strip()
 
 
+def changelog_notes(source, version):
+    changelog = (source / "CHANGELOG.md").read_text()
+    headings = list(re.finditer(
+        r"^##[ \t]+" + re.escape(version) + r"(?:[ \t][^\r\n]*)?\r?$", changelog, re.MULTILINE,
+    ))
+    require(len(headings) == 1, "Expected exactly one Changelog entry for the product version")
+    entry = changelog[headings[0].end():]
+    notes = re.split(r"^##[ \t]+", entry, maxsplit=1, flags=re.MULTILINE)[0].strip()
+    require(notes, "Changelog entry for the product version is empty")
+    return notes
+
+
+def validate_version_inputs(source, tag=None):
+    declarations = re.findall(
+        r'^[ \t]*public static let current = "([^"\r\n]*)"[ \t]*$',
+        (source / "Sources/Utility/CLIVersion.swift").read_text(), re.MULTILINE,
+    )
+    require(len(declarations) == 1, "Expected exactly one canonical CLI version declaration")
+    version = declarations[0]
+    number = r"(?:0|[1-9][0-9]*)"
+    require(
+        re.fullmatch(rf"{number}\.{number}\.{number}(?:-(?:alpha|beta|rc)\.[1-9][0-9]*)?", version),
+        "Invalid product version: use MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-{alpha,beta,rc}.N; N starts at 1",
+    )
+    changelog_notes(source, version)
+    if tag is not None:
+        require(tag == "v" + version, "Version tag mismatch")
+        require(
+            git(source, "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}")
+            == git(source, "rev-parse", "HEAD"),
+            "Tag commit mismatch",
+        )
+    return version
+
+
 def checks_passed(checks, required):
     names = [check["check"] for check in checks]
     require(len(names) == len(set(names)), "Duplicate validation checks")
@@ -58,14 +93,9 @@ def verify(directory, source, tag=None, require_verification=False):
     require(manifest["repository"] == REPOSITORY, "Repository identity mismatch")
     require(manifest["source_commit"] == git(source, "rev-parse", "HEAD"), "Source commit mismatch")
     require(manifest["source_tree"] == git(source, "rev-parse", "HEAD^{tree}"), "Source tree mismatch")
-    match = re.search(r'static let current = "([^"]+)"', (source / "Sources/Utility/CLIVersion.swift").read_text())
-    require(match is not None and manifest["version"] == match[1], "Source version mismatch")
-    version = manifest["version"]
-    require(re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?", version), "Invalid version")
+    version = validate_version_inputs(source, tag)
+    require(manifest["version"] == version, "Source version mismatch")
     require(manifest["tag"] == tag, "Artifact tag mismatch")
-    if tag:
-        require(tag == "v" + version, "Version tag mismatch")
-        require(git(source, "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}") == manifest["source_commit"], "Tag commit mismatch")
     require(manifest["architecture"] == "arm64", "Unsupported release architecture")
     require(manifest["package_resolved_sha256"] == digest(source / "Package.resolved"), "Dependency lockfile mismatch")
     checks_passed(manifest["validation"], BUILD_CHECKS)
@@ -107,7 +137,10 @@ def verify(directory, source, tag=None, require_verification=False):
         package = (Path(temporary) / package_name).resolve()
         embedded = json.loads((package / "provenance.json").read_text())
         require(embedded == {key: value for key, value in manifest.items() if key != "archive"}, "Embedded provenance mismatch")
-        for name in ["LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", "Documentation/Reference/ReleaseGuide.md"]:
+        for name in [
+            "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md",
+            "Documentation/Reference/ReleaseGuide.md", "Documentation/Architecture/VersioningAndRelease.md",
+        ]:
             require((package / name).read_bytes() == (source / name).read_bytes(), f"Source input mismatch: {name}")
         license_directory = Path("Documentation/Reference/ThirdPartyLicenses")
         licenses = {path.relative_to(source) for path in (source / license_directory).rglob("*") if path.is_file()}

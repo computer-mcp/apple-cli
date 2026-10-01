@@ -3,8 +3,9 @@
 ## Candidate Scope
 
 The canonical repository identity is `computer-mcp/apple-cli`. The products are
-`apple` and `apple-cli-mcp`. `Sources/Utility/CLIVersion.swift` owns the version;
-release tags use `v` followed by that value.
+`apple` and `apple-cli-mcp`. [Versioning and Release](../Architecture/VersioningAndRelease.md)
+owns version authority, upgrade rules, tag identity and evidence requirements.
+This guide owns the build, installation and publication procedures.
 
 The initial preview targets native macOS arm64 builds. The package's macOS 13
 deployment floor describes compilation, not a tested runtime range. Notes and
@@ -25,6 +26,15 @@ Notes startup diagnostics distinguish missing API implementations from dynamic
 Core Data accessors described by the installed model. `deferred_model_accessors`
 remain unverified in an operation context and retain a readiness warning.
 Model metadata does not establish account access or a successful app operation.
+
+## Known Preview Limitations
+
+Notes body structure summaries can underreport strikethrough formatting on
+existing notes. A zero `strikethroughRunCount` does not establish that no text
+is struck through. For workflows that depend on that formatting, inspect the
+HTML export from `apple notes export html`; preserve
+the distinction between struck-through text and a struck-through line break.
+`notes read` returns plain text and does not preserve inline formatting.
 
 ## License And Use
 
@@ -68,6 +78,19 @@ permissions and account configuration. It does not replace default tests or
 authorize a mutation.
 
 ## GitHub Release Publication
+
+Before selecting a tag, update the canonical version and its Changelog entry
+under the version policy, then check the working tree's release inputs:
+
+```bash
+Scripts/validate-version --json
+python3 -B -m unittest discover -s Tests/ReleaseTools
+```
+
+The check is read-only and accepts an uncommitted working tree. Its optional
+`--tag TAG` check requires that existing tag at `HEAD`. The packager and archive
+checker use the same version-input validation. CI runs the gate's fixture tests
+before packaging. Use Python 3.12 or newer for the release scripts.
 
 Formal releases are built, accepted and published by
 [release.yml](https://github.com/computer-mcp/apple-cli/blob/main/.github/workflows/release.yml).

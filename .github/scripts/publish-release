@@ -44,11 +44,7 @@ def require_remote_tag(repository, tag, commit):
 
 
 def release_notes(manifest, receipt):
-    changelog = (SOURCE / "CHANGELOG.md").read_text()
-    heading = re.search(r"^## " + re.escape(manifest["version"]) + r"(?:\s[^\n]*)?\n", changelog, re.MULTILINE)
-    require(heading is not None, "Changelog entry for the release version is missing")
-    body = re.split(r"^## ", changelog[heading.end():], maxsplit=1, flags=re.MULTILINE)[0].strip()
-    require(body, "Changelog release entry is empty")
+    body = checker["changelog_notes"](SOURCE, manifest["version"])
     repository = manifest["repository"]
     tag = manifest["tag"]
     body = re.sub(r"\]\((?![a-zA-Z][a-zA-Z0-9+.-]*:|#)([^)]+)\)", lambda match: f"](https://github.com/{repository}/blob/{tag}/{match[1]})", body)

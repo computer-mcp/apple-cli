@@ -1,4 +1,4 @@
-# .github
+# GitHub Collaboration Files
 
 This directory indexes GitHub-facing collaboration and governance files for
 `apple-cli`.
