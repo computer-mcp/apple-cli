@@ -314,9 +314,9 @@ struct IntelligenceCommandTests {
           "--json",
         ])))
 
-    let plist = root.appendingPathComponent("Library/LaunchDaemons/com.showxu.apple.intelligence.recompute.plist")
+    let plist = root.appendingPathComponent("Library/LaunchDaemons/io.github.computer-mcp.apple-cli.intelligence.recompute.plist")
     let launchDaemon = try readPlist(plist)
-    #expect(launchDaemon["Label"] as? String == "com.showxu.apple.intelligence.recompute")
+    #expect(launchDaemon["Label"] as? String == "io.github.computer-mcp.apple-cli.intelligence.recompute")
     let args = try #require(launchDaemon["ProgramArguments"] as? [String])
     #expect(args.dropFirst() == [
       "intelligence",

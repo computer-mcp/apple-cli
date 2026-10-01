@@ -146,6 +146,9 @@ Prefer rebooting before using `recompute`.
 
 ## Optional Persistent Service
 
+The service label is `io.github.computer-mcp.apple-cli.intelligence.recompute`.
+Its plist lives under `/Library/LaunchDaemons` within the selected `--root`.
+
 The LaunchDaemon service is not part of the default path. Install it only if
 you need persistent recompute behavior after boot or daemon reload:
 

@@ -15,8 +15,13 @@ Import/export and metadata mutation workflows use `DryRun` payloads or strong ga
 where command help requires them:
 
 ```bash
-apple photos exports export --library ~/Pictures/Photos\\ Library.photoslibrary --output ./export --dry-run --json
+apple photos exports export --library "$HOME/Pictures/Photos Library.photoslibrary" --destination ./export --dry-run --json
 ```
+
+For authorized export cleanup, `.apple-cli-photos-keep` in the export
+destination supplies additional keep patterns, one per line. Empty lines and
+lines beginning with `#` are ignored. Cleanup protects this file and retained
+matches together with current exports, reports and state.
 
 The detailed capability boundary lives in
 `../../Architecture/Photos/CapabilityList.md`.

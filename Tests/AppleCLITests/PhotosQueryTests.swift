@@ -300,7 +300,7 @@ struct PhotosQueryTests {
     #expect(noMatch.isEmpty)
   }
 
-  @Test func photosQueryDuplicateSemanticsUseOsxphotosSignature() throws {
+  @Test func photosQueryDuplicateSemanticsUseAssetSignature() throws {
     let fixture = try makePhotosBackendFixture()
     let duplicate = fixture.originals.appendingPathComponent("IMG_0004.JPG")
     try Data("dup".utf8).write(to: duplicate)

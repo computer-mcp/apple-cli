@@ -82,7 +82,7 @@ struct PhotosSnapshotTests {
     }
   }
 
-  @Test func photosLibraryDiscoveryMatchesOsxphotosSourcesAndDefaultOrder() throws {
+  @Test func photosLibraryDiscoveryUsesLocalSourcesAndDefaultOrder() throws {
     let home = try temporaryDirectory()
     let pictures = home.appendingPathComponent("Pictures", isDirectory: true)
     let external = home.appendingPathComponent("External", isDirectory: true)

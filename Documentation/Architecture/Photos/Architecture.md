@@ -28,7 +28,8 @@ and unsafe in-library original mutation are rejected.
 
 ## Validation
 
-Use default Photos tests for snapshot/query/export behavior and gated
-Photos.app-backed Swift Testing only with a copied throwaway library. Detailed
-capability status lives in `CapabilityList.md`; parity closeout lives in
-`ParityMatrix.md`.
+Use default Photos tests for snapshot, query, export and command routing.
+Verify actual Photos.app behavior separately on the intended host with a copied
+throwaway library and the operation-specific risk flags. Detailed capability
+status lives in `CapabilityList.md`; validation ownership lives in
+`ValidationMatrix.md`.

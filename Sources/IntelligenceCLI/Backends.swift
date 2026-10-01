@@ -1035,7 +1035,7 @@ private func servicePlistPayload(
     arguments.append(contentsOf: ["--lldb-path", lldbPath])
   }
   return [
-    "Label": "com.showxu.apple.intelligence.recompute",
+    "Label": IntelligencePaths.serviceLabel,
     "ProgramArguments": arguments,
     "RunAtLoad": true,
     "KeepAlive": false,
