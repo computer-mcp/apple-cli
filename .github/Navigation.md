@@ -22,7 +22,7 @@ This directory indexes GitHub-facing collaboration and governance files for
 
 - `../CONTRIBUTING.md`: repo-wide contributor guidance
 - `../SECURITY.md`: private vulnerability reporting guidance
-- `workflows/ci.yml`: build, test and archive acceptance for main/PR changes
+- `workflows/ci.yml`: build, test and archive acceptance for master/PR changes
 - `workflows/release.yml`: version-tag build, acceptance and GitHub Release publication
 - `scripts/publish-release`: same-artifact publication and interrupted-upload recovery
 - `actionlint.yaml`: additional supported runner label for workflow lint

@@ -93,7 +93,7 @@ checker use the same version-input validation. CI runs the gate's fixture tests
 before packaging. Use Python 3.12 or newer for the release scripts.
 
 Formal releases are built, accepted and published by
-[release.yml](https://github.com/computer-mcp/apple-cli/blob/main/.github/workflows/release.yml).
+[release.yml](https://github.com/computer-mcp/apple-cli/blob/master/.github/workflows/release.yml).
 Pushing a version tag such as
 `v0.1.0-alpha.1` triggers the workflow. Its manual `tag` input accepts an existing
 version tag for a new run. The tag must agree with `CLIVersion.current` and the
@@ -222,7 +222,7 @@ step. Inspect target help and doctor output for specific permission recovery.
 
 ## CI Runner And Evidence
 
-`ci.yml` validates pushes to `main`, pull requests and manual runs, including
+`ci.yml` validates pushes to `master`, pull requests and manual runs, including
 actual archive extraction and executable acceptance. It uploads workflow
 artifacts and logs. `release.yml` adds the independent publication job for
 version tags. Both use the shared packaging/verification scripts and pinned
