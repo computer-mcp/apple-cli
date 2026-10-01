@@ -265,7 +265,7 @@ private func photosUUIDList(option: String, fileOption: String, options: CLIOpti
         throw CLIError(
           code: .permissionDenied,
           message: CLIPermissionWording.fileNotReadable(resource: "UUID selector file"),
-          details: ["path": source, "error": String(describing: error)]
+          details: CLIError.diagnosticDetails(for: error).merging(["path": source]) { _, new in new }
         )
       }
     }
@@ -413,7 +413,7 @@ func validatePhotosQueryValues(_ options: CLIOptions) throws {
       throw CLIError(
         code: .validationError,
         message: "`--regex` must be a valid ICU regular expression.",
-        details: ["error": String(describing: error)]
+        details: CLIError.diagnosticDetails(for: error)
       )
     }
   }

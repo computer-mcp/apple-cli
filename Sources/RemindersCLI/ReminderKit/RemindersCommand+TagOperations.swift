@@ -127,7 +127,7 @@ extension RemindersCommand {
       "actual_tags": lastTags.map(\.name).joined(separator: ","),
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -163,7 +163,7 @@ extension RemindersCommand {
       "actual_tags": lastTags.map(\.name).joined(separator: ","),
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(

@@ -45,8 +45,6 @@ func safariScriptWithTimeout(_ source: String, seconds: Int) -> String {
 }
 
 func safariAutomationError(_ errorInfo: NSDictionary) -> CLIError {
-  let originalMessage =
-    errorInfo[NSAppleScript.errorMessage] as? String ?? "Safari automation failed."
   let number = errorInfo[NSAppleScript.errorNumber] as? Int
   let code: CLIErrorCode =
     if number == -1712 {
@@ -58,19 +56,9 @@ func safariAutomationError(_ errorInfo: NSDictionary) -> CLIError {
     } else {
       .backendUnavailable
     }
-  var details = ["executor": "NSAppleScript"]
-  if let number {
-    details["apple_event_error"] = "\(number)"
-  }
-  if code == .permissionDenied {
-    details["original_error"] = originalMessage
-  }
-  return CLIError(
-    code: code,
-    message: code == .permissionDenied
-      ? CLIPermissionWording.automationPermissionRequired(target: "Safari")
-      : originalMessage,
-    details: details)
+  return CLIError.appleEventFailure(
+    target: "Safari", code: code, number: number,
+    details: ["executor": "NSAppleScript"])
 }
 
 func validateSafariReadOnly(_ options: CLIOptions) throws {

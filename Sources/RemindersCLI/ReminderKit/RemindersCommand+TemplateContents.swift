@@ -355,7 +355,7 @@ private func coreTemplateSections(
       message: "ReminderKit template sections could not be fetched.",
       details: [
         "template_id": coreObjectIDString(template.remObjectID),
-        "fetch_error": error.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(error),
       ]
     )
   }
@@ -488,7 +488,7 @@ private func coreTemplateListRepresentation(
       message: "ReminderKit template list representation could not be fetched.",
       details: [
         "template_id": coreObjectIDString(template.remObjectID),
-        "fetch_error": error.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(error),
       ]
     )
   }
@@ -527,7 +527,7 @@ func coreFetchTemplateSavedReminder(
       message: "Reminder template item was not found.",
       details: [
         "id": id,
-        "fetch_error": error.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(error),
       ]
     )
   }

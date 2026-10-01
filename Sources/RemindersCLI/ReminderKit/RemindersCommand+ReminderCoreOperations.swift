@@ -190,7 +190,7 @@ extension RemindersCommand {
       "actual_repeat": reminderRepeatSummary(lastReminder?.repeatRule),
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
     throw CLIError(
       code: .backendUnavailable,

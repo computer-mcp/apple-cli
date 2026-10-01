@@ -55,7 +55,7 @@ enum ReminderUrgentWriter {
         details: [
           "reminder_id": reminderID,
           "urgent": "\(urgent)",
-          "save_error": saveError.map(String.init(describing:)) ?? "",
+          "save_error": reminderKitErrorSummary(saveError),
         ]
       )
     }
@@ -97,7 +97,7 @@ enum ReminderUrgentWriter {
       message: "ReminderKit could not fetch the reminder by external or ReminderKit identifier.",
       details: [
         "reminder_id": reminderID,
-        "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(fetchError),
       ]
     )
   }

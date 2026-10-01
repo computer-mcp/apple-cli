@@ -327,7 +327,6 @@ func appleScriptWithTimeout(_ source: String, seconds: Int) -> String {
 }
 
 func automationError(_ errorInfo: NSDictionary) -> CLIError {
-  let originalMessage = errorInfo[NSAppleScript.errorMessage] as? String ?? "Notes automation failed."
   let number = errorInfo[NSAppleScript.errorNumber] as? Int
   let code: CLIErrorCode =
     if number == -1712 {
@@ -337,20 +336,9 @@ func automationError(_ errorInfo: NSDictionary) -> CLIError {
     } else {
       .backendUnavailable
     }
-  var details = ["executor": "NSAppleScript"]
-  if let number {
-    details["apple_event_error"] = "\(number)"
-  }
-  if code == .permissionDenied {
-    details["original_error"] = originalMessage
-  }
-  return CLIError(
-    code: code,
-    message: code == .permissionDenied
-      ? CLIPermissionWording.automationPermissionRequired(target: "Notes")
-      : originalMessage,
-    details: details
-  )
+  return CLIError.appleEventFailure(
+    target: "Notes", code: code, number: number,
+    details: ["executor": "NSAppleScript"])
 }
 
 func validateReadOnly(_ options: CLIOptions) throws {
@@ -2623,8 +2611,9 @@ private func parseNotesENEX(data: Data) throws -> [NotesENEXImportNoteSource] {
   parser.delegate = delegate
   parser.shouldResolveExternalEntities = false
   guard parser.parse() else {
-    let message = parser.parserError?.localizedDescription ?? "ENEX XML parser failed."
-    throw CLIError(code: .validationError, message: message)
+    throw CLIError(
+      code: .validationError, message: "ENEX XML could not be parsed.",
+      details: ["line": "\(parser.lineNumber)", "column": "\(parser.columnNumber)"])
   }
   return try delegate.notes.enumerated().map { index, note in
     let ordinal = index + 1

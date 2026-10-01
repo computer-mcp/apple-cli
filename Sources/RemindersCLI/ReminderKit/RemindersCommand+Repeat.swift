@@ -72,7 +72,7 @@ enum ReminderRepeatWriter {
         operation: operation,
         message: "ReminderKit save failed.",
         details: details.merging(
-          ["save_error": saveError.map(String.init(describing:)) ?? ""],
+          ["save_error": reminderKitErrorSummary(saveError)],
           uniquingKeysWith: { _, new in new }
         )
       )
@@ -169,7 +169,7 @@ enum ReminderRepeatWriter {
       message: "ReminderKit could not fetch the reminder by external or ReminderKit identifier.",
       details: [
         "reminder_id": reminderID,
-        "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(fetchError),
       ]
     )
   }

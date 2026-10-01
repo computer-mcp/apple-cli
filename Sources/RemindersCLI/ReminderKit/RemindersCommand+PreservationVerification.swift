@@ -165,7 +165,7 @@ extension RemindersCommand {
       "missing_private_objects": missing.map(\.description).sorted().joined(separator: ","),
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -211,7 +211,7 @@ extension RemindersCommand {
       "missing_subtask_relationships": missing.map(\.description).sorted().joined(separator: ","),
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(

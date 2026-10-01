@@ -282,7 +282,7 @@ enum ReminderSectionWriter {
       message: "ReminderKit could not fetch the list by ReminderKit-compatible identifier.",
       details: [
         "list_id": listID,
-        "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+        "fetch_error": reminderKitErrorSummary(fetchError),
       ]
     )
   }
@@ -312,7 +312,7 @@ enum ReminderSectionWriter {
         message: "ReminderKit could not fetch the reminder by ReminderKit-compatible identifier.",
         details: [
           "reminder_id": reminderID,
-          "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+          "fetch_error": reminderKitErrorSummary(fetchError),
         ]
       )
     }
@@ -375,7 +375,7 @@ enum ReminderSectionWriter {
         message: "ReminderKit list sections could not be fetched.",
         details: [
           "list_id": listIdentifier(list),
-          "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+          "fetch_error": reminderKitErrorSummary(fetchError),
         ]
       )
     }
@@ -498,7 +498,7 @@ enum ReminderSectionWriter {
     var saveError: AnyObject?
     guard saveRequest.saveSynchronouslyWithError(&saveError) else {
       var details = additionalDetails
-      details["save_error"] = saveError.map(String.init(describing:)) ?? ""
+      details["save_error"] = reminderKitErrorSummary(saveError)
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,

@@ -83,7 +83,8 @@ public struct CLIProcessRunner: CLIProcessRunning {
     guard _NSGetExecutablePath(&buffer, &size) == 0 else {
       throw CLIError(code: .backendUnavailable, message: "Could not locate the running MCP executable.")
     }
-    return URL(fileURLWithPath: String(cString: buffer))
+    let pathBytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+    return URL(fileURLWithPath: String(decoding: pathBytes, as: UTF8.self))
       .resolvingSymlinksInPath()
       .deletingLastPathComponent()
       .appendingPathComponent("apple")
@@ -92,7 +93,6 @@ public struct CLIProcessRunner: CLIProcessRunning {
 
 public struct CLIToolRunPayload: Codable, Equatable, Sendable {
   public var target: String
-  public var arguments: [String]
   public var exitCode: Int32
   public var ok: Bool
   public var stdout: String
@@ -411,7 +411,7 @@ public struct AppleMCPAdapter: Sendable {
     } catch {
       return toolResult(
         errorStructuredContent(
-          CLIError(code: .internalError, message: String(describing: error))
+          CLIError(code: .internalError, message: "The CLI adapter failed unexpectedly.")
         )
       )
     }
@@ -459,7 +459,6 @@ public struct AppleMCPAdapter: Sendable {
     return try encodedValue(
       CLIToolRunPayload(
         target: result.target,
-        arguments: result.arguments,
         exitCode: result.exitCode,
         ok: result.exitCode == 0,
         stdout: result.stdout,

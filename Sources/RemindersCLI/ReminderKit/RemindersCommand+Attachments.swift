@@ -52,7 +52,7 @@ enum ReminderAttachmentWriter {
           details: [
             "reminder_id": reminderID,
             "file_path": fileURL.path,
-            "attachment_error": addError.map(String.init(describing:)) ?? "",
+            "attachment_error": reminderKitErrorSummary(addError),
           ]
         )
       }
@@ -66,7 +66,7 @@ enum ReminderAttachmentWriter {
           details: [
             "reminder_id": reminderID,
             "file_path": fileURL.path,
-            "attachment_error": addError.map(String.init(describing:)) ?? "",
+            "attachment_error": reminderKitErrorSummary(addError),
           ]
         )
       }
@@ -221,7 +221,7 @@ enum ReminderAttachmentWriter {
         message: "ReminderKit could not fetch the reminder by ReminderKit-compatible identifier.",
         details: [
           "reminder_id": reminderID,
-          "fetch_error": fetchError.map(String.init(describing:)) ?? "",
+          "fetch_error": reminderKitErrorSummary(fetchError),
         ]
       )
     }
@@ -241,7 +241,7 @@ enum ReminderAttachmentWriter {
         message: "ReminderKit save failed.",
         details: [
           "reminder_id": reminderID,
-          "save_error": saveError.map(String.init(describing:)) ?? "",
+          "save_error": reminderKitErrorSummary(saveError),
         ]
       )
     }

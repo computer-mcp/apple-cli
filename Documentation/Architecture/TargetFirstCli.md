@@ -42,8 +42,10 @@ also owns backend behavior, target-local validation, identity rules, and
 target-local safety policy. `Utility` owns repository contract mechanics only:
 JSON envelopes, exit codes, diagnostics, DryRun preview, small shared
 option groups, and bounded process execution helpers. Synchronous CLI execution
-uses native `Process` and drains both output pipes without scheduling Swift
-tasks. Asynchronous adapters await the official `swift-subprocess` API.
+uses native `Process` and drains both output pipes while feeding optional
+stdin, without scheduling Swift tasks. Callers that consume binary data use
+the byte-result API; text callers decode at the execution boundary.
+Asynchronous adapters await the official `swift-subprocess` API.
 `CLIOptions` is a compatibility execution context for target-local backends; it
 is not a parser, command descriptor model, or public grammar surface.
 

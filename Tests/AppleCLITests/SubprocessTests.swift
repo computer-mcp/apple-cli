@@ -5,6 +5,35 @@ import Utility
 
 @Suite
 struct SubprocessTests {
+  @Test func synchronousInputAndOutputAreDrainedTogetherWithoutChangingBytes() throws {
+    let input = Data((0..<262_144).map { UInt8(truncatingIfNeeded: $0) })
+    let result = try CLISubprocess.runBytes(
+      .path("/bin/sh"), arguments: ["-c", "cat; printf 'diagnostic' >&2"], input: input,
+      timeoutSeconds: 3, outputLimit: input.count)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == input)
+    #expect(result.stderr == Data("diagnostic".utf8))
+  }
+
+  @Test func timeoutIncludesAChildThatDoesNotReadItsInput() throws {
+    do {
+      _ = try CLISubprocess.runBytes(
+        .path("/bin/sh"), arguments: ["-c", "exec sleep 30"],
+        input: Data(repeating: 1, count: 262_144), timeoutSeconds: 1)
+      Issue.record("Expected an input-blocked child to time out.")
+    } catch let error as CLIError {
+      #expect(error.code == .timeout)
+    }
+  }
+
+  @Test func childClosingInputDoesNotSignalTheParent() throws {
+    let result = try CLISubprocess.runBytes(
+      .path("/bin/sh"), arguments: ["-c", "exec 0<&-; printf 'closed'"],
+      input: Data(repeating: 1, count: 262_144), timeoutSeconds: 2)
+    #expect(result.exitCode == 0)
+    #expect(result.stdout == Data("closed".utf8))
+  }
+
   @Test func synchronousCallsCompleteOnSaturatedCooperativeExecutor() async throws {
     let results = try await withThrowingTaskGroup(of: CLISubprocessResult.self) { group in
       for index in 0..<64 {

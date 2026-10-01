@@ -58,7 +58,7 @@ extension RemindersCommand {
       "actual_attachments": lastReminder.map { attachmentEvidenceSummary($0.attachments) } ?? "",
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -103,7 +103,7 @@ extension RemindersCommand {
       "actual_attachments": lastReminder.map { attachmentEvidenceSummary($0.attachments) } ?? "",
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(

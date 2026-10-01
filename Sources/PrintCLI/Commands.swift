@@ -124,11 +124,7 @@ extension PrintTarget {
         error, target: targetName, json: options.json, pretty: options.pretty)
     } catch {
       try CLICommandOutput.write(
-        CLIError(
-          code: .internalError,
-          message: "Unhandled CLI error.",
-          details: ["error": String(describing: error)]
-        ),
+        CLIError.unexpected(error, verbose: options.verbose),
         target: targetName,
         json: options.json,
         pretty: options.pretty

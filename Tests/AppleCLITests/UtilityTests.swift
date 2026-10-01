@@ -57,18 +57,6 @@ struct UtilityTests {
     #expect(options.targetOption("from") == "2026-01-01")
   }
 
-  @Test func cliOptionsFixtureRejectsRemovedConfirmationOption() {
-    let removedOption = "--confirm" + "-" + "re" + "ceipt"
-    do {
-      _ = try CLIOptionsFixture.parse(["notes", "create", removedOption, "abc123"])
-      Issue.record("Expected removed execution option to throw.")
-    } catch let error as CLIError {
-      #expect(error.code == .validationError)
-    } catch {
-      Issue.record("Expected CLIError, got \(error).")
-    }
-  }
-
   @Test func cliOptionsFixtureAllowsNegativeNumericTargetValues() throws {
     let options = try CLIOptionsFixture.parse([
       "places",

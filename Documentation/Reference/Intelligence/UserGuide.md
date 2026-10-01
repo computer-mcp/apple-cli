@@ -133,8 +133,8 @@ Run `verify` again after this command.
 ## Optional Recompute
 
 Use `recompute` only when plist/cache values look correct but `eligibilityd`
-has not refreshed. This attaches a debugger to `eligibilityd`, so it requires
-an explicit risk flag:
+has not refreshed. It asks the daemon to recompute using its current inputs.
+This attaches a debugger to `eligibilityd`, so it requires an explicit risk flag:
 
 ```bash
 sudo .build/debug/apple intelligence recompute \

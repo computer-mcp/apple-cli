@@ -468,8 +468,6 @@ func appleScriptString(_ value: String) -> String {
 }
 
 func messagesAutomationError(_ errorInfo: NSDictionary) -> CLIError {
-  let originalMessage =
-    errorInfo[NSAppleScript.errorMessage] as? String ?? "Messages automation failed."
   let number = errorInfo[NSAppleScript.errorNumber] as? Int
   let code: CLIErrorCode
   switch number {
@@ -480,16 +478,8 @@ func messagesAutomationError(_ errorInfo: NSDictionary) -> CLIError {
   default:
     code = .backendUnavailable
   }
-  var details = number.map { ["apple_event_error": "\($0)"] } ?? [:]
-  if code == .permissionDenied {
-    details["original_error"] = originalMessage
-  }
-  return CLIError(
-    code: code,
-    message: code == .permissionDenied
-      ? CLIPermissionWording.automationPermissionRequired(target: "Messages")
-      : originalMessage,
-    details: details)
+  return CLIError.appleEventFailure(
+    target: "Messages", code: code, number: number)
 }
 
 func conversationsHumanOutput(_ conversations: [MessagesConversationRecord]) -> String {

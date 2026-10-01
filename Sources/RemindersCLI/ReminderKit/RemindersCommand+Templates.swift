@@ -133,7 +133,7 @@ extension RemindersCommand {
         message: "ReminderKit could not fetch list after template creation.",
         details: [
           "template_id": templateID,
-          "error": error.map(String.init(describing:)) ?? "",
+          "error": reminderKitErrorSummary(error),
         ]
       )
     }
@@ -338,7 +338,7 @@ func coreFetchTemplates(
     throw coreReminderKitError(
       operation: operation,
       message: "ReminderKit could not fetch accounts for templates.",
-      details: ["accounts_error": String(describing: accountError)]
+      details: ["accounts_error": reminderKitErrorSummary(accountError)]
     )
   }
 
@@ -362,7 +362,7 @@ func coreFetchTemplates(
     )
     if let templateError {
       let accountTitle = account.displayName ?? account.name ?? coreObjectIDString(account.remObjectID)
-      templateErrors.append("\(accountTitle): \(String(describing: templateError))")
+      templateErrors.append("\(accountTitle): \(reminderKitErrorSummary(templateError))")
     }
   }
 

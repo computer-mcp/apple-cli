@@ -151,7 +151,7 @@ extension RemindersCommand {
       "actual_sections": lastSections.map(\.title).joined(separator: ","),
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -190,7 +190,7 @@ extension RemindersCommand {
       "actual_sections": lastSections.map(\.title).joined(separator: ","),
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -238,7 +238,7 @@ extension RemindersCommand {
       "actual_sections": lastSections.map(\.title).joined(separator: ","),
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(

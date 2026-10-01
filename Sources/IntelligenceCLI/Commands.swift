@@ -20,7 +20,7 @@ public struct IntelligenceTarget: ParsableCommand {
       Start with `apple intelligence doctor --json` for setup diagnostics and \
       `apple intelligence verify --json` for local cache verification.
       System cache writes require root and, on the real system root, SIP disabled.
-      Execution commands reject `--dry-run` and; use the \
+      Execution commands reject `--dry-run`; use the \
       exact `--allow-*` risk flag shown by the command help.
 
       See Documentation/Reference/Intelligence/UserGuide.md for the full runbook.
@@ -318,7 +318,7 @@ extension IntelligenceTarget {
         intelligenceError(
           code: .internalError,
           failure: .unhandledError,
-          details: ["error": String(describing: error)]
+          details: options.verbose ? CLIError.diagnosticDetails(for: error) : [:]
         ),
         target: targetName,
         json: options.json,

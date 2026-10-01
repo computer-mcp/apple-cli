@@ -63,6 +63,11 @@ grammar or bypass the CLI parser. Its tool responses preserve CLI stdout,
 stderr, exit code, JSON envelopes, error categories, help output, and DryRun
 safety behavior.
 
+Execution responses contain the target, exit code, success state, stdout, and
+stderr. CLI arguments are forwarded to the runner without being copied into
+the response. Unexpected adapter failures use a stable internal-error message;
+typed CLI errors retain their categories and recovery details.
+
 The server declares the MCP tools capability only. It does not expose MCP
 resources or prompts.
 
@@ -121,6 +126,8 @@ are derived from the canonical CLI contract and preserve the same validation,
 - Streamable HTTP binds to loopback by default. Non-loopback serving must be an
   explicit opt-in and must be protected by bearer token or deployment-layer
   controls.
+- HTTP host configuration accepts a hostname or IP address and rejects URL
+  components before starting the listener.
 - HTTP session admission counts active sessions and sessions being initialized
   against `--max-sessions`. Failed initialization and session closure release
   capacity.

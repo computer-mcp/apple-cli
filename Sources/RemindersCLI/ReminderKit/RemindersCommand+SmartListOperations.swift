@@ -116,7 +116,7 @@ extension RemindersCommand {
       "actual_lists": lastLists.map { "\($0.title):\($0.listType ?? "")" }.joined(separator: ","),
     ]
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(
@@ -170,7 +170,7 @@ extension RemindersCommand {
       details["warning_count"] = "\(lastDebug.warnings.count)"
     }
     if let lastError {
-      details["last_error"] = String(describing: lastError)
+      details["last_error"] = reminderKitErrorSummary(lastError)
     }
 
     throw CLIError(

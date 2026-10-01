@@ -24,7 +24,7 @@ struct StdioCommand: AsyncParsableCommand {
     do {
       try await AppleMCPServerRuntime.runStdio()
     } catch {
-      AppleMCPServerRuntime.writeStandardError("apple-cli-mcp stdio failed: \(error)\n")
+      AppleMCPServerRuntime.writeStandardError("apple-cli-mcp stdio failed. Check the client connection.\n")
       throw ExitCode.failure
     }
   }
@@ -92,8 +92,12 @@ struct HTTPServeCommand: AsyncParsableCommand {
 
     do {
       try await AppleMCPServerRuntime.runHTTP(configuration: configuration)
+    } catch let error as MCPHTTPServerError {
+      AppleMCPServerRuntime.writeStandardError("\(error.description)\n")
+      throw ExitCode.failure
     } catch {
-      AppleMCPServerRuntime.writeStandardError("apple-cli-mcp serve http failed: \(error)\n")
+      AppleMCPServerRuntime.writeStandardError(
+        "apple-cli-mcp serve http failed. Check the host, port, and network permissions.\n")
       throw ExitCode.failure
     }
   }

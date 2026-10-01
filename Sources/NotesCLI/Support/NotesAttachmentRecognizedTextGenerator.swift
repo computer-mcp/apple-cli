@@ -153,7 +153,7 @@ public struct NotesVisionAttachmentRecognizedTextGenerator:
       throw CLIError(
         code: .unsupportedOperation,
         message: "Vision recognized text generation failed.",
-        details: ["vision_error": error?.localizedDescription ?? "unknown"]
+        details: error.map { CLIError.diagnosticDetails(for: $0) } ?? [:]
       )
     }
   }

@@ -38,6 +38,7 @@ public struct IntelligenceSubprocessRunner: IntelligenceSystemActionRunning {
         detail: command
       )
     } catch {
+      let failure = (error as? CLIError)?.message ?? "The subprocess failed unexpectedly."
       return IntelligenceActionResult(
         kind: kind,
         status: "failed",
@@ -46,7 +47,7 @@ public struct IntelligenceSubprocessRunner: IntelligenceSystemActionRunning {
         exitCode: nil,
         stdout: nil,
         stderr: nil,
-        detail: "\(command): \(String(describing: error))"
+        detail: "\(command): \(failure)"
       )
     }
   }
@@ -338,8 +339,6 @@ public struct IntelligenceBackend {
         arguments: [
           "--batch",
           "-o", "process attach --name eligibilityd",
-          "-o",
-          #"expression (void) [[[InputManager sharedInstance] objectForInputValue:6] setValue:@"LL" forKey:@"_deviceRegionCode"]"#,
           "-o", "expression (void) [[EligibilityEngine sharedInstance] recomputeAllDomainAnswers]",
           "-o", "process detach",
           "-o", "quit",
@@ -725,7 +724,7 @@ public struct IntelligenceBackend {
         path: path,
         exists: true,
         readablePlist: false,
-        readError: String(describing: error)
+        readError: (error as? CLIError)?.message ?? "Could not read the property list."
       )
     }
   }

@@ -357,6 +357,12 @@ struct IntelligenceCommandTests {
     #expect(data["status"] as? String == "succeeded")
     let actions = try #require(data["actions"] as? [[String: Any]])
     #expect(actions.contains { ($0["kind"] as? String) == "debugPreflight" })
+    let refresh = try #require(actions.first { ($0["kind"] as? String) == "debugAttach" })
+    #expect(refresh["stdout"] as? String == [
+      "--batch", "-o", "process attach --name eligibilityd",
+      "-o", "expression (void) [[EligibilityEngine sharedInstance] recomputeAllDomainAnswers]",
+      "-o", "process detach", "-o", "quit",
+    ].joined(separator: " "))
 
     do {
       _ = try command.run(

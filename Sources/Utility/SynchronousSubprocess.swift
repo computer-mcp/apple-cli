@@ -3,17 +3,20 @@ import Foundation
 
 enum SynchronousSubprocess {
   static func run(
-    path: String, arguments: [String], timeoutSeconds: Int?, outputLimit: Int
-  ) throws -> CLISubprocessResult {
+    path: String, arguments: [String], input: Data?, timeoutSeconds: Int?, outputLimit: Int
+  ) throws -> CLISubprocessBytesResult {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: path)
     process.arguments = arguments
-    process.standardInput = FileHandle.nullDevice
+    let stdin = input.map { _ in Pipe() }
+    process.standardInput = stdin?.fileHandleForReading ?? FileHandle.nullDevice
     let stdout = Pipe()
     let stderr = Pipe()
     process.standardOutput = stdout
     process.standardError = stderr
     defer {
+      try? stdin?.fileHandleForReading.close()
+      try? stdin?.fileHandleForWriting.close()
       try? stdout.fileHandleForReading.close()
       try? stdout.fileHandleForWriting.close()
       try? stderr.fileHandleForReading.close()
@@ -22,7 +25,12 @@ enum SynchronousSubprocess {
 
     var output = try SubprocessOutputCapture(handle: stdout.fileHandleForReading)
     var error = try SubprocessOutputCapture(handle: stderr.fileHandleForReading)
+    var inputWriter: SubprocessInputWriter?
+    if let stdin, let input {
+      inputWriter = try SubprocessInputWriter(handle: stdin.fileHandleForWriting, bytes: input)
+    }
     try process.run()
+    try? stdin?.fileHandleForReading.close()
     try? stdout.fileHandleForWriting.close()
     try? stderr.fileHandleForWriting.close()
     let pid = process.processIdentifier
@@ -41,8 +49,14 @@ enum SynchronousSubprocess {
           if drainageDeadline == nil { drainageDeadline = now + 1 }
           if let drainageDeadline, now >= drainageDeadline { throw CLISubprocess.drainageError() }
         }
+        try inputWriter?.writeAvailable()
+        if inputWriter?.completed == true {
+          try? stdin?.fileHandleForWriting.close()
+          inputWriter = nil
+        }
         _ = try SubprocessOutputCapture.poll(
-          stdout: &output, stderr: &error, limit: outputLimit, waitMilliseconds: 25)
+          stdout: &output, stderr: &error, limit: outputLimit, waitMilliseconds: 25,
+          inputDescriptor: inputWriter?.fd)
       }
     } catch {
       terminate(process, ownsGroup: ownsGroup)
@@ -50,10 +64,10 @@ enum SynchronousSubprocess {
     }
     process.waitUntilExit()
     let status = process.terminationStatus
-    return CLISubprocessResult(
+    return CLISubprocessBytesResult(
       exitCode: process.terminationReason == .uncaughtSignal ? 128 + status : status,
-      stdout: String(decoding: output.bytes, as: UTF8.self),
-      stderr: String(decoding: error.bytes, as: UTF8.self)
+      stdout: Data(output.bytes),
+      stderr: Data(error.bytes)
     )
   }
 
@@ -71,4 +85,48 @@ enum SynchronousSubprocess {
     process.waitUntilExit()
   }
 
+}
+
+private struct SubprocessInputWriter {
+  let fd: Int32
+  let bytes: Data
+  private var offset = 0
+  var completed: Bool { offset == bytes.count }
+
+  init(handle: FileHandle, bytes: Data) throws {
+    fd = handle.fileDescriptor
+    self.bytes = bytes
+    let flags = fcntl(fd, F_GETFL)
+    // The child may close stdin early; EPIPE must not signal the CLI process.
+    guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0,
+      fcntl(fd, F_SETNOSIGPIPE, 1) == 0
+    else {
+      throw Self.ioError()
+    }
+  }
+
+  mutating func writeAvailable() throws {
+    guard !completed else { return }
+    let count = min(8_192, bytes.count - offset)
+    let written = bytes.withUnsafeBytes {
+      Darwin.write(fd, $0.baseAddress?.advanced(by: offset), count)
+    }
+    if written > 0 {
+      offset += written
+    } else if written < 0 {
+      switch errno {
+      case EPIPE:
+        offset = bytes.count
+      case EAGAIN, EINTR:
+        break
+      default:
+        throw Self.ioError()
+      }
+    }
+  }
+
+  private static func ioError() -> CLIError {
+    CLIError(code: .backendUnavailable, message: "Subprocess input IO failed.",
+      details: ["errno": "\(errno)"])
+  }
 }

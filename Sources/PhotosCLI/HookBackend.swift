@@ -26,7 +26,7 @@ public struct PhotosHookBackend: Sendable {
       throw CLIError(
         code: .validationError,
         message: "Swift eval hook did not emit valid PhotoHookOutput JSON.",
-        details: ["hook": kind, "error": String(describing: error)]
+        details: CLIError.diagnosticDetails(for: error).merging(["hook": kind]) { _, new in new }
       )
     }
   }
@@ -74,48 +74,25 @@ private func runProcess(
   timeoutSeconds: Int,
   outputCap: Int
 ) throws -> ProcessOutput {
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: executable)
-  process.arguments = arguments
-
-  let inputPipe = Pipe()
-  let outputPipe = Pipe()
-  let errorPipe = Pipe()
-  process.standardInput = inputPipe
-  process.standardOutput = outputPipe
-  process.standardError = errorPipe
-
-  try process.run()
-  inputPipe.fileHandleForWriting.write(stdin)
-  try inputPipe.fileHandleForWriting.close()
-
-  let deadline = Date().addingTimeInterval(TimeInterval(timeoutSeconds))
-  while process.isRunning, Date() < deadline {
-    usleep(10_000)
-  }
-  if process.isRunning {
-    process.terminate()
-    throw CLIError(code: .timeout, message: "Photos hook subprocess timed out.")
-  }
-
-  let stdout = outputPipe.fileHandleForReading.readDataToEndOfFile()
-  let stderr = errorPipe.fileHandleForReading.readDataToEndOfFile()
-  guard stdout.count <= outputCap, stderr.count <= outputCap else {
+  let result: CLISubprocessBytesResult
+  do {
+    result = try CLISubprocess.runBytes(
+      .path(executable), arguments: arguments, input: stdin,
+      timeoutSeconds: timeoutSeconds, outputLimit: outputCap)
+  } catch let error as CLIError
+    where error.code == .backendUnavailable && error.details["output_limit"] != nil
+  {
     throw CLIError(
-      code: .validationError,
-      message: "Photos hook subprocess exceeded output cap.",
-      details: ["output_cap": "\(outputCap)"]
-    )
+      code: .validationError, message: "Photos hook subprocess exceeded output cap.",
+      details: ["output_cap": "\(outputCap)"])
   }
-  guard process.terminationStatus == 0 else {
-    let message = String(data: stderr, encoding: .utf8) ?? "Photos hook subprocess failed."
+  guard result.exitCode == 0 else {
     throw CLIError(
       code: .backendUnavailable,
-      message: message.trimmingCharacters(in: .whitespacesAndNewlines),
-      details: ["termination_status": "\(process.terminationStatus)"]
-    )
+      message: "Photos hook subprocess failed.",
+      details: ["termination_status": "\(result.exitCode)"])
   }
-  return ProcessOutput(stdout: stdout, stderr: stderr)
+  return ProcessOutput(stdout: result.stdout, stderr: result.stderr)
 }
 
 private enum CLIJSONData {

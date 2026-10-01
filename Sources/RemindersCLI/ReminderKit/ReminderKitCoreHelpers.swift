@@ -31,7 +31,7 @@ func coreSaveReminderKit(_ saveRequest: REMSaveRequest, operation: String) throw
     throw coreReminderKitError(
       operation: operation,
       message: "ReminderKit save failed.",
-      details: ["save_error": error.map(String.init(describing:)) ?? ""]
+      details: ["save_error": reminderKitErrorSummary(error)]
     )
   }
 }
@@ -49,7 +49,7 @@ func reminderKitFetchLists(store: REMStore, operation: String) throws -> [REMLis
     if let listError {
       let accountTitle =
         account.displayName ?? account.name ?? coreObjectIDString(account.remObjectID)
-      listErrors.append("\(accountTitle): \(String(describing: listError))")
+      listErrors.append("\(accountTitle): \(reminderKitErrorSummary(listError))")
     }
   }
 
@@ -57,7 +57,7 @@ func reminderKitFetchLists(store: REMStore, operation: String) throws -> [REMLis
     throw coreReminderKitError(
       operation: operation,
       message: "ReminderKit could not fetch reminder accounts.",
-      details: ["accounts_error": String(describing: accountError)]
+      details: ["accounts_error": reminderKitErrorSummary(accountError)]
     )
   }
   if lists.isEmpty, !listErrors.isEmpty {
@@ -94,7 +94,7 @@ func reminderKitFetchReminders(store: REMStore, lists: [REMList], operation: Str
     reminders.append(contentsOf: listReminders)
     if let reminderError {
       let listTitle = list.displayName ?? list.name ?? coreObjectIDString(list.remObjectID)
-      reminderErrors.append("\(listTitle): \(String(describing: reminderError))")
+      reminderErrors.append("\(listTitle): \(reminderKitErrorSummary(reminderError))")
     }
   }
 
@@ -143,7 +143,7 @@ func coreResolveList(store: REMStore, selector: String?, operation: String) thro
   throw coreReminderKitError(
     operation: operation,
     message: "ReminderKit default list was not available.",
-    details: ["error": error.map(String.init(describing:)) ?? ""]
+    details: ["error": reminderKitErrorSummary(error)]
   )
 }
 
@@ -168,7 +168,7 @@ func coreResolveAccount(store: REMStore, sourceID: String, operation: String) th
   throw coreReminderKitError(
     operation: operation,
     message: "ReminderKit account was not found.",
-    details: ["source_id": sourceID, "error": error.map(String.init(describing:)) ?? ""]
+    details: ["source_id": sourceID, "error": reminderKitErrorSummary(error)]
   )
 }
 
@@ -644,6 +644,12 @@ func coreReminderAccountType(_ type: Int64) -> String {
   case 3: return "exchange"
   default: return "\(type)"
   }
+}
+
+func reminderKitErrorSummary(_ value: Any?) -> String {
+  guard let value else { return "" }
+  guard let error = value as? NSError else { return "Reminders reported an error." }
+  return "\(error.domain) (\(error.code))"
 }
 
 func coreReminderKitError(

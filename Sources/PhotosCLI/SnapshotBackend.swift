@@ -827,33 +827,11 @@ public struct PhotosLibrarySnapshotBackend: @unchecked Sendable {
   }
 
   private static func defaultSpotlightLibraryPaths() throws -> [String] {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-    process.arguments = ["-onlyin", "/", "-name", ".photoslibrary"]
-
-    let output = Pipe()
-    process.standardOutput = output
-    process.standardError = FileHandle.nullDevice
-
-    try process.run()
-    let deadline = Date().addingTimeInterval(2)
-    while process.isRunning && Date() < deadline {
-      Thread.sleep(forTimeInterval: 0.05)
-    }
-    if process.isRunning {
-      process.terminate()
-      process.waitUntilExit()
-      return []
-    }
-    process.waitUntilExit()
-
-    guard process.terminationStatus == 0 else {
-      return []
-    }
-
-    let data = output.fileHandleForReading.readDataToEndOfFile()
-    let text = String(decoding: data, as: UTF8.self)
-    return text.split(whereSeparator: \.isNewline).map(String.init)
+    guard let result = try? CLISubprocess.run(
+      .path("/usr/bin/mdfind"), arguments: ["-onlyin", "/", "-name", ".photoslibrary"],
+      timeoutSeconds: 2), result.exitCode == 0
+    else { return [] }
+    return result.stdout.split(whereSeparator: \.isNewline).map(String.init)
   }
 
   private func photosDatabasePath(in libraryPath: String) throws -> URL {
@@ -4846,7 +4824,7 @@ private final class SQLiteReadOnlyDatabase {
       throw CLIError(
         code: .validationError,
         message: "`--pattern` must be a valid regular expression.",
-        details: ["error": String(describing: error)]
+        details: CLIError.diagnosticDetails(for: error)
       )
     }
 

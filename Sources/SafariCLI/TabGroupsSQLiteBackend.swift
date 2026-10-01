@@ -282,7 +282,7 @@ public struct SafariTabGroupsSQLiteBackend: SafariTabGroupReading, SafariTabGrou
       throw CLIError(
         code: .backendUnavailable,
         message: "Failed to create a read-only SafariTabs.db snapshot.",
-        details: ["path": source.path, "error": String(describing: error)]
+        details: CLIError.diagnosticDetails(for: error).merging(["path": source.path]) { _, new in new }
       )
     }
   }

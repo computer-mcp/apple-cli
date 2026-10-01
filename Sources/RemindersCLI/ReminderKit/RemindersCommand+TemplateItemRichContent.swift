@@ -219,7 +219,7 @@ private func coreAddTemplateItemAttachment(
         details: [
           "item_id": itemID,
           "file_path": fileURL.path,
-          "attachment_error": addError.map(String.init(describing:)) ?? "",
+          "attachment_error": reminderKitErrorSummary(addError),
         ]
       )
     }
@@ -233,7 +233,7 @@ private func coreAddTemplateItemAttachment(
       details: [
         "item_id": itemID,
         "file_path": fileURL.path,
-        "attachment_error": addError.map(String.init(describing:)) ?? "",
+        "attachment_error": reminderKitErrorSummary(addError),
       ]
     )
   }
