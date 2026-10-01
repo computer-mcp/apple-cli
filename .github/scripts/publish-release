@@ -19,14 +19,17 @@ require = checker["require"]
 digest = checker["digest"]
 
 
-def gh(*arguments):
-    result = subprocess.run(["gh", *arguments], text=True, capture_output=True, timeout=120)
+def gh(*arguments, input=None):
+    result = subprocess.run(["gh", *arguments], input=input, text=True, capture_output=True, timeout=120)
     require(result.returncode == 0, result.stderr.strip() or "GitHub operation failed")
     return result.stdout
 
 
-def api(endpoint):
-    return json.loads(gh("api", endpoint))
+def api(endpoint, method="GET", payload=None):
+    arguments = ["api", "--method", method, "--header", "Cache-Control: no-cache", endpoint]
+    if payload is not None:
+        arguments += ["--input", "-"]
+    return json.loads(gh(*arguments, input=json.dumps(payload) if payload is not None else None))
 
 
 def require_remote_tag(repository, tag, commit):
@@ -41,9 +44,8 @@ def require_remote_tag(repository, tag, commit):
 
 
 def find_release(repository, tag):
-    # The tag endpoint returns published releases. Drafts are listed by their
-    # release identity so retries can continue the same draft.
-    pages = json.loads(gh("api", "--paginate", "--slurp", f"repos/{repository}/releases?per_page=100"))
+    # Existing drafts retain their release identity across publication attempts.
+    pages = json.loads(gh("api", "--paginate", "--slurp", "--header", "Cache-Control: no-cache", f"repos/{repository}/releases?per_page=100"))
     matches = [release for page in pages for release in page if release["tag_name"] == tag]
     require(len(matches) <= 1, "Multiple releases use the same tag")
     return matches[0] if matches else None
@@ -57,7 +59,7 @@ def release_notes(manifest, receipt):
     return body + f"\n\nSource: [{manifest['source_commit'][:12]}](https://github.com/{repository}/commit/{manifest['source_commit']}). Build and acceptance: [GitHub Actions]({receipt['ci']['run_url']}).\n"
 
 
-def verify_uploaded(release, files, repository, tag):
+def verify_uploaded(release, files, repository):
     assets = release["assets"]
     require(len(assets) == len({item["name"] for item in assets}), "Duplicate remote assets")
     require({item["name"] for item in assets} <= set(files), "Release contains unexpected assets")
@@ -69,9 +71,52 @@ def verify_uploaded(release, files, repository, tag):
             require(asset["digest"] == expected, "Draft asset differs from the accepted bytes")
         else:
             with tempfile.TemporaryDirectory(prefix="apple-cli-upload-check-") as temporary:
-                gh("release", "download", tag, "--repo", repository, "--pattern", path.name, "--dir", temporary)
-                require(digest(Path(temporary) / path.name) == expected.removeprefix("sha256:"), "Downloaded draft asset differs from the accepted bytes")
+                downloaded = Path(temporary) / path.name
+                with downloaded.open("wb") as output:
+                    result = subprocess.run(["gh", "api", "--header", "Accept: application/octet-stream", f"repos/{repository}/releases/assets/{asset['id']}"], stdout=output, stderr=subprocess.PIPE, timeout=120)
+                require(result.returncode == 0, result.stderr.decode(errors="replace").strip() or "Asset download failed")
+                require(digest(downloaded) == expected.removeprefix("sha256:"), "Downloaded draft asset differs from the accepted bytes")
     return {item["name"] for item in assets}
+
+
+def publish_files(repository, tag, manifest, receipt, files):
+    require_remote_tag(repository, tag, manifest["source_commit"])
+    release = find_release(repository, tag)
+    prerelease = "-" in manifest["version"]
+    notes = release_notes(manifest, receipt)
+    if release is None:
+        # Creation returns the authoritative ID and upload URL even before a
+        # newly created draft becomes visible in release queries.
+        release = api(f"repos/{repository}/releases", "POST", {
+            "tag_name": tag, "target_commitish": manifest["source_commit"],
+            "name": "apple-cli " + manifest["version"], "body": notes,
+            "draft": True, "prerelease": prerelease,
+            "make_latest": "false" if prerelease else "true",
+        })
+        require(release["draft"], "Created release is not a draft")
+    require(release["tag_name"] == tag, "Release tag identity mismatch")
+    require(type(release["id"]) is int and release["id"] > 0, "Invalid release identity")
+    endpoint = f"repos/{repository}/releases/{release['id']}"
+    uploaded = verify_uploaded(release, files, repository)
+    if not release["draft"]:
+        require(release["prerelease"] == prerelease, "Published release preview status mismatch")
+        require(uploaded == set(files), "Published releases cannot be overwritten")
+        print(f"Already published and verified: https://github.com/{repository}/releases/tag/{tag}")
+        return
+    upload_url = release["upload_url"].partition("{")[0]
+    require(upload_url == f"https://uploads.github.com/repos/{repository}/releases/{release['id']}/assets", "Unexpected release upload endpoint")
+    for name, path in files.items():
+        if name not in uploaded:
+            gh("api", "--method", "POST", "--header", "Content-Type: application/octet-stream", "--input", str(path), upload_url + "?name=" + quote(name, safe=""))
+    refreshed = api(endpoint)
+    require(refreshed["id"] == release["id"] and refreshed["tag_name"] == tag, "Release identity changed")
+    require(refreshed["draft"], "Release was published before upload verification completed")
+    require(verify_uploaded(refreshed, files, repository) == set(files), "Release assets are incomplete")
+    require_remote_tag(repository, tag, manifest["source_commit"])
+    published = api(endpoint, "PATCH", {"body": notes, "prerelease": prerelease, "draft": False, "make_latest": "false" if prerelease else "true"})
+    require(published["id"] == release["id"] and published["tag_name"] == tag and not published["draft"] and published["prerelease"] == prerelease, "Publication identity mismatch")
+    require(verify_uploaded(published, files, repository) == set(files), "Published release assets are incomplete")
+    print(f"Published https://github.com/{repository}/releases/tag/{tag}")
 
 
 def main():
@@ -89,36 +134,7 @@ def main():
     receipt = json.loads(verification.read_text())
     require(receipt["ci"]["repository"] == repository and receipt["ci"]["run_id"] == os.environ["GITHUB_RUN_ID"], "Acceptance belongs to another workflow run")
     require(receipt["ci"]["run_url"] == f"https://github.com/{repository}/actions/runs/{os.environ['GITHUB_RUN_ID']}", "Invalid acceptance run URL")
-    require_remote_tag(repository, tag, manifest["source_commit"])
-    release = find_release(repository, tag)
-    files = {path.name: path for path in [archive, provenance, checksum, verification]}
-    with tempfile.TemporaryDirectory(prefix="apple-cli-release-notes-") as temporary:
-        notes = Path(temporary) / "notes.md"
-        notes.write_text(release_notes(manifest, receipt))
-        prerelease = "-" in manifest["version"]
-        if release is None:
-            arguments = ["release", "create", tag, "--repo", repository, "--verify-tag", "--draft", "--target", manifest["source_commit"], "--title", "apple-cli " + manifest["version"], "--notes-file", str(notes)]
-            if prerelease:
-                arguments += ["--prerelease", "--latest=false"]
-            gh(*arguments)
-            release = find_release(repository, tag)
-            require(release is not None, "Created release draft is missing")
-        endpoint = f"repos/{repository}/releases/{release['id']}"
-        require(release["tag_name"] == tag, "Release tag identity mismatch")
-        uploaded = verify_uploaded(release, files, repository, tag)
-        if not release["draft"]:
-            require(uploaded == set(files), "Published releases cannot be overwritten")
-            print(f"Already published and verified: https://github.com/{repository}/releases/tag/{tag}")
-            return
-        for name, path in files.items():
-            if name not in uploaded:
-                gh("release", "upload", tag, str(path), "--repo", repository)
-        release = api(endpoint)
-        require(release["draft"], "Release was published before upload verification completed")
-        require(verify_uploaded(release, files, repository, tag) == set(files), "Release assets are incomplete")
-        require_remote_tag(repository, tag, manifest["source_commit"])
-        gh("release", "edit", tag, "--repo", repository, "--notes-file", str(notes), "--prerelease=" + str(prerelease).lower(), "--draft=false")
-    print(f"Published https://github.com/{repository}/releases/tag/{tag}")
+    publish_files(repository, tag, manifest, receipt, {path.name: path for path in [archive, provenance, checksum, verification]})
 
 
 if __name__ == "__main__":

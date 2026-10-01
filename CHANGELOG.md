@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.1.0-alpha.3 — 2026-10-02
+
+First public alpha of the target-first `apple` CLI and optional `apple-cli-mcp`
+adapter for macOS.
+
+- Nineteen typed Apple app and system targets, structured JSON, bounded reads,
+  target-owned diagnostics and explicit mutation or external-action rules.
+- CLI-derived MCP tools over stdio and Streamable HTTP, with bounded subprocess
+  execution, cancellation and HTTP session limits.
+- Self-contained macOS arm64 archives with bundled Swift runtime libraries,
+  source and dependency provenance, checksums and executable acceptance records.
+- GitHub Actions builds and accepts the tagged archive before publishing the
+  same files. Draft assets are uploaded and verified by their release identity.
+- Organization Homebrew distribution and weekly dependency update pull requests.
+
+Known limitation: Notes body structure summaries can underreport strikethrough
+formatting on existing notes. A zero count does not prove that the note has no
+strikethrough text; inspect the HTML export for format-sensitive workflows.
+`notes read` returns plain text.
+
+Compatibility and per-target limitations are described in the
+[Release Guide](Documentation/Reference/ReleaseGuide.md) and target manuals.
+
 ## 0.1.0-alpha.2 — 2026-10-01
 
 First public alpha of the target-first `apple` CLI and optional `apple-cli-mcp`
