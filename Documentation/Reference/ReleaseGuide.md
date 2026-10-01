@@ -67,19 +67,57 @@ This integration suite reads local Notes data and may need the host's existing
 permissions and account configuration. It does not replace default tests or
 authorize a mutation.
 
-## Prepare A Local Candidate
+## GitHub Release Publication
+
+Formal releases are built, accepted and published by
+[release.yml](https://github.com/computer-mcp/apple-cli/blob/main/.github/workflows/release.yml).
+Pushing a version tag such as
+`v0.1.0-alpha.1` triggers the workflow. Its manual `tag` input accepts an existing
+version tag for a new run. The tag must agree with `CLIVersion.current` and the
+checked-out commit; `CHANGELOG.md` must contain that version's entry.
+
+The macOS build job uses read-only repository permissions. It runs source
+validation, locked test/release builds with two build jobs, default concurrent
+tests, staged binary content/signature checks and installed CLI/MCP acceptance.
+`Scripts/verify-release --run-tests` then validates the actual archive and runs
+the existing CLI/MCP tests against its safely extracted programs. This acceptance
+includes PATH/symlink startup and stdio/loopback HTTP forwarding.
+
+The workflow transfers four files to an independent publication job:
+
+- the macOS arm64 `.tar.gz` archive;
+- its `.tar.gz.sha256` checksum;
+- its `.provenance.json` source/build manifest;
+- its `.verification.json` archive/executable acceptance receipt.
+
+The publisher uses the job-scoped `GITHUB_TOKEN` with `contents: write`. It
+rechecks the source, archive, receipt and remote tag, creates a draft, uploads
+the accepted files, verifies the uploaded bytes, then publishes it. Versions
+containing a prerelease suffix are published as prereleases. No rebuild or
+re-sign occurs between acceptance and publication.
+
+For an interrupted upload, rerun the failed publication job to reuse its
+successful build's artifact. Matching draft assets are verified and missing
+assets are uploaded. A published release with the same accepted bytes is an
+idempotent success. Different draft or published bytes are refused; a new build
+candidate requires disposing of any incomplete previous draft before retrying.
+Published versions remain immutable under this workflow.
+
+## Local Packaging Validation
 
 Commit the complete intended source, including the selected project license,
 dependency notices and `Package.resolved`. Start from a clean checkout of that
 commit, then run:
 
 ```bash
-Scripts/package-release
+Scripts/package-release --jobs 2
+Scripts/verify-release --run-tests
 ```
 
-The script bootstraps the selected SDK, builds tests with locked dependencies,
-runs default concurrent tests, builds both optimized products, and runs CLI/MCP
-black-box tests using the staged release binaries. The MCP tests execute real
+`Scripts/package-release` is the shared packaging step used by CI and local
+development checks. It bootstraps the selected SDK, builds tests with locked
+dependencies, runs default concurrent tests, builds both optimized products, and
+runs CLI/MCP black-box tests using the staged release binaries. The MCP tests execute real
 CLI help and a benign notification preview from an unrelated directory through
 stdio and loopback HTTP. They cover PATH/symlink installation and explicit
 `APPLE_CLI_BIN_DIR` selection.
@@ -89,7 +127,7 @@ location. Existing output names are refused. The archive includes both binaries,
 required Swift runtime libraries, installation guidance, the project license and
 dependency notices. `swift-stdlib-tool` selects runtime libraries from the same
 toolchain used to build. The packager removes toolchain run paths from staged
-executables, strips debug symbols and applies local ad-hoc signatures before
+executables, strips debug symbols and applies ad-hoc signatures before
 testing those bytes. Public-content validation scans every staged executable and
 Swift runtime library for machine-local directory paths before CLI/MCP acceptance.
 Every linked library must resolve through a system path or the bundled Swift
@@ -107,7 +145,12 @@ Scripts/package-release --tag v0.1.0-alpha.1
 
 The tag must match the canonical source version and resolve to `HEAD`.
 The script does not create a repository, tag, remote push or GitHub release.
-Publishing is a separate maintainer action after inspecting the candidate.
+`Scripts/verify-release` uses Python 3.12 or newer for archive validation. Its
+`--run-tests` mode requires the matching source checkout, build-validation logs
+and test executables. Its `--require-verification` mode checks the existing
+receipt and archive without running macOS executables, as the publication job
+does on Linux. A development-machine candidate is local validation evidence;
+formal GitHub releases use the files accepted by the release workflow.
 
 ## Install The Archive
 
@@ -129,19 +172,21 @@ resolves its actual executable location, including symlinks, to find that siblin
 For a separate CLI directory, set `APPLE_CLI_BIN_DIR` to the directory containing
 `apple`. It is a directory override, not an executable filename.
 
-Packaged executables use local ad-hoc signatures after relocation; Swift runtime
+Packaged executables use ad-hoc signatures after relocation; Swift runtime
 libraries retain their toolchain signatures. Project Developer ID signing
 and notarization are not established by checksum verification, and macOS may
 apply its download-origin checks. A build from the inspected source is another
 installation route. Do not disable system security protections as an installation
 step. Inspect target help and doctor output for specific permission recovery.
 
-## GitHub Validation
+## CI Runner And Evidence
 
-`ci.yml` validates pushes to `main`, pull requests and manual runs. `release.yml`
-is a manual candidate workflow for an existing version tag. Both use the same
-local packaging script, read-only repository permissions and pinned action
-revisions. They upload artifacts and logs; they do not publish a GitHub release.
+`ci.yml` validates pushes to `main`, pull requests and manual runs, including
+actual archive extraction and executable acceptance. It uploads workflow
+artifacts and logs. `release.yml` adds the independent publication job for
+version tags. Both use the shared packaging/verification scripts and pinned
+action revisions. Only the release publication job receives repository write
+permission.
 
 The configured `xcode-27` arm64 image is a public-preview runner, with Xcode
 27.0 selected explicitly. Its availability is documented by

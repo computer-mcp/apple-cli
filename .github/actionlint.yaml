@@ -1,0 +1,5 @@
+# Additional label from GitHub's hosted runner reference:
+# https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+self-hosted-runner:
+  labels:
+    - xcode-27

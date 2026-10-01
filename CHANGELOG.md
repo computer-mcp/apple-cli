@@ -14,10 +14,12 @@ adapter for macOS.
   CLI installation for the adapter.
 - Default tests use fixtures and mocks; host Notes reads require explicit
   integration-test opt-in.
-- Local release packaging bundles required Swift compatibility runtime libraries,
+- Release packaging bundles required Swift compatibility runtime libraries,
   strips development debug symbols, checks staged files for local paths, and
   records source, dependency, toolchain and binary provenance alongside SHA-256
   checksums.
+- Version-tag GitHub Actions builds and accepts the actual archive before
+  publishing the same files; prerelease versions retain their prerelease status.
 - Notes readiness diagnostics distinguish missing APIs from model-backed
   dynamic accessors that require operation-context verification.
 

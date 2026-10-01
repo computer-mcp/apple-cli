@@ -16,7 +16,7 @@ concurrency:
 jobs:
   package:
     runs-on: xcode-27
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
@@ -32,16 +32,17 @@ jobs:
       - name: Build, test and stage the release candidate
         run: |
           Scripts/validate-public-content
-          Scripts/package-release
+          Scripts/package-release --jobs 2
+          Scripts/verify-release --run-tests
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: apple-cli-macos-arm64-candidate
+          name: apple-cli-macos-arm64-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: .build/releases/*
           if-no-files-found: error
       - name: Preserve validation logs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: validation-logs
+          name: validation-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: .build/release-validation
           if-no-files-found: ignore

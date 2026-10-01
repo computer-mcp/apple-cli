@@ -3,9 +3,10 @@
 `apple-cli` is a CLI-target-first Swift package for local Apple app and
 Apple domain capabilities on macOS.
 
-Its canonical GitHub identity is `computer-mcp/apple-cli`. This is an initial
-preview; see the [Release Guide](Documentation/Reference/ReleaseGuide.md) for
-build, installation and compatibility details.
+Its canonical GitHub identity is `computer-mcp/apple-cli`. GitHub Actions builds,
+accepts and publishes version-tag releases. This is an initial preview; see the
+[Release Guide](Documentation/Reference/ReleaseGuide.md) for publication,
+installation and compatibility details.
 
 Copyright (c) 2026 Xudong Xu. Licensed under the [Apache License 2.0](LICENSE).
 Third-party components retain their own licenses; see
