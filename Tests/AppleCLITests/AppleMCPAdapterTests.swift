@@ -591,10 +591,7 @@ struct AppleMCPAdapterTests {
 
     try process.run()
     defer {
-      if process.isRunning {
-        process.terminate()
-      }
-      process.waitUntilExit()
+      stopTestProcess(process)
       try? stdin.fileHandleForWriting.close()
       try? stdout.fileHandleForReading.close()
       try? stderr.fileHandleForReading.close()
@@ -693,10 +690,7 @@ struct AppleMCPAdapterTests {
 
     try process.run()
     defer {
-      if process.isRunning {
-        process.terminate()
-      }
-      process.waitUntilExit()
+      stopTestProcess(process)
       try? stdout.fileHandleForReading.close()
       try? stderr.fileHandleForReading.close()
     }
@@ -780,8 +774,7 @@ struct AppleMCPAdapterTests {
     process.standardError = stderr
     try process.run()
     defer {
-      if process.isRunning { process.terminate() }
-      process.waitUntilExit()
+      stopTestProcess(process)
       try? stdout.fileHandleForReading.close()
       try? stderr.fileHandleForReading.close()
     }
@@ -1392,6 +1385,21 @@ struct AppleMCPAdapterTests {
     #expect(error["code"]?.stringValue == CLIErrorCode.validationError.rawValue)
     #expect(runner.calls.isEmpty)
   }
+}
+
+private func stopTestProcess(_ process: Process) {
+  guard process.isRunning else { return }
+  process.terminate()
+  let grace = ProcessInfo.processInfo.systemUptime + 0.25
+  while process.isRunning, ProcessInfo.processInfo.systemUptime < grace {
+    usleep(10_000)
+  }
+  if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
+  let deadline = ProcessInfo.processInfo.systemUptime + 2
+  while process.isRunning, ProcessInfo.processInfo.systemUptime < deadline {
+    usleep(10_000)
+  }
+  #expect(!process.isRunning, "Test process did not stop within the cleanup deadline.")
 }
 
 private func stagedMCPInstallation(separateCLI: Bool) throws -> (root: URL, server: URL, cliDirectory: URL) {

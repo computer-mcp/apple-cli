@@ -9,6 +9,7 @@ Read these files as current cross-target architecture truth:
 - [CLI Contract](CliContract.md)
 - [Permission And Wording](PermissionAndWording.md)
 - [MCP Adapter Boundary](McpAdapterBoundary.md)
+- [Versioning and Release](VersioningAndRelease.md)
 - [Target Implementation Mechanisms](TargetImplementationMechanisms.md)
 
 ## Target Design Ownership

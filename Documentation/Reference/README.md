@@ -12,6 +12,7 @@ repository reference, and keep current architecture rules in
 ## Global References
 
 - [Apple CLI User Guide](AppleCLIUserGuide.md)
+- [MCP Setup](AppleCLIUserGuide.md#mcp-setup)
 - [Safety Gates](SafetyGates.md)
 - [Release Guide](ReleaseGuide.md)
 

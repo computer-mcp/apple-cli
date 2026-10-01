@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-alpha.1 — Unreleased
+## 0.1.0-alpha.1 — 2026-10-01
 
 Initial preview of the target-first `apple` CLI and optional `apple-cli-mcp`
 adapter for macOS.
@@ -31,6 +31,11 @@ adapter for macOS.
   publishing the same files; prerelease versions retain their prerelease status.
 - Notes readiness diagnostics distinguish missing APIs from model-backed
   dynamic accessors that require operation-context verification.
+
+Known limitation: Notes body structure summaries can underreport strikethrough
+formatting on existing notes. A zero count does not prove that the note has no
+strikethrough text; inspect the HTML export for format-sensitive workflows.
+`notes read` returns plain text.
 
 Compatibility and per-target limitations are described in the
 [Release Guide](Documentation/Reference/ReleaseGuide.md) and target manuals.

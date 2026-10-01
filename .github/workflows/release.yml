@@ -46,6 +46,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           Scripts/validate-public-content
+          python3 -B -m unittest discover -s Tests/ReleaseTools
           Scripts/package-release --tag "$RELEASE_TAG" --jobs 2
           Scripts/verify-release --tag "$RELEASE_TAG" --run-tests --github-output
           printf 'artifact_name=%s\n' "$CANDIDATE_ARTIFACT" >> "$GITHUB_OUTPUT"
