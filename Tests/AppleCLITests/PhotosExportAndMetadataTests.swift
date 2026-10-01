@@ -257,7 +257,7 @@ struct PhotosExportAndMetadataTests {
     let nestedStaleFile = nestedDirectory.appendingPathComponent("remove.txt")
     let keepFile = destination.appendingPathComponent("keep.txt")
     let manualKeepFile = destination.appendingPathComponent("manual.keep")
-    let dotFile = destination.appendingPathComponent(".photos_keep")
+    let dotFile = destination.appendingPathComponent(".apple-cli-photos-keep")
     let command = PhotosCommand(backend: PhotosCompositeBackend())
 
     try FileManager.default.createDirectory(at: nestedDirectory, withIntermediateDirectories: true)

@@ -1,7 +1,7 @@
 # Photos Reference
 
 - [User Guide](UserGuide.md): ordinary `apple photos` usage.
-- [Developer Guide](DeveloperGuide.md): testing, fixtures, and opt-in Swift Testing guidance.
+- [Developer Guide](DeveloperGuide.md): package-local tests and fixture ownership.
 - [Photos Architecture](../../Architecture/Photos/Architecture.md)
 - [Photos Capability List](../../Architecture/Photos/CapabilityList.md)
-- [Photos Parity Matrix](../../Architecture/Photos/ParityMatrix.md)
+- [Photos Validation Matrix](../../Architecture/Photos/ValidationMatrix.md)

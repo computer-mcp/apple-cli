@@ -1035,7 +1035,7 @@ private func servicePlistPayload(
     arguments.append(contentsOf: ["--lldb-path", lldbPath])
   }
   return [
-    "Label": "io.github.computer-mcp.apple-cli.intelligence.recompute",
+    "Label": IntelligencePaths.serviceLabel,
     "ProgramArguments": arguments,
     "RunAtLoad": true,
     "KeepAlive": false,

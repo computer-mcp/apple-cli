@@ -30,6 +30,7 @@ public enum IntelligenceMechanism: String, Codable, CaseIterable, Sendable {
 }
 
 public struct IntelligencePaths: Codable, Equatable, Sendable {
+  static let serviceLabel = "io.github.computer-mcp.apple-cli.intelligence.recompute"
   public var root: String
   public var stateDir: String
 
@@ -54,7 +55,7 @@ public struct IntelligencePaths: Codable, Equatable, Sendable {
   }
 
   public var servicePlist: String {
-    Self.join(root, "Library/LaunchDaemons/io.github.computer-mcp.apple-cli.intelligence.recompute.plist")
+    Self.join(root, "Library/LaunchDaemons/\(Self.serviceLabel).plist")
   }
 
   public static func join(_ root: String, _ relative: String) -> String {

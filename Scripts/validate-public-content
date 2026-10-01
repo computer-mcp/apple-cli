@@ -6,6 +6,20 @@ let root = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
   .resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent()
 
 do {
+  var artifacts: [URL] = []
+  var arguments = CommandLine.arguments.dropFirst().makeIterator()
+  while let option = arguments.next() {
+    if option == "--help" || option == "-h" {
+      print("Usage: Scripts/validate-public-content [--artifact FILE ...]")
+      print("Check public source files and optional release artifacts for machine-local paths.")
+      exit(0)
+    }
+    guard option == "--artifact", let path = arguments.next(), !path.isEmpty else {
+      FileHandle.standardError.write(Data("Unknown or incomplete option: \(option). Use --help.\n".utf8))
+      exit(2)
+    }
+    artifacts.append(URL(fileURLWithPath: path, relativeTo: root).standardizedFileURL)
+  }
   let process = Process()
   let pipe = Pipe()
   process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
@@ -22,7 +36,7 @@ do {
   let paths = Set(String(decoding: bytes, as: UTF8.self).split(separator: "\0").map(String.init))
   let links = try NSRegularExpression(pattern: #"!?\[[^\]]*\]\(([^\n)]+)\)"#)
   let scheme = try NSRegularExpression(pattern: #"^[a-zA-Z][a-zA-Z0-9+.-]*:"#)
-  let localPath = try NSRegularExpression(pattern: #"/(?:Users|home)/[A-Za-z0-9_.-]+/"#)
+  let localPath = try NSRegularExpression(pattern: #"/(?:Users|home)/[^/\x00\r\n]+/"#)
   let credentials = try NSRegularExpression(
     pattern:
       #"-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}"#
@@ -64,12 +78,23 @@ do {
       }
     }
   }
+  for artifact in artifacts {
+    guard try artifact.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+      failures.append("\(artifact.lastPathComponent): release artifact must be a regular file")
+      continue
+    }
+    let bytes = try Data(contentsOf: artifact)
+    let text = String(decoding: bytes, as: UTF8.self)
+    if localPath.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil {
+      failures.append("\(artifact.lastPathComponent): release artifact contains a machine-local path")
+    }
+  }
   guard failures.isEmpty else {
     FileHandle.standardError.write(Data((failures.joined(separator: "\n") + "\n").utf8))
     exit(1)
   }
   print(
-    "Validated \(markdownCount) Markdown files and \(paths.count) public file paths. No missing local links or scanned credential/path patterns."
+    "Validated \(markdownCount) Markdown files, \(paths.count) public file paths and \(artifacts.count) release artifacts. No missing local links or scanned credential/path patterns."
   )
 } catch {
   FileHandle.standardError.write(Data(("validate-public-content: \(error)\n").utf8))

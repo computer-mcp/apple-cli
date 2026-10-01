@@ -89,7 +89,9 @@ location. Existing output names are refused. The archive includes both binaries,
 required Swift runtime libraries, installation guidance, the project license and
 dependency notices. `swift-stdlib-tool` selects runtime libraries from the same
 toolchain used to build. The packager removes toolchain run paths from staged
-executables and applies local ad-hoc signatures before testing those bytes.
+executables, strips debug symbols and applies local ad-hoc signatures before
+testing those bytes. Public-content validation scans every staged executable and
+Swift runtime library for machine-local directory paths before CLI/MCP acceptance.
 Every linked library must resolve through a system path or the bundled Swift
 libraries; runtime collection does not expand the tested macOS range. The adjacent
 manifest records the source commit/tree, lockfile hash, toolchain, SDK, link-input

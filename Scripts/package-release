@@ -102,6 +102,7 @@ func isSystemLibrary(_ path: String) -> Bool {
 }
 
 func relocate(_ executable: URL) throws {
+  try run("/usr/bin/xcrun", ["strip", "-S", executable.path])
   let paths = try runPaths(executable)
   for path in paths where path != "/usr/lib/swift" && path != "@loader_path" {
     try run("/usr/bin/install_name_tool", ["-delete_rpath", path, executable.path])
@@ -249,7 +250,7 @@ func main() throws {
       throw ReleaseError.invalid("Binary copy changed bytes.")
     }
   }
-  message("Collect Swift runtime libraries and relocate staged executables")
+  message("Collect Swift runtime libraries and prepare staged executables")
   var scanArguments = ["--platform", "macosx"]
   for name in ["apple", "apple-cli-mcp"] {
     scanArguments += ["--scan-executable", bin.appendingPathComponent(name).path]
@@ -306,6 +307,12 @@ func main() throws {
       "build_sha256": try digest(releaseBin.appendingPathComponent(name)),
     ])
   }
+  try validate(
+    "installed-release-content",
+    ["swift", root.appendingPathComponent("Scripts/validate-public-content").path]
+      + (["apple", "apple-cli-mcp"] + runtimeNames.sorted()).flatMap {
+        ["--artifact", bin.appendingPathComponent($0).path]
+      }, environment: testEnvironment)
   testEnvironment["APPLE_CLI_BIN"] = bin.appendingPathComponent("apple").path
   testEnvironment["APPLE_CLI_MCP_BIN"] = bin.appendingPathComponent("apple-cli-mcp").path
   try validate(
@@ -351,8 +358,9 @@ func main() throws {
     Read Documentation/Reference/ReleaseGuide.md for installation, compatibility,
     signature and permission guidance. Per-target doctor and help commands
     explain the available behavior.
-    Executables have local ad-hoc signatures after relocation. Required Swift
-    runtime libraries are included alongside them with their original signatures.
+    Executables have stripped debug symbols and local ad-hoc signatures after
+    relocation. Required Swift runtime libraries are included alongside them
+    with their original signatures.
     Project Developer ID signing and notarization are not part of this package.
 
     Documentation: https://github.com/computer-mcp/apple-cli
@@ -385,7 +393,7 @@ func main() throws {
     "notes_link_inputs": stubProvenance, "binaries": binaries, "swift_runtime_libraries": runtimes,
     "validation": validation,
     "signing":
-      "local ad-hoc executable signatures after relocation; original Swift runtime signatures; no project Developer ID or notarization",
+      "debug symbols stripped before local ad-hoc executable signatures; original Swift runtime signatures; no project Developer ID or notarization",
     "compatibility":
       "Validated on the recorded macOS/architecture. Individual private-framework capabilities and permissions require target-specific doctor checks.",
   ]

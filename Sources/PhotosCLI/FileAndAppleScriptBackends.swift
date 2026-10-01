@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 import Utility
 
 public struct PhotosFileBackend: @unchecked Sendable {
+  private static let exportKeepFileName = ".apple-cli-photos-keep"
   private let fileManager: FileManager
 
   public init(fileManager: FileManager = .default) {
@@ -1464,7 +1465,7 @@ public struct PhotosFileBackend: @unchecked Sendable {
     }
 
     protect(reportURL)
-    protect(root.appendingPathComponent(".photos_keep"))
+    protect(root.appendingPathComponent(Self.exportKeepFileName))
     if let stateURL {
       protect(stateURL)
     }
@@ -1545,7 +1546,7 @@ public struct PhotosFileBackend: @unchecked Sendable {
   private func exportCleanupKeepRules(destinationURL: URL, commandRules: [String]) throws
     -> [String]
   {
-    let keepFile = destinationURL.appendingPathComponent(".photos_keep")
+    let keepFile = destinationURL.appendingPathComponent(Self.exportKeepFileName)
     var rules: [String] = []
     if fileManager.fileExists(atPath: keepFile.path) {
       let contents = try String(contentsOf: keepFile, encoding: .utf8)
