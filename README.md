@@ -26,6 +26,21 @@ apple <target> <resource?> <action> [options]
 
 ## Install
 
+### Homebrew
+
+On macOS arm64, install from the organization tap:
+
+~~~bash
+brew install computer-mcp/tap/apple-cli
+apple --version
+~~~
+
+The [Homebrew tap](https://github.com/computer-mcp/homebrew-tap) installs both
+executables and their runtime libraries from the accepted GitHub release.
+Its formula declares the tested macOS requirement.
+
+### Release archive
+
 Download the macOS arm64 archive and its checksum from
 [GitHub Releases](https://github.com/computer-mcp/apple-cli/releases).
 Release archives are built, tested and published by GitHub Actions.
@@ -149,6 +164,9 @@ argument:
 | --- | --- |
 | Command | `/path/to/extracted-release/bin/apple-cli-mcp` |
 | Arguments | `stdio` |
+
+For Homebrew, get the full command path with
+`echo "$(brew --prefix)/bin/apple-cli-mcp"`.
 
 To start the server directly:
 

@@ -126,6 +126,18 @@ Preserve failed logs and identify subsequent attempts separately; local evidence
 and compatibility claims remain limited to the source, artifacts and checks
 they cover.
 
+## Automated Maintenance
+
+Dependabot checks Swift packages and GitHub Actions weekly and opens update
+pull requests. Those changes run the repository CI and require compatibility,
+lockfile and dependency-notice review before merging.
+
+The organization [Homebrew tap](https://github.com/computer-mcp/homebrew-tap)
+owns Formula and Cask distribution metadata. Its update workflow consumes
+published releases, validates their checksums and acceptance records, and
+checks installation before committing a distribution update. Product releases
+retain the version authority and publication gates described above.
+
 ## Entry Points and Retention
 
 | Operation | Entry point | Access |

@@ -3,7 +3,9 @@ import Foundation
 import Testing
 import Utility
 
-@Suite
+// Keep cleanup timing probes separate from executor saturation fixtures.
+// Explicit task-group tests retain concurrent subprocess coverage.
+@Suite(.serialized)
 struct SubprocessTests {
   @Test func synchronousInputAndOutputAreDrainedTogetherWithoutChangingBytes() throws {
     let input = Data((0..<262_144).map { UInt8(truncatingIfNeeded: $0) })
