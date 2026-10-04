@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["notes", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account", "folder"])
       let notes = try listVisibleNotes(options, limit: try commandLimit(options))
       return try result(
@@ -15,19 +15,19 @@ extension NotesCommand {
         options: options
       )
     case ["notes", "search", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try searchAudit(options)
     case ["notes", "search", "natural-language"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "folder", "account"])
       return try searchNaturalLanguage(options)
     case ["notes", "search", "attachment-content"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "folder", "id", "account", "family"])
       return try searchAttachmentContent(options)
     case ["notes", "search", "locked-title"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "folder", "account"])
       let query = try notesSearchQuery(options)
       let notes = try searchLockedTitleNotes(options, query: query)
@@ -37,7 +37,7 @@ extension NotesCommand {
         options: options
       )
     case ["notes", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(
         options,
         allowedOptions: ["query", "folder", "id", "account", "scope"],
@@ -156,7 +156,7 @@ extension NotesCommand {
         details: ["command": options.positionals.joined(separator: " ")]
       )
     case ["notes", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "title", "folder"])
       let note = try resolveRead(options)
       return try result(

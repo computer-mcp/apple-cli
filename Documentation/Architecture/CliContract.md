@@ -195,8 +195,7 @@ parser behavior, JSON envelopes, exit codes, target-local safety policy,
 permission/error behavior, backend semantics, and packaged test resources.
 
 Swift tests must not be used as prose-grep guards for `README.md`,
-`Documentation/`, release notes, or temporary `.agent` execution
-state. Documentation and release-surface drift belongs to the owning surface's
+`Documentation/` or release notes. Documentation and release-surface drift belongs to the owning surface's
 generation, linting, review, or scaffold validation process, not target
 behavior tests.
 

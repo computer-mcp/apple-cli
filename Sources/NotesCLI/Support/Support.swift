@@ -341,16 +341,6 @@ func automationError(_ errorInfo: NSDictionary) -> CLIError {
     details: ["executor": "NSAppleScript"])
 }
 
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
-    )
-  }
-}
-
 func validateDryRunOptions(_ options: CLIOptions) throws {}
 
 func validateMutationIntent(_ options: CLIOptions) throws {}
@@ -420,16 +410,6 @@ func tagMatches(_ record: NotesTagRecord, _ tag: String) -> Bool {
   return record.id.localizedCaseInsensitiveCompare(tag) == .orderedSame
     || record.displayText.localizedCaseInsensitiveCompare(tag) == .orderedSame
     || record.standardizedContent?.localizedCaseInsensitiveCompare(standardized) == .orderedSame
-}
-
-func sha256Hex(_ value: String) -> String {
-  let digest = SHA256.hash(data: Data(value.utf8))
-  return digest.map { String(format: "%02x", $0) }.joined()
-}
-
-func sha256Hex(_ data: Data) -> String {
-  let digest = SHA256.hash(data: data)
-  return digest.map { String(format: "%02x", $0) }.joined()
 }
 
 func md5Hex(_ data: Data) -> String {

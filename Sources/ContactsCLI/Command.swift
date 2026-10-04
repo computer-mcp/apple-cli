@@ -1,5 +1,4 @@
 import Contacts
-import CryptoKit
 import Foundation
 import Utility
 
@@ -14,7 +13,7 @@ public struct ContactsCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["contacts", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query"])
       let query = try requiredOption("query", options: options)
       guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
@@ -32,7 +31,7 @@ public struct ContactsCommand: Sendable {
         options: options
       )
     case ["contacts", "duplicates"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["field"])
       let field = try duplicateField(options)
       let groups = try backend.findDuplicateContacts(
@@ -44,7 +43,7 @@ public struct ContactsCommand: Sendable {
         options: options
       )
     case ["contacts", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       guard let contact = try backend.readContact(id: id) else {
@@ -109,7 +108,7 @@ public struct ContactsCommand: Sendable {
         )
       }
     case ["groups", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let groups = try backend.listGroups(limit: try commandLimit(options))
       return try result(
@@ -118,7 +117,7 @@ public struct ContactsCommand: Sendable {
         options: options
       )
     case ["groups", "members"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       guard

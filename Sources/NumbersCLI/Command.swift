@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import Darwin
 import Foundation
 import Utility
@@ -24,7 +23,7 @@ public struct NumbersCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["documents", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let documents = try backend.listDocuments(
         path: try requiredOption("path", options: options),
@@ -36,7 +35,7 @@ public struct NumbersCommand: Sendable {
         options: options
       )
     case ["documents", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path", "query"])
       let documents = try backend.searchDocuments(
         path: try requiredOption("path", options: options),
@@ -49,7 +48,7 @@ public struct NumbersCommand: Sendable {
         options: options
       )
     case ["documents", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let path = try requiredOption("path", options: options)
       guard let document = try backend.readDocument(path: path) else {
@@ -62,7 +61,7 @@ public struct NumbersCommand: Sendable {
         options: options
       )
     case ["sheets", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let document = try requiredDocument(options)
       let sheets = try contentBackend.listSheets(path: document.path)
@@ -72,7 +71,7 @@ public struct NumbersCommand: Sendable {
         options: options
       )
     case ["tables", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path", "sheet", "table"])
       let document = try requiredDocument(options)
       let sheet = try normalizedName("sheet", options: options)

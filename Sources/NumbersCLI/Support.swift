@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import Darwin
 import Foundation
 import Utility
@@ -12,16 +11,6 @@ enum NumbersResourceKeys {
     .fileSizeKey,
     .contentModificationDateKey,
   ]
-}
-
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
-    )
-  }
 }
 
 func validateDryRunOptions(_ options: CLIOptions) throws {}
@@ -42,16 +31,6 @@ func validateTargetOptions(_ options: CLIOptions, allowedOptions: Set<String>) t
 
 func unsupportedNumbersCapability(_ message: String) -> CLIError {
   CLIError(code: .unsupportedOperation, message: message)
-}
-
-func sha256Hex(_ value: String) -> String {
-  let digest = SHA256.hash(data: Data(value.utf8))
-  return digest.map { String(format: "%02x", $0) }.joined()
-}
-
-func sha256Hex(_ data: Data) -> String {
-  let digest = SHA256.hash(data: data)
-  return digest.map { String(format: "%02x", $0) }.joined()
 }
 
 func requiredOption(_ name: String, options: CLIOptions) throws -> String {

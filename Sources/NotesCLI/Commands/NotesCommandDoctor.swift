@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["doctor", "note"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       guard let note = try implementation.readNote(id: id) else {
@@ -23,7 +23,7 @@ extension NotesCommand {
         options: options
       )
     case ["doctor", "folder"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["folder"])
       let selector = try requiredOption("folder", options: options)
       let folder = try folderIdentity(selector: selector)
@@ -34,7 +34,7 @@ extension NotesCommand {
         options: options
       )
     case ["doctor", "account"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account"])
       let selector = try requiredOption("account", options: options)
       let account = try accountIdentity(selector: selector)
@@ -45,7 +45,7 @@ extension NotesCommand {
         options: options
       )
     case ["doctor", "store"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["scope"])
       let debug = try sqliteReader.debugStore(scope: options.targetOption("scope") ?? "summary")
       return try result(
@@ -54,7 +54,7 @@ extension NotesCommand {
         options: options
       )
     case ["doctor", "write-lab"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let check = notesWriteCapabilityDoctorCheck()
       return try result(
@@ -63,7 +63,7 @@ extension NotesCommand {
         options: options
       )
     case ["doctor", "rich-lab"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let check = notesRichCapabilityDoctorCheck()
       return try result(

@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Utility
 
@@ -51,16 +50,6 @@ func messageDetail(_ row: [String: Any]) throws -> MessagesMessageDetail {
     sentAt: messageDate(row["sentAt"]),
     isFromMe: optionalBool(row["isFromMe"]) ?? false
   )
-}
-
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
-    )
-  }
 }
 
 func validateDryRunOptions(_ options: CLIOptions) throws {}
@@ -451,11 +440,6 @@ func truncated(_ value: String, limit: Int) -> String {
     return value
   }
   return String(value.prefix(limit))
-}
-
-func sha256Hex(_ value: String) -> String {
-  let digest = SHA256.hash(data: Data(value.utf8))
-  return digest.map { String(format: "%02x", $0) }.joined()
 }
 
 func appleScriptString(_ value: String) -> String {

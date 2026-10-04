@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Utility
 
@@ -56,16 +55,6 @@ func notificationListLimit(_ options: CLIOptions) throws -> Int {
   return value
 }
 
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
-    )
-  }
-}
-
 func validateTargetOptions(_ options: CLIOptions, allowedOptions: Set<String>) throws {
   let unknownOptions = Set(options.targetOptions.keys).subtracting(allowedOptions)
   if !unknownOptions.isEmpty || !options.targetFlags.isEmpty {
@@ -118,9 +107,4 @@ func previewHumanOutput(_ request: LocalNotificationRequest) -> String {
     "subtitle: \(request.subtitle ?? "-")",
     "body: \(request.body)",
   ].joined(separator: "\n")
-}
-
-func sha256Hex(_ value: String) -> String {
-  let digest = SHA256.hash(data: Data(value.utf8))
-  return digest.map { String(format: "%02x", $0) }.joined()
 }

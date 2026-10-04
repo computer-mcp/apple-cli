@@ -30,7 +30,7 @@ public struct MapsCommand: Sendable {
     if let mutation = try runCollectionMutation(options) { return mutation }
     switch options.positionals {
     case ["favorites", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["offset"])
       let response = try favorites.listFavorites(savedListRequest(options))
       let human = response.favorites.map {
@@ -44,7 +44,7 @@ public struct MapsCommand: Sendable {
         MapsFavoriteResponse(favorite: record),
         human: "\(record.id) \(record.customName ?? record.placeName ?? "")", options: options)
     case ["collections", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["offset"])
       let response = try collections.listCollections(savedListRequest(options))
       return try result(
@@ -58,7 +58,7 @@ public struct MapsCommand: Sendable {
         MapsCollectionResponse(collection: record), human: "\(record.id) \(record.title ?? "")",
         options: options)
     case ["collections", "places", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "offset"])
       let response = try collections.listCollectionItems(
         id: savedIdentifier(options, kind: .collection), request: savedListRequest(options))
@@ -68,7 +68,7 @@ public struct MapsCommand: Sendable {
           "\($0.id) \($0.customName ?? $0.placeName ?? $0.transitLineIdentifier ?? "")"
         }.joined(separator: "\n"), options: options)
     case ["places", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(
         options,
         allowedOptions: [
@@ -77,13 +77,13 @@ public struct MapsCommand: Sendable {
       let response = try reader.searchPlaces(searchRequest(options))
       return try result(response, human: placesHumanOutput(response.places), options: options)
     case ["places", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "latitude", "longitude", "name"])
       let place = try reader.readPlace(placeSelection(options))
       return try result(
         MapsPlaceResponse(place: place), human: placeHumanOutput(place), options: options)
     case ["directions", "preview"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(
         options,
         allowedOptions: [
@@ -103,7 +103,7 @@ public struct MapsCommand: Sendable {
         MapsDirectionsResponse(directions: preview), human: directionsHumanOutput(preview),
         options: options)
     case ["directions", "calculate"], ["directions", "eta"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       let eta = options.positionals.last == "eta"
       try validateTargetOptions(
         options,

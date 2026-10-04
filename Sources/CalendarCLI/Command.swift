@@ -1,4 +1,3 @@
-import CryptoKit
 import EventKit
 import Foundation
 import Utility
@@ -14,7 +13,7 @@ public struct CalendarCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["sources", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let sources = try backend.listSources()
       let selected = Array(sources.prefix(options.limit ?? sources.count))
@@ -22,7 +21,7 @@ public struct CalendarCommand: Sendable {
         CalendarSourceListResponse(sources: selected, truncated: selected.count < sources.count),
         human: calendarSourcesHumanOutput(selected), options: options)
     case ["sources", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       guard let source = try backend.readSource(id: id) else {
@@ -33,7 +32,7 @@ public struct CalendarCommand: Sendable {
         CalendarSourceResponse(source: source), human: calendarSourcesHumanOutput([source]),
         options: options)
     case ["calendars", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["source"])
       let sourceID = try options.targetOption("source").map { _ in
         try requiredOption("source", options: options)
@@ -46,7 +45,7 @@ public struct CalendarCommand: Sendable {
         options: options
       )
     case ["calendars", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let calendar = try calendarCollectionIdentity(options)
       return try result(
@@ -126,7 +125,7 @@ public struct CalendarCommand: Sendable {
           operation: "calendars.delete", changed: changed, event: nil, deletedID: current.id)
       }
     case ["events", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["from", "to", "calendar"])
       let query = try eventQuery(options: options, searchText: nil)
       let events = try backend.listEvents(query)
@@ -136,7 +135,7 @@ public struct CalendarCommand: Sendable {
         options: options
       )
     case ["events", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["from", "to", "calendar", "query"])
       let searchText = try requiredOption("query", options: options)
       let query = try eventQuery(options: options, searchText: searchText)
@@ -147,7 +146,7 @@ public struct CalendarCommand: Sendable {
         options: options
       )
     case ["events", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       guard let event = try backend.readEvent(id: id) else {
@@ -163,7 +162,7 @@ public struct CalendarCommand: Sendable {
         options: options
       )
     case ["events", "occurrences"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "from", "to", "calendar"])
       let query = try eventOccurrenceQuery(options: options)
       guard let response = try backend.listEventOccurrences(query) else {
@@ -179,7 +178,7 @@ public struct CalendarCommand: Sendable {
         options: options
       )
     case ["availability", "check"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["from", "to", "calendar"])
       let query = try eventQuery(options: options, searchText: nil)
       let conflicts = try backend.listEvents(query)
@@ -196,7 +195,7 @@ public struct CalendarCommand: Sendable {
         options: options
       )
     case ["events", "stats"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["from", "to", "calendar"])
       let query = try eventQuery(options: options, searchText: nil)
       let events = try backend.listEvents(query)

@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["body", "structure"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       let structure = try bodyStructureReader().readBodyStructure(noteID: id)
@@ -28,7 +28,7 @@ extension NotesCommand {
         options: options
       )
     case ["body", "surfaces"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       let structure = try bodyStructureReader().readBodyStructure(noteID: id)
@@ -57,15 +57,15 @@ extension NotesCommand {
         options: options
       )
     case ["body", "format", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try bodyFormatAudit(options)
     case ["body", "math", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try bodyMathWorkflowAudit(options)
     case ["body", "collapsible", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       let structure = try bodyStructureReader().readBodyStructure(noteID: id)
@@ -89,7 +89,7 @@ extension NotesCommand {
         options: options
       )
     case ["body", "table", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       let structure = try bodyStructureReader().readBodyStructure(noteID: id)
@@ -109,7 +109,7 @@ extension NotesCommand {
         options: options
       )
     case ["body", "math", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       let structure = try bodyStructureReader().readBodyStructure(noteID: id)
@@ -129,7 +129,7 @@ extension NotesCommand {
         options: options
       )
     case ["body", "math", "verify-expression"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["text"])
       let draft = try bodyMathExpressionScanDraft(options)
       let scan = try bodyMathExpressionScanner().scanMathExpression(draft)

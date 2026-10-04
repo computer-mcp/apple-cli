@@ -1,6 +1,5 @@
 import AppKit
 import Contacts
-import CryptoKit
 import Foundation
 import Utility
 
@@ -20,7 +19,7 @@ public struct FaceTimeCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["contacts", "resolve"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query"])
       let query = try requiredOption("query", options: options)
       guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
@@ -35,7 +34,7 @@ public struct FaceTimeCommand: Sendable {
         options: options
       )
     case ["calls", "prepare"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["handle", "kind"])
       let preview = try callPreview(options)
       return try result(

@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["smart-folders", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account"])
       let smartFolders = try smartFolderReader().listSmartFolders(
         account: options.targetOption("account"),
@@ -25,7 +25,7 @@ extension NotesCommand {
         options: options
       )
     case ["smart-folders", "notes"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["folder", "account"])
       let smartFolder = try smartFolderIdentity(
         selector: try requiredOption("folder", options: options),
@@ -52,7 +52,7 @@ extension NotesCommand {
         options: options
       )
     case ["smart-folders", "criteria"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["folder", "account"])
       let smartFolder = try smartFolderIdentity(
         selector: try requiredOption("folder", options: options),
@@ -82,7 +82,7 @@ extension NotesCommand {
         options: options
       )
     case ["smart-folders", "explain"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["folder", "account"])
       let smartFolder = try smartFolderIdentity(
         selector: try requiredOption("folder", options: options),
@@ -120,7 +120,7 @@ extension NotesCommand {
         options: options
       )
     case ["smart-folders", "reasoning"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["folder", "account"])
       let smartFolder = try smartFolderIdentity(
         selector: try requiredOption("folder", options: options),
@@ -164,7 +164,7 @@ extension NotesCommand {
         options: options
       )
     case ["smart-folders", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account"])
       let smartFolders = try smartFolderReader().listSmartFolders(
         account: options.targetOption("account"),
@@ -194,11 +194,11 @@ extension NotesCommand {
         options: options
       )
     case ["smart-folders", "workflow", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try smartFolderWorkflowAudit(options)
     case ["smart-folders", "filters", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try smartFolderFilterCatalogAudit(options)
     case ["smart-folders", "filters", "add"]:

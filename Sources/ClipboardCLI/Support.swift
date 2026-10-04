@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import Darwin
 import Foundation
 import Utility
@@ -18,14 +17,6 @@ enum ClipboardLimits {
         message: "Clipboard byte and item limits are outside the supported range.",
         details: ["max_bytes": "\(maximumBytes)", "max_items": "\(maximumItems)"])
     }
-  }
-}
-
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message: "--dry-run is only valid for mutation or external-action commands.")
   }
 }
 
@@ -200,12 +191,4 @@ func readClipboardInput(_ path: String, maxBytes: Int) throws -> [ClipboardItem]
       code: .validationError,
       message: "Clipboard input must contain items with type and dataBase64 representations.")
   }
-}
-
-func sha256Hex(_ value: String) -> String {
-  sha256Hex(Data(value.utf8))
-}
-
-func sha256Hex(_ value: Data) -> String {
-  SHA256.hash(data: value).map { String(format: "%02x", $0) }.joined()
 }

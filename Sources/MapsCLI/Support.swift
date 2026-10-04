@@ -1,5 +1,4 @@
 import CoreLocation
-import CryptoKit
 import Foundation
 import Utility
 
@@ -175,16 +174,6 @@ func formattedAddress(_ placemark: CLPlacemark) -> String? {
   .nilIfEmpty
 }
 
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
-    )
-  }
-}
-
 func validateSavedListRequest(_ request: MapsSavedListRequest) throws {
   guard (1...100).contains(request.limit) else {
     throw CLIError(code: .validationError, message: "`--limit` must be between 1 and 100.")
@@ -228,7 +217,7 @@ func savedIdentifier(_ handle: String, kind: MapsSavedKind, option: String = "id
 }
 
 func validateSavedRead(_ options: CLIOptions) throws {
-  try validateReadOnly(options)
+  try CLISafety.rejectDryRunForReadOnly(options)
   try validateTargetOptions(options, allowedOptions: ["id"])
   guard options.limit == nil else {
     throw CLIError(
@@ -303,11 +292,6 @@ func directionsHumanOutput(_ preview: MapsDirectionsPreview) -> String {
     "mode: \(preview.mode)",
     "url: \(preview.mapsURL)",
   ].joined(separator: "\n")
-}
-
-func sha256Hex(_ value: String) -> String {
-  let digest = SHA256.hash(data: Data(value.utf8))
-  return digest.map { String(format: "%02x", $0) }.joined()
 }
 
 func routeEndpoint(

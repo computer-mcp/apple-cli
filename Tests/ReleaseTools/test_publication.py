@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[2]
-LOADER = importlib.machinery.SourceFileLoader("release_publication", str(ROOT / ".github/scripts/publish-release"))
+LOADER = importlib.machinery.SourceFileLoader("release_publication", str(ROOT / "Scripts/publish-release"))
 SPEC = importlib.util.spec_from_loader(LOADER.name, LOADER)
 publisher = importlib.util.module_from_spec(SPEC)
 LOADER.exec_module(publisher)

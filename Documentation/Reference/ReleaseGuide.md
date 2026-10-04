@@ -106,8 +106,8 @@ before packaging. Use Python 3.12 or newer for the release scripts.
 
 Formal releases are built, accepted and published by
 [release.yml](https://github.com/computer-mcp/apple-cli/blob/master/.github/workflows/release.yml).
-Pushing a version tag such as
-`v0.1.0-alpha.3` triggers the workflow. Its manual `tag` input accepts an existing
+Pushing a version tag
+`vVERSION` triggers the workflow. Its manual `tag` input accepts an existing
 version tag for a new run. The tag must agree with `CLIVersion.current` and the
 checked-out commit; `CHANGELOG.md` must contain that version's entry.
 
@@ -175,7 +175,7 @@ compiler output can vary; this process does not claim bit-for-bit rebuilds.
 For an existing version tag at the candidate commit:
 
 ```bash
-Scripts/package-release --tag v0.1.0-alpha.3
+Scripts/package-release --tag vVERSION
 ```
 
 The tag must match the canonical source version and resolve to `HEAD`.
@@ -207,12 +207,13 @@ installation before publishing an update. For a client configuration, use
 
 ## Install The Archive
 
-Verify the downloaded archive against its adjacent checksum before extracting:
+Verify the downloaded archive against its adjacent checksum before extracting,
+replacing `VERSION` with the downloaded version:
 
 ```bash
-shasum -a 256 -c apple-cli-0.1.0-alpha.3-macos-arm64.tar.gz.sha256
-tar -xzf apple-cli-0.1.0-alpha.3-macos-arm64.tar.gz
-cd apple-cli-0.1.0-alpha.3-macos-arm64
+shasum -a 256 -c apple-cli-VERSION-macos-arm64.tar.gz.sha256
+tar -xzf apple-cli-VERSION-macos-arm64.tar.gz
+cd apple-cli-VERSION-macos-arm64
 export PATH="$PWD/bin:$PATH"
 apple --version
 apple --help

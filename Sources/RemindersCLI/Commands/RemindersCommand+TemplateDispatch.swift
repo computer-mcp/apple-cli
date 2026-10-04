@@ -5,7 +5,7 @@ extension RemindersCommand {
   func runTemplateCommand(_ options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["templates", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let templates = try listReminderTemplates()
       return try result(
@@ -115,7 +115,7 @@ extension RemindersCommand {
         )
       }
     case ["templates", "sections", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["template"])
       let template = try reminderTemplate(
         selector: try requiredOption("template", options: options),
@@ -262,7 +262,7 @@ extension RemindersCommand {
         )
       }
     case ["templates", "items", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["template"])
       let limit = try commandLimit(options)
       let template = try reminderTemplate(
@@ -276,7 +276,7 @@ extension RemindersCommand {
         options: options
       )
     case ["templates", "items", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let item = try readReminderTemplateItemRecord(id: try requiredOption("id", options: options))
       return try result(

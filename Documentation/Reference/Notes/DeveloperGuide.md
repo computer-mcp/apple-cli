@@ -3668,9 +3668,9 @@ Expected results:
   criteria internals.
 - `smart-folders export-criteria --folder FOLDER [--account ACCOUNT] --output
   FILE.json --json` works in the default private-framework-backed build for one visible Smart Folder and
-  writes raw criteria JSON only to a verified `.json` artifact with
-  `--allow-artifact-action`; command JSON reports path/hash/count evidence, not
-  the raw criteria body.
+  writes the raw criteria JSON to a verified `.json` artifact with
+  `--allow-artifact-action`. The raw criteria body appears only in that
+  artifact; command JSON reports its path, hash and count.
 - `smart-folders import-criteria --folder FOLDER [--account ACCOUNT] --file
   FILE.json --json` works in the default private-framework-backed build for one editable Smart Folder,
   validates a UTF-8 JSON artifact, replaces criteria through

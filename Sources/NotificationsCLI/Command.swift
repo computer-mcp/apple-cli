@@ -12,7 +12,7 @@ public struct NotificationsCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["notifications", "preview"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(
         options, allowedOptions: ["title", "body", "subtitle", "id", "delay-seconds"])
       let request = try notificationRequest(options)
@@ -27,7 +27,7 @@ public struct NotificationsCommand: Sendable {
       let request = try notificationRequest(options)
       return try send(request, options: options)
     case ["notifications", "settings"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let settings = try backend.settings()
       return try result(
@@ -69,7 +69,7 @@ public struct NotificationsCommand: Sendable {
     let operation = "notifications.\(collection.rawValue).\(action)"
     switch action {
     case "list":
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let limit = try notificationListLimit(options)
       let records = try backend.requests(in: collection)
@@ -81,7 +81,7 @@ public struct NotificationsCommand: Sendable {
           separator: "\n"),
         options: options)
     case "read":
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let identifier = try notificationIdentifier(requiredOption("id", options: options))
       guard

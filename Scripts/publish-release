@@ -13,7 +13,7 @@ import tempfile
 from urllib.parse import quote
 
 
-SOURCE = Path(__file__).resolve().parents[2]
+SOURCE = Path(__file__).resolve().parents[1]
 checker = runpy.run_path(str(SOURCE / "Scripts/verify-release"))
 require = checker["require"]
 digest = checker["digest"]

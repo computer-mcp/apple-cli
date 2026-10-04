@@ -48,12 +48,13 @@ Download the macOS arm64 archive and its checksum from
 [GitHub Releases](https://github.com/computer-mcp/apple-cli/releases).
 Release archives are built, tested and published by GitHub Actions.
 
-For `0.1.0-alpha.3`, run these commands in the download directory:
+Run these commands in the download directory, replacing `VERSION` with the
+version you downloaded:
 
 ~~~bash
-shasum -a 256 -c apple-cli-0.1.0-alpha.3-macos-arm64.tar.gz.sha256
-tar -xzf apple-cli-0.1.0-alpha.3-macos-arm64.tar.gz
-export PATH="$PWD/apple-cli-0.1.0-alpha.3-macos-arm64/bin:$PATH"
+shasum -a 256 -c apple-cli-VERSION-macos-arm64.tar.gz.sha256
+tar -xzf apple-cli-VERSION-macos-arm64.tar.gz
+export PATH="$PWD/apple-cli-VERSION-macos-arm64/bin:$PATH"
 apple --version
 ~~~
 

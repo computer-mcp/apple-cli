@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Utility
 
@@ -18,14 +17,14 @@ public struct PrintCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["printers", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let printers = try backend.listPrinters(limit: try commandLimit(options))
       return try result(
         PrintersResponse(printers: printers), human: printersHumanOutput(printers), options: options
       )
     case ["printers", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["name"])
       let name = try requiredOption("name", options: options)
       guard let printer = try backend.readPrinter(name: name) else {
@@ -34,7 +33,7 @@ public struct PrintCommand: Sendable {
       return try result(
         PrinterResponse(printer: printer), human: printerHumanOutput(printer), options: options)
     case ["jobs", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["printer"])
       let jobs = try backend.listJobs(
         printer: options.targetOption("printer"), limit: try commandLimit(options))

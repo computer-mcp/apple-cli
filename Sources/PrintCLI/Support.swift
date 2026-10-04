@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Utility
 
@@ -194,16 +193,6 @@ func printFileIdentity(path: String) throws -> PrintFileIdentity {
   )
 }
 
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
-    )
-  }
-}
-
 func validateDryRunOptions(_ options: CLIOptions) throws {}
 
 func validateTargetOptions(_ options: CLIOptions, allowedOptions: Set<String>) throws {
@@ -216,11 +205,6 @@ func validateTargetOptions(_ options: CLIOptions, allowedOptions: Set<String>) t
       details: ["options": unsupported.map { "--\($0)" }.joined(separator: ",")]
     )
   }
-}
-
-func sha256Hex(_ value: String) -> String {
-  let digest = SHA256.hash(data: Data(value.utf8))
-  return digest.map { String(format: "%02x", $0) }.joined()
 }
 
 func requiredOption(_ name: String, options: CLIOptions) throws -> String {

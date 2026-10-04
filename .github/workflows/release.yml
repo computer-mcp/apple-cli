@@ -85,4 +85,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.build.outputs.tag }}
           RELEASE_SOURCE_COMMIT: ${{ needs.build.outputs.source_commit }}
-        run: .github/scripts/publish-release
+        run: Scripts/publish-release

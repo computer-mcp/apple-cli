@@ -162,7 +162,7 @@ class VersionInputTests(unittest.TestCase):
             "[Guide](Documentation/Reference/ReleaseGuide.md)\n\n## 0.0.1\n\nOld changes.\n",
         )
         self.assertEqual(validate(self.source), "0.1.0-alpha.1")
-        publisher = runpy.run_path(str(SOURCE / ".github/scripts/publish-release"))
+        publisher = runpy.run_path(str(SOURCE / "Scripts/publish-release"))
         notes = publisher["release_notes"]
         notes.__globals__["SOURCE"] = self.source
         body = notes({

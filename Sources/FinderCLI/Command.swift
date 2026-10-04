@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import Darwin
 import Foundation
 import Utility
@@ -20,7 +19,7 @@ public struct FinderCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["items", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"], allowedFlags: ["include-hidden"])
       let items = try backend.listItems(
         path: try requiredOption("path", options: options),
@@ -33,7 +32,7 @@ public struct FinderCommand: Sendable {
         options: options
       )
     case ["items", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(
         options, allowedOptions: ["path", "query"], allowedFlags: ["include-hidden"])
       let query = try requiredOption("query", options: options)
@@ -54,7 +53,7 @@ public struct FinderCommand: Sendable {
         options: options
       )
     case ["items", "metadata"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let path = try requiredOption("path", options: options)
       guard let item = try backend.readMetadata(path: path) else {
