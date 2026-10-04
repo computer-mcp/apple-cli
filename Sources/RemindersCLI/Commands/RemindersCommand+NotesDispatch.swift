@@ -4,7 +4,7 @@ import Utility
 extension RemindersCommand {
   func runNotesCommand(_ options: CLIOptions) throws -> CLICommandResult? {
     if options.positionals == ["notes", "read"] {
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let snapshot = try reminderNotesSnapshot(id: requiredOption("id", options: options), operation: "notes.read")
       return try result(ReminderNotesResponse(notes: snapshot.record),

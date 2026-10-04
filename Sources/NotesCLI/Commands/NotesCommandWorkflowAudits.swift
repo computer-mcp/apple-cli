@@ -6,15 +6,15 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["notes", "guide", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try notesGuideAudit(options)
     case ["notes", "workflow", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try noteWorkflowAudit(options)
     case ["notes", "workflow", "shortcuts", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try noteWorkflowShortcutsAudit(options)    default:
       return nil

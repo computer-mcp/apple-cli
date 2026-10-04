@@ -1,5 +1,4 @@
 import Contacts
-import CryptoKit
 import Foundation
 import Utility
 
@@ -42,16 +41,6 @@ func validateGroupMembershipChange(_ identity: ContactGroupMutationIdentity, add
       code: .validationError,
       message: "Contact is not a member of the group.",
       details: ["group_id": identity.group.id, "contact_id": identity.contact.id]
-    )
-  }
-}
-
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
     )
   }
 }
@@ -406,16 +395,6 @@ func contactsLabelName(_ label: String?) -> String {
   case .some(let label): return label
   case .none: return ""
   }
-}
-
-func sha256Hex(_ value: String) -> String {
-  let digest = SHA256.hash(data: Data(value.utf8))
-  return digest.map { String(format: "%02x", $0) }.joined()
-}
-
-func sha256Hex(_ data: Data) -> String {
-  let digest = SHA256.hash(data: data)
-  return digest.map { String(format: "%02x", $0) }.joined()
 }
 
 func contactCreateScopeDigest(_ draft: ContactCreateDraft) -> String {

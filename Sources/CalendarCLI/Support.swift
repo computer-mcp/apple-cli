@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import EventKit
 import Foundation
 import Utility
@@ -13,16 +12,6 @@ struct CalendarMutationIdentity {
 enum DateBoundaryRole {
   case lower
   case upper
-}
-
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
-    )
-  }
 }
 
 func validateDryRunOptions(_ options: CLIOptions) throws {}
@@ -57,16 +46,6 @@ func requiredOption(_ name: String, options: CLIOptions) throws -> String {
   }
 
   return value
-}
-
-func sha256Hex(_ value: String) -> String {
-  let digest = SHA256.hash(data: Data(value.utf8))
-  return digest.map { String(format: "%02x", $0) }.joined()
-}
-
-func sha256Hex(_ data: Data) -> String {
-  let digest = SHA256.hash(data: data)
-  return digest.map { String(format: "%02x", $0) }.joined()
 }
 
 func eventCreateScopeDigest(_ draft: CalendarEventDraft) -> String {

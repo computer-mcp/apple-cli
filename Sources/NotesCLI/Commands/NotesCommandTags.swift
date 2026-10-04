@@ -6,11 +6,11 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["tags", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try tagWorkflowAudit(options)
     case ["tags", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account"])
       let tags = try tagReader().listTags(
         account: options.targetOption("account"), limit: try commandLimit(options))
@@ -23,7 +23,7 @@ extension NotesCommand {
         options: options
       )
     case ["tags", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["tag", "tags", "include-tags", "exclude-tags", "mode"])
       let response = try tagSearchResponse(options)
       return try result(

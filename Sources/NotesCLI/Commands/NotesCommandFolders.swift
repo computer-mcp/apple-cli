@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["folders", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account"])
       let folders = try implementation.listFolders(
         account: options.targetOption("account"), limit: try commandLimit(options))
@@ -27,7 +27,7 @@ extension NotesCommand {
         options: options
       )
     case ["folders", "move-impact"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["folder", "parent", "account"])
       let draft = try folderMoveDraft(options)
       let impact = try folderMoveImpactReader().readFolderMoveImpact(draft)
@@ -44,7 +44,7 @@ extension NotesCommand {
         options: options
       )
     case ["folders", "workflow", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try foldersWorkflowAudit(options)
     case ["folders", "create"]:

@@ -5,7 +5,7 @@ extension RemindersCommand {
   func runDoctorCommand(_ options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["doctor", "store"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["scope"])
       let debug = try sqliteReader.debugStore(scope: options.targetOption("scope") ?? "summary")
       return try result(
@@ -14,7 +14,7 @@ extension RemindersCommand {
         options: options
       )
     case ["doctor", "item"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       guard let reminder = try readReminder(id: id) else {
@@ -31,7 +31,7 @@ extension RemindersCommand {
         options: options
       )
     case ["doctor", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["list"])
       let list = try reminderList(selector: try requiredOption("list", options: options))
       let debug = try sqliteReader.debugList(list: list)

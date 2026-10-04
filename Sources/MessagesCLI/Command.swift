@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Utility
 
@@ -23,7 +22,7 @@ public struct MessagesCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["conversations", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let conversations = try reader.listConversations(limit: try commandLimit(options))
       return try result(
@@ -32,7 +31,7 @@ public struct MessagesCommand: Sendable {
         options: options
       )
     case ["conversations", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query"])
       let query = try nonTrivialQuery(options)
       let conversations = try reader.searchConversations(
@@ -43,7 +42,7 @@ public struct MessagesCommand: Sendable {
         options: options
       )
     case ["messages", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["conversation"])
       let conversationId = try requiredOption("conversation", options: options)
       let messages = try reader.listMessages(
@@ -54,7 +53,7 @@ public struct MessagesCommand: Sendable {
         options: options
       )
     case ["messages", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "conversation"])
       let query = try nonTrivialQuery(options)
       let messages = try reader.searchMessages(
@@ -68,7 +67,7 @@ public struct MessagesCommand: Sendable {
         options: options
       )
     case ["messages", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       guard let message = try reader.readMessage(id: id) else {

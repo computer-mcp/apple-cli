@@ -2099,7 +2099,7 @@ extension NotesCommand {
     if let destinationPath {
       try validateNotesCollaborationParticipantsExportDestination(destinationPath)
     } else {
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
     }
     let draft = NotesCollaborationParticipantsDraft(
       noteID: options.targetOption("id"),

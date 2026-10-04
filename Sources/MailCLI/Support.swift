@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Utility
 
@@ -49,16 +48,6 @@ func automationError(_ errorInfo: NSDictionary) -> CLIError {
   let code: CLIErrorCode = number == -1743 ? .permissionDenied : .backendUnavailable
   return CLIError.appleEventFailure(
     target: "Mail", code: code, number: number)
-}
-
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
-    )
-  }
 }
 
 func validateDryRunOptions(_ options: CLIOptions) throws {}
@@ -300,11 +289,6 @@ func replySubject(_ subject: String) -> String {
 func forwardSubject(_ subject: String) -> String {
   subject.hasPrefixIgnoringCase("fwd:") || subject.hasPrefixIgnoringCase("fw:")
     ? subject : "Fwd: \(subject)"
-}
-
-func sha256Hex(_ value: String) -> String {
-  let digest = SHA256.hash(data: Data(value.utf8))
-  return digest.map { String(format: "%02x", $0) }.joined()
 }
 
 func messageSummary(_ row: [String]) -> MailMessageSummary {

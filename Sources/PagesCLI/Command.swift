@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import Foundation
 import Utility
 
@@ -19,7 +18,7 @@ public struct PagesCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["documents", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let documents = try backend.listDocuments(
         path: try requiredOption("path", options: options), limit: try commandLimit(options))
@@ -27,7 +26,7 @@ public struct PagesCommand: Sendable {
         PagesDocumentsResponse(documents: documents), human: documentsHumanOutput(documents),
         options: options)
     case ["documents", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path", "query"])
       let documents = try backend.searchDocuments(
         path: try requiredOption("path", options: options),
@@ -38,7 +37,7 @@ public struct PagesCommand: Sendable {
         PagesDocumentsResponse(documents: documents), human: documentsHumanOutput(documents),
         options: options)
     case ["documents", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let path = try requiredOption("path", options: options)
       guard let document = try backend.readDocument(path: path) else {

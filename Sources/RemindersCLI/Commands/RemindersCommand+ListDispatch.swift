@@ -5,7 +5,7 @@ extension RemindersCommand {
   func runListsCommand(_ options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["lists", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let lists = try listReminderLists()
       return try result(
@@ -14,7 +14,7 @@ extension RemindersCommand {
         options: options
       )
     case ["lists", "icons", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let response = ReminderListIconsResponse(icons: ReminderListIconCatalog.records)
       return try result(
@@ -23,7 +23,7 @@ extension RemindersCommand {
         options: options
       )
     case ["lists", "groups", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let groups = try sqliteReader.listGroups()
       return try result(

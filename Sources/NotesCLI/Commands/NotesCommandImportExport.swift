@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["notes", "import", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["file"])
       let records = try importAuditRecords(options)
       let summary = importAuditSummary(records: records)
@@ -111,7 +111,7 @@ extension NotesCommand {
     case ["notes", "replace", "rtfd"]:
       return try replaceRichText(options, source: .rich(.rtfd))
     case ["notes", "export", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       return try exportAudit(options)
     case ["notes", "export", "pdf"]:

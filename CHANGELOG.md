@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.1.0-alpha.4 — Unreleased
+
+### Breaking
+
+- Keynote: `slides export` is replaced by `previews list` and `previews export`;
+  `slides list` reads slides through Keynote scripting and needs Automation
+  access.
+- Notifications: `send` requires notification authorization and reports native
+  rejection as an error; request IDs use the `apple-cli:` namespace.
+- Calendar: exporting recurring or detached events returns unsupported, invalid
+  date-only values are rejected, and mutations need full Calendar access.
+- Clipboard: `read` returns bounded text; typed data moves to `items read` and
+  `items write`.
+- MCP tool schemas change with these command paths.
+
+### Added
+
+- Calendar sources, calendar create, read, update and delete, and custom
+  recurrence conditions.
+- Maps saved collections, collection places and Favorites reads; directions
+  `calculate` and `eta`.
+- Notifications settings, authorization request, and pending and delivered
+  queries and removal.
+- Clipboard typed items, byte caps, change-count preconditions and current-host
+  writes.
+- Reminders rich notes (`notes read`, `notes format`, `notes list-style`) and
+  Smart List reads; Keynote native PDF export.
+
+### Fixed
+
+- Notes and Reminders edits preserve content, titles, lifecycle and subtask and
+  template data, with native readback verification.
+- Result fidelity for Numbers cells, Mail, Finder and TCC.
+
+### Development
+
+- `apple` embeds an Info.plist with the bundle identifier
+  `io.github.computer-mcp.apple-cli` and Calendar usage descriptions.
+- Shared framework header generator with versioned input manifests; opt-in
+  native fixture validation, documented and shipped in release archives.
+- swift-subprocess 1.0, swift-argument-parser 1.8.2 and swift-http-types 1.8.0.
+
+Known limitation: Maps `collections places create` awaits native end-to-end
+validation.
+
 ## 0.1.0-alpha.3 — 2026-10-02
 
 First public alpha of the target-first `apple` CLI and optional `apple-cli-mcp`
@@ -25,8 +70,8 @@ Compatibility and per-target limitations are described in the
 
 ## 0.1.0-alpha.2 — 2026-10-01
 
-First public alpha of the target-first `apple` CLI and optional `apple-cli-mcp`
-adapter for macOS.
+Tagged only; the release workflow did not publish a GitHub Release for this
+version. Its contents shipped in 0.1.0-alpha.3.
 
 - Nineteen typed Apple app and system targets, structured JSON, bounded reads,
   target-owned diagnostics and explicit mutation or external-action rules.
@@ -49,8 +94,8 @@ Compatibility and per-target limitations are described in the
 
 ## 0.1.0-alpha.1 — 2026-10-01
 
-Initial preview of the target-first `apple` CLI and optional `apple-cli-mcp`
-adapter for macOS.
+Tagged only; the release workflow did not publish a GitHub Release for this
+version. Its contents shipped in 0.1.0-alpha.3.
 
 - Nineteen typed CLI targets, with target-owned diagnostics, JSON output,
   identity resolution and mutation or external-action safety rules.

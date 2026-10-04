@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import Utility
 
@@ -16,7 +15,7 @@ public struct MailCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["accounts", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let accounts = try backend.listAccounts()
       return try result(
@@ -25,7 +24,7 @@ public struct MailCommand: Sendable {
         options: options
       )
     case ["mailboxes", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account"])
       let mailboxes = try backend.listMailboxes(
         account: options.targetOption("account"), limit: try commandLimit(options))
@@ -57,7 +56,7 @@ public struct MailCommand: Sendable {
         options: options
       )
     case ["mail", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(
         options, allowedOptions: ["account", "mailbox", "query", "scope", "max-scan"])
       let scope = try searchScope(options)
@@ -78,7 +77,7 @@ public struct MailCommand: Sendable {
         options: options
       )
     case ["mail", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account", "mailbox", "id"])
       let mailbox = try requiredOption("mailbox", options: options)
       let id = try requiredOption("id", options: options)
@@ -94,7 +93,7 @@ public struct MailCommand: Sendable {
         options: options
       )
     case ["mail", "body-preview"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account", "mailbox", "id", "max-bytes"])
       let mailbox = try requiredOption("mailbox", options: options)
       let id = try requiredOption("id", options: options)
@@ -115,7 +114,7 @@ public struct MailCommand: Sendable {
         options: options
       )
     case ["mail", "reply-preview"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account", "mailbox", "id", "body"])
       let message = try messageForPreview(options)
       let body = options.targetOption("body") ?? ""
@@ -132,7 +131,7 @@ public struct MailCommand: Sendable {
         options: options
       )
     case ["mail", "forward-preview"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(
         options, allowedOptions: ["account", "mailbox", "id", "to", "cc", "bcc", "body"])
       let to = try recipientList("to", options: options, required: true)
@@ -302,7 +301,7 @@ public struct MailCommand: Sendable {
     maxScan: Int? = nil,
     allowedOptions: Set<String>
   ) throws -> MailMessageQuery {
-    try validateReadOnly(options)
+    try CLISafety.rejectDryRunForReadOnly(options)
     try validateTargetOptions(options, allowedOptions: allowedOptions)
     return MailMessageQuery(
       account: options.targetOption("account"),

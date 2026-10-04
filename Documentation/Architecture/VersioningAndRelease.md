@@ -149,8 +149,7 @@ retain the version authority and publication gates described above.
 | Verify existing accepted files | `Scripts/verify-release --require-verification` | Source and artifact read |
 | Publish and resume | Existing-tag release workflow; rerun failed publication job | Scoped GitHub release write |
 
-Validation outputs and run logs belong beneath `.build`; active local execution
-records belong beneath `.agent`. Retain required evidence and rollback artifacts.
+Validation outputs and run logs belong beneath `.build`. Retain required evidence and rollback artifacts.
 Before removing reproducible caches or completed temporary outputs, check their
 run ownership and preserve unique source changes and anything used by active
 processes. Production app data is outside release-output cleanup.

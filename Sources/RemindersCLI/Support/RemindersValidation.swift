@@ -1,17 +1,6 @@
-import CryptoKit
 import Dispatch
 import Foundation
 import Utility
-
-func validateReadOnly(_ options: CLIOptions) throws {
-  if options.dryRun {
-    throw CLIError(
-      code: .validationError,
-      message:
-        "`--dry-run` is only valid for mutation or external-action commands."
-    )
-  }
-}
 
 func validateDryRunOptions(_ options: CLIOptions) throws {}
 

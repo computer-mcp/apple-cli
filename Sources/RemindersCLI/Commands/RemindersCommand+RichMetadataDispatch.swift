@@ -5,7 +5,7 @@ extension RemindersCommand {
   func runRichMetadataCommand(_ options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["tags", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let tags = try sqliteReader.listTags()
       return try result(
@@ -65,7 +65,7 @@ extension RemindersCommand {
         )
       }
     case ["sections", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["list"])
       let list = try reminderList(selector: try requiredOption("list", options: options))
       let sections = try sqliteReader.listSections(list: list)

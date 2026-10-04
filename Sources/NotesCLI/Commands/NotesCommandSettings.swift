@@ -6,11 +6,11 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["settings", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try settingsWorkflowAudit(options)
     case ["settings", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account"])
       let evidence = try settingsReader().readSettings(account: options.targetOption("account"))
       return try readSettings(evidence, options: options)

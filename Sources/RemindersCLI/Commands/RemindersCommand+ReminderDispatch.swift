@@ -5,7 +5,7 @@ extension RemindersCommand {
   func runReminderItemCommand(_ options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["reminders", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["list", "status", "due-from", "due-to"])
       let query = try reminderQuery(options: options, searchText: nil)
       let reminders = try listReminders(query)
@@ -15,7 +15,7 @@ extension RemindersCommand {
         options: options
       )
     case ["reminders", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(
         options, allowedOptions: ["list", "status", "due-from", "due-to", "query"])
       let searchText = try requiredOption("query", options: options)
@@ -27,7 +27,7 @@ extension RemindersCommand {
         options: options
       )
     case ["reminders", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       guard let reminder = try readReminder(id: id) else {

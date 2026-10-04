@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import Foundation
 import Utility
 
@@ -19,7 +18,7 @@ public struct KeynoteCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["presentations", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let presentations = try backend.listPresentations(
         path: try requiredOption("path", options: options), limit: try commandLimit(options))
@@ -27,7 +26,7 @@ public struct KeynoteCommand: Sendable {
         KeynotePresentationsResponse(presentations: presentations),
         human: presentationsHumanOutput(presentations), options: options)
     case ["presentations", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path", "query"])
       let presentations = try backend.searchPresentations(
         path: try requiredOption("path", options: options),
@@ -38,7 +37,7 @@ public struct KeynoteCommand: Sendable {
         KeynotePresentationsResponse(presentations: presentations),
         human: presentationsHumanOutput(presentations), options: options)
     case ["presentations", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let path = try requiredOption("path", options: options)
       guard let presentation = try backend.readPresentation(path: path) else {
@@ -49,7 +48,7 @@ public struct KeynoteCommand: Sendable {
         KeynotePresentationResponse(presentation: presentation),
         human: presentationHumanOutput(presentation), options: options)
     case ["slides", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let path = try requiredOption("path", options: options)
       guard let slides = try backend.listSlides(path: path, limit: try commandLimit(options)) else {
@@ -58,7 +57,7 @@ public struct KeynoteCommand: Sendable {
       }
       return try result(slides, human: slidesHumanOutput(slides), options: options)
     case ["previews", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["path"])
       let path = try requiredOption("path", options: options)
       guard let previews = try backend.listPreviews(path: path, limit: try commandLimit(options)) else {

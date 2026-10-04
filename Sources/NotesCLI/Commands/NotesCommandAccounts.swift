@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["accounts", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let accounts = try implementation.listAccounts()
       return try result(
@@ -15,7 +15,7 @@ extension NotesCommand {
         options: options
       )
     case ["accounts", "workflow", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try accountsWorkflowAudit(options)
     case ["accounts", "add"]:

@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["state", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       let state = try noteStateReader().readNoteState(noteID: id)
@@ -25,11 +25,11 @@ extension NotesCommand {
         options: options
       )
     case ["state", "lockability"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       return try readNoteLockability(options: options)
     case ["state", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account", "folder"])
       let records = try noteStateAuditRecords(options)
       let summary = noteStateAuditSummary(records)
@@ -55,11 +55,11 @@ extension NotesCommand {
         options: options
       )
     case ["state", "collaboration", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try collaborationWorkflowAudit(options)
     case ["state", "security", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try securityWorkflowAudit(options)
     case ["state", "lock"]:
@@ -584,7 +584,7 @@ extension NotesCommand {
     let destinationPath = options.targetOption("output").map(standardizedAbsolutePath(_:))
 
     if destinationPath == nil {
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
     }
     if let destinationPath {
       try validateNotesActivityExportDestination(destinationPath)

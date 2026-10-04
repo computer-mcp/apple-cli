@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["links", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       let links = try linkReader().listLinks(
@@ -26,11 +26,11 @@ extension NotesCommand {
         options: options
       )
     case ["links", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try linkWorkflowAudit(options)
     case ["links", "backlinks"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id"])
       let id = try requiredOption("id", options: options)
       let backlinks = try linkReader().listBacklinks(
@@ -52,7 +52,7 @@ extension NotesCommand {
         options: options
       )
     case ["links", "resolve"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "link"])
       let id = try requiredOption("id", options: options)
       let linkID = try requiredOption("link", options: options)

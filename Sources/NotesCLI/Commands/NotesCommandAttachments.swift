@@ -6,7 +6,7 @@ extension NotesCommand {
     switch options.positionals {
 
     case ["attachments", "list"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "account", "folder", "family"])
       let id = options.targetOption("id")
       if id?.isEmpty == false && options.targetOption("folder")?.isEmpty == false {
@@ -75,11 +75,11 @@ extension NotesCommand {
         options: options
       )
     case ["attachments", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "id", "account", "folder", "family"])
       return try searchAttachmentMetadata(options)
     case ["attachments", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["account", "folder"])
       let records = try attachmentAuditRecords(options)
       let summary = attachmentAuditSummary(records)
@@ -101,7 +101,7 @@ extension NotesCommand {
         options: options
       )
     case ["attachments", "workflow", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try attachmentWorkflowAudit(options)
     case ["attachments", "add"]:
@@ -367,7 +367,7 @@ extension NotesCommand {
         return result
       }
     case ["attachments", "audio", "audit"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       return try audioWorkflowAudit(options)
     case ["attachments", "audio", "rename"]:
@@ -556,7 +556,7 @@ extension NotesCommand {
         options: options
       )
     case ["attachments", "pdf", "inspect"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "attachment"])
       let id = try requiredOption("id", options: options)
       let attachmentID = try requiredOption("attachment", options: options)
@@ -569,11 +569,11 @@ extension NotesCommand {
         options: options
       )
     case ["attachments", "pdf", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "id", "account", "folder"])
       return try searchAttachmentPDFText(options)
     case ["attachments", "scan", "inspect"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "attachment"])
       let id = try requiredOption("id", options: options)
       let attachmentID = try requiredOption("attachment", options: options)
@@ -586,7 +586,7 @@ extension NotesCommand {
         options: options
       )
     case ["attachments", "scan", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "id", "account", "folder"])
       return try searchAttachmentSearchableText(
         options,
@@ -605,7 +605,7 @@ extension NotesCommand {
           ]
         ))
     case ["attachments", "image", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "id", "account", "folder"])
       return try searchAttachmentSearchableText(
         options,
@@ -624,7 +624,7 @@ extension NotesCommand {
           ]
         ))
     case ["attachments", "image", "description", "get"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "attachment"])
       let id = try requiredOption("id", options: options)
       let attachmentID = try requiredOption("attachment", options: options)
@@ -758,7 +758,7 @@ extension NotesCommand {
         return result
       }
     case ["attachments", "image", "objects"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["id", "attachment", "query"])
       let sourceNoteID = try requiredOption("id", options: options)
       let requestedAttachmentID = try requiredOption("attachment", options: options)
@@ -832,7 +832,7 @@ extension NotesCommand {
         options: options
       )
     case ["attachments", "drawing", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "id", "account", "folder"])
       return try searchAttachmentSearchableText(
         options,
@@ -1411,7 +1411,7 @@ extension NotesCommand {
           )
         }
       } else {
-        try validateReadOnly(options)
+        try CLISafety.rejectDryRunForReadOnly(options)
       }
       let source = try attachmentReader().readAttachmentAudioTranscript(noteID: id, attachmentID: attachmentID)
       guard let destinationPath else {
@@ -1433,7 +1433,7 @@ extension NotesCommand {
       try validateMutationIntent(options)
       return try copyAttachmentAudioTranscript(options: options)
     case ["attachments", "audio", "search"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["query", "account", "folder", "id", "content"])
       let query = try attachmentAudioTranscriptSearchQuery(options)
       let contentKinds = try attachmentAudioTranscriptSearchContentKinds(options)
@@ -1455,7 +1455,7 @@ extension NotesCommand {
           )
         }
       } else {
-        try validateReadOnly(options)
+        try CLISafety.rejectDryRunForReadOnly(options)
       }
       let source = try attachmentReader().inspectAttachmentMarkup(noteID: id, attachmentID: attachmentID)
       return try inspectAttachmentMarkup(

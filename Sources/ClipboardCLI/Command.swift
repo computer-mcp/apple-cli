@@ -13,18 +13,18 @@ public struct ClipboardCommand: Sendable {
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
     case ["clipboard", "types"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
       let snapshot = try backend.types()
       return try result(snapshot, human: snapshot.types.joined(separator: "\n"), options: options)
     case ["clipboard", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["type", "max-bytes"])
       let snapshot = try backend.readString(
         preferredType: options.targetOption("type"), maxBytes: clipboardMaxBytes(options))
       return try result(snapshot, human: snapshot.item?.value ?? "", options: options)
     case ["clipboard", "items", "read"]:
-      try validateReadOnly(options)
+      try CLISafety.rejectDryRunForReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["type", "max-bytes"])
       let maxBytes = try clipboardMaxBytes(options)
       let limit = options.limit ?? ClipboardLimits.defaultItems
