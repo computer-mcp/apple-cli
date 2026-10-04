@@ -39,6 +39,30 @@ public struct CLISubprocess: Sendable {
         return .path(FilePath(path))
       }
     }
+
+    // Mirrors the SDK resolver, which is async: a name is searched only in PATH
+    // directories, and a path is used unchanged.
+    fileprivate func resolvedPath() throws -> String {
+      switch self {
+      case .path(let path):
+        return path
+      case .name(let name):
+        guard !name.isEmpty, !name.contains("/") else {
+          throw CLIError(code: .validationError, message: "Executable names cannot contain a path separator.")
+        }
+        let search = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        for directory in search.split(separator: ":") where !directory.isEmpty {
+          let candidate = "\(directory)/\(name)"
+          var isDirectory: ObjCBool = false
+          if access(candidate, X_OK) == 0,
+            FileManager.default.fileExists(atPath: candidate, isDirectory: &isDirectory), !isDirectory.boolValue
+          {
+            return candidate
+          }
+        }
+        throw CLIError(code: .notFound, message: "Executable was not found on PATH.", details: ["executable": name])
+      }
+    }
   }
 
   public static func run(
@@ -63,9 +87,8 @@ public struct CLISubprocess: Sendable {
     outputLimit: Int = 1_048_576
   ) throws -> CLISubprocessBytesResult {
     try validate(timeoutSeconds: timeoutSeconds, outputLimit: outputLimit)
-    let path = try executable.subprocessExecutable.resolveExecutablePath(in: .inherit)
     return try SynchronousSubprocess.run(
-      path: path.string, arguments: arguments, input: input,
+      path: try executable.resolvedPath(), arguments: arguments, input: input,
       timeoutSeconds: timeoutSeconds, outputLimit: outputLimit
     )
   }
@@ -92,6 +115,7 @@ public struct CLISubprocess: Sendable {
       executable.subprocessExecutable,
       arguments: Subprocess.Arguments(arguments),
       platformOptions: platformOptions,
+      input: .none,
       output: .fileDescriptor(FileDescriptor(rawValue: stdout.fileHandleForWriting.fileDescriptor),
         closeAfterSpawningProcess: false),
       error: .fileDescriptor(FileDescriptor(rawValue: stderr.fileHandleForWriting.fileDescriptor),
@@ -157,8 +181,8 @@ public struct CLISubprocess: Sendable {
     try Task.checkCancellation()
     return CLISubprocessResult(
       exitCode: exitCode(from: record.terminationStatus),
-      stdout: record.value.stdout,
-      stderr: record.value.stderr
+      stdout: record.closureResult.stdout,
+      stderr: record.closureResult.stderr
     )
   }
 
