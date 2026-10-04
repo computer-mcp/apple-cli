@@ -59,7 +59,7 @@ let package = Package(
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
     .package(url: "https://github.com/apple/swift-http-types.git", from: "1.0.0"),
     .package(
-      url: "https://github.com/swiftlang/swift-subprocess.git", .upToNextMinor(from: "0.4.0")),
+      url: "https://github.com/swiftlang/swift-subprocess.git", .upToNextMinor(from: "1.0.0")),
   ],
   targets: [
     .target(
