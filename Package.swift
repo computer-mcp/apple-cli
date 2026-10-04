@@ -53,7 +53,7 @@ let package = Package(
     .executable(name: "apple-cli-mcp", targets: ["AppleMCPServer"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.7.1"),
+    .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.8.2"),
     .package(
       url: "https://github.com/hummingbird-project/hummingbird.git", .upToNextMinor(from: "2.23.0")),
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
