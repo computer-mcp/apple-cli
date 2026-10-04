@@ -20,7 +20,7 @@ The optional adapter executable is `apple-cli-mcp`. It is an adapter over the
 canonical CLI contract and does not own behavior.
 
 The `apple` executable embeds the application identity
-`org.computer-mcp.apple-cli`. Notifications uses that identity for its per-app
+`io.github.computer-mcp.apple-cli`. Notifications uses that identity for its per-app
 native authorization and request namespace.
 
 ## Target Catalog

@@ -18,7 +18,7 @@ defines application authorization, request submission and local triggers.
 ## Implementation Mechanisms
 
 The `apple` executable embeds its application identity,
-`org.computer-mcp.apple-cli`, in its Info.plist. The backend checks that identity
+`io.github.computer-mcp.apple-cli`, in its Info.plist. The backend checks that identity
 before obtaining UNUserNotificationCenter. The adapter invokes the same CLI.
 
 `settings` and `doctor` query this application's native settings without

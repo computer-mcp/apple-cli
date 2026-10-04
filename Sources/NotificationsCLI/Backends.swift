@@ -3,7 +3,7 @@ import UserNotifications
 import Utility
 
 enum NotificationIdentity {
-  static let bundleIdentifier = "org.computer-mcp.apple-cli"
+  static let bundleIdentifier = "io.github.computer-mcp.apple-cli"
   static let requestPrefix = "apple-cli:"
 }
 

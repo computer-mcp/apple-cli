@@ -20,7 +20,7 @@ struct CLIExecutableTests {
     let notificationEnvelope = try #require(
       JSONSerialization.jsonObject(with: Data(notification.stdout.utf8)) as? [String: Any])
     let settings = try #require(notificationEnvelope["data"] as? [String: Any])
-    #expect(settings["bundleIdentifier"] as? String == "org.computer-mcp.apple-cli")
+    #expect(settings["bundleIdentifier"] as? String == "io.github.computer-mcp.apple-cli")
     #expect(settings["authorizationStatus"] as? String != nil)
     for collection in ["pending", "delivered"] {
       let result = try cli(["notifications", collection, "list", "--limit", "1", "--json"])
