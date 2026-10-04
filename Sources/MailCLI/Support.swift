@@ -332,7 +332,7 @@ func messageDetail(_ row: [String]) -> MailMessageDetail {
   )
 }
 
-func mailBodyPreview(_ row: [String]) -> MailBodyPreviewResponse {
+func mailBodyPreview(_ row: [String], maxBytes: Int) -> MailBodyPreviewResponse {
   var message = MailMessageDetail(
     id: row[safe: 0] ?? "",
     accountName: row[safe: 1] ?? "",
@@ -344,10 +344,19 @@ func mailBodyPreview(_ row: [String]) -> MailBodyPreviewResponse {
     bodyIncluded: true
   )
   message.recipients = []
+  let sourceBody = row[safe: 7] ?? ""
+  var body = ""
+  var byteCount = 0
+  for character in sourceBody {
+    let characterBytes = character.utf8.count
+    guard characterBytes <= maxBytes - byteCount else { break }
+    body.append(character)
+    byteCount += characterBytes
+  }
   return MailBodyPreviewResponse(
     message: message,
-    body: row[safe: 7] ?? "",
-    truncated: (row[safe: 8] ?? "false") == "true"
+    body: body,
+    truncated: (row[safe: 8] ?? "false") == "true" || body != sourceBody
   )
 }
 

@@ -346,6 +346,7 @@ public struct RemindersPrivateReminderDebugRecord: Codable, Equatable, Sendable 
   public var completed: Bool?
   public var sectionId: String?
   public var sectionTitle: String?
+  public var subtaskRelationshipAvailable: Bool?
   public var parentReminderId: String?
   public var parentReminderTitle: String?
   public var subtaskCount: Int
@@ -369,6 +370,7 @@ public struct RemindersPrivateReminderDebugRecord: Codable, Equatable, Sendable 
     completed: Bool? = nil,
     sectionId: String? = nil,
     sectionTitle: String? = nil,
+    subtaskRelationshipAvailable: Bool? = nil,
     parentReminderId: String? = nil,
     parentReminderTitle: String? = nil,
     subtaskCount: Int = 0,
@@ -391,6 +393,7 @@ public struct RemindersPrivateReminderDebugRecord: Codable, Equatable, Sendable 
     self.completed = completed
     self.sectionId = sectionId
     self.sectionTitle = sectionTitle
+    self.subtaskRelationshipAvailable = subtaskRelationshipAvailable
     self.parentReminderId = parentReminderId
     self.parentReminderTitle = parentReminderTitle
     self.subtaskCount = subtaskCount

@@ -81,7 +81,9 @@ extension NotesCommand {
         )
         return try verifiedMutationResult(
           NotesMutationResult(
-            operation: "notes.update", changed: true, note: note, deletedID: nil,
+            operation: "notes.update",
+            changed: patch.body != nil || !note.title.utf8.elementsEqual(identity.note.title.utf8),
+            note: note, deletedID: nil,
             verification: verification))
       }
     case ["notes", "append"]:
@@ -667,12 +669,13 @@ extension NotesCommand {
   private func createDraft(_ options: CLIOptions, isSystemPaper: Bool = false) throws -> NotesCreateDraft {
     let folder = try folderIdentity(selector: try requiredOption("folder", options: options))
     let title = try normalizedOption("title", options: options)
+    try notesValidateTitleEdit(title)
     return NotesCreateDraft(
       folderId: folder.id,
       folderName: folder.name,
       accountName: folder.accountName,
       title: title,
-      body: try normalizedOptionalOption("body", options: options) ?? "",
+      body: options.targetOption("body") ?? "",
       isSystemPaper: isSystemPaper
     )
   }
@@ -684,17 +687,22 @@ extension NotesCommand {
   private func updatePatch(_ options: CLIOptions) throws -> NotesUpdatePatch {
     let patch = NotesUpdatePatch(
       title: try normalizedOptionalOption("title", options: options),
-      body: try normalizedOptionalOption("body", options: options)
+      body: options.targetOption("body")
     )
     guard patch.hasChanges else {
       throw CLIError(
         code: .validationError, message: "At least one note field must be supplied for update.")
     }
+    if let title = patch.title { try notesValidateTitleEdit(title) }
     return patch
   }
 
   private func appendPatch(_ options: CLIOptions) throws -> NotesUpdatePatch {
-    NotesUpdatePatch(appendBody: try normalizedOption("body", options: options))
+    let body = try requiredOption("body", options: options)
+    guard !body.isEmpty else {
+      throw CLIError(code: .validationError, message: "`--body` must not be empty for append.")
+    }
+    return NotesUpdatePatch(appendBody: body)
   }
 
   private func moveDraft(note: NotesNoteDetail, options: CLIOptions) throws -> NotesMoveDraft {

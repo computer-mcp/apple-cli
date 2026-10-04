@@ -14,11 +14,46 @@ func notificationRequest(_ options: CLIOptions) throws -> LocalNotificationReque
     throw CLIError(code: .validationError, message: "`--body` cannot be blank.")
   }
 
+  let delay: Int?
+  if let raw = options.targetOption("delay-seconds") {
+    guard let value = Int(raw), (1...604_800).contains(value) else {
+      throw CLIError(
+        code: .validationError, message: "--delay-seconds requires an integer from 1 to 604800.")
+    }
+    delay = value
+  } else {
+    delay = nil
+  }
   return LocalNotificationRequest(
     title: title,
     body: body,
-    subtitle: options.targetOption("subtitle")
+    subtitle: options.targetOption("subtitle"),
+    identifier: try options.targetOption("id").map(notificationIdentifier),
+    delaySeconds: delay
   )
+}
+
+func notificationIdentifier(_ value: String) throws -> String {
+  let normalized =
+    value.hasPrefix(NotificationIdentity.requestPrefix)
+    ? value : NotificationIdentity.requestPrefix + value
+  guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+    normalized.utf8.count <= 500,
+    !value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+  else {
+    throw CLIError(
+      code: .validationError,
+      message: "Notification ID is blank, too long or contains control characters.")
+  }
+  return normalized
+}
+
+func notificationListLimit(_ options: CLIOptions) throws -> Int {
+  let value = options.limit ?? 50
+  guard (1...500).contains(value) else {
+    throw CLIError(code: .validationError, message: "--limit requires an integer from 1 to 500.")
+  }
+  return value
 }
 
 func validateReadOnly(_ options: CLIOptions) throws {
@@ -30,8 +65,6 @@ func validateReadOnly(_ options: CLIOptions) throws {
     )
   }
 }
-
-func validateDryRunOptions(_ options: CLIOptions) throws {}
 
 func validateTargetOptions(_ options: CLIOptions, allowedOptions: Set<String>) throws {
   let unknownOptions = Set(options.targetOptions.keys).subtracting(allowedOptions)
@@ -57,21 +90,26 @@ func requiredOption(_ name: String, options: CLIOptions) throws -> String {
 }
 
 func notificationScopeDigest(_ request: LocalNotificationRequest) -> String {
-  let components = [
+  var components = [
     request.title,
     request.subtitle ?? "",
     request.body,
-  ].joined(separator: "\u{1f}")
+  ]
+  if let identifier = request.identifier { components.append("id:\(identifier)") }
+  if let delay = request.delaySeconds { components.append("delay:\(delay)") }
 
-  return "notification:local:\(sha256Hex(components))"
+  return "notification:local:\(sha256Hex(components.joined(separator: "\u{1f}")))"
 }
 
 func notificationSummary(_ request: LocalNotificationRequest) -> [String: String] {
-  [
+  var result = [
     "title": request.title,
     "subtitle_present": request.subtitle == nil ? "false" : "true",
     "body_byte_count": "\(Data(request.body.utf8).count)",
   ]
+  if let identifier = request.identifier { result["identifier"] = identifier }
+  if let delay = request.delaySeconds { result["delay_seconds"] = "\(delay)" }
+  return result
 }
 
 func previewHumanOutput(_ request: LocalNotificationRequest) -> String {

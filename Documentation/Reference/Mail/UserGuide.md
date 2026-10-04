@@ -19,3 +19,11 @@ apple mail messages draft --to user@example.com --subject "Hi" --body "Hello" --
 
 The detailed capability boundary lives in
 `../../Architecture/Mail/CapabilityList.md`.
+
+Body previews respect `--max-bytes` in UTF-8 and preserve complete characters.
+`truncated` indicates that additional body content was omitted.
+
+Successful send results contain `sent.submitted: true` after Mail accepts the
+request. Mail owns delivery tracking. Rejected or unconfirmed submissions return
+an error with `submission_status` set to `rejected` or `unknown`; inspect Mail's
+outgoing messages and drafts before retrying.

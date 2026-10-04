@@ -4,7 +4,7 @@ import Utility
 public struct RemindersTarget: ParsableCommand {
   public static let targetName = "reminders"
   public static let targetStatus =
-    "Implemented: ReminderKit list/read-search, reminder/list lifecycle mutations, repeat rules, location triggers, alarms, URL/link cards, tags, flag, urgent, When Messaging, sections, subtasks, attachments, shared assignment, list metadata, list groups, templates, supported Smart Lists, and read-only SQLite verification plus doctor diagnostics."
+    "Implemented: ReminderKit list/read-search, rich notes, reminder/list lifecycle mutations, repeat rules, location triggers, alarms, URL/link cards, tags, flag, urgent, When Messaging, sections, subtasks, attachments, shared assignment, list metadata, list groups, templates, supported Smart Lists, and read-only SQLite verification plus doctor diagnostics."
   public static let isImplemented = true
 
   public static let configuration = CommandConfiguration(
@@ -14,7 +14,7 @@ public struct RemindersTarget: ParsableCommand {
     version: CLIVersion.current,
     subcommands: [
       Lists.self, Tags.self, Sections.self, Subtasks.self, Attachments.self, Assignments.self,
-      Templates.self,
+      Templates.self, Notes.self,
       List.self,
       Search.self, Read.self, Create.self, Update.self, Complete.self, Uncomplete.self,
       CompleteMany.self, UncompleteMany.self, CompleteMatching.self, UncompleteMatching.self,

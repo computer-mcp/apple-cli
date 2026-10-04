@@ -76,7 +76,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.smart-folders.criteria",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_smart_folder_criteria+matching_note_readback",
       targetIDSHA256: sha256Hex(smartFolder.id),
       checks: checks,
@@ -436,7 +436,7 @@ extension NotesCommand {
     case "math":
       return smartFolderBoolFilterReason(
         filter,
-        actual: state.isMathNote || structure.mathAttachmentCount > 0,
+        actual: state.isMathNote ? true : structure.mathAttachmentCount.map { $0 > 0 },
         source: "note_state+body_structure",
         rawGates: rawGate
       )
@@ -461,14 +461,14 @@ extension NotesCommand {
 
   private func smartFolderBoolFilterReason(
     _ filter: NotesSmartFolderCriteriaFilterExplanation,
-    actual: Bool,
+    actual: Bool?,
     source: String,
     rawGates: [String]
   ) -> NotesSmartFolderFilterReasonRecord {
-    let evaluatedActual: Bool
+    let evaluatedActual: Bool?
     switch filter.inclusionType {
     case 0:
-      evaluatedActual = !actual
+      evaluatedActual = actual.map { !$0 }
     case 1, nil:
       evaluatedActual = actual
     case let unsupported?:
@@ -483,6 +483,9 @@ extension NotesCommand {
         rawValueComparisonStatus: filter.rawValuePresent ? "gated_hash_only" : "not_applicable",
         gatedReasoningFamilies: Array(Set(gates)).sorted()
       )
+    }
+    guard let evaluatedActual else {
+      return smartFolderUnavailableBodyReason(filter, source: source, count: nil, rawGates: rawGates)
     }
     return NotesSmartFolderFilterReasonRecord(
       ordinal: filter.ordinal,
@@ -635,7 +638,7 @@ extension NotesCommand {
     rawGates: [String]
   ) -> NotesSmartFolderFilterReasonRecord {
     let mentionCount = bodyAttachmentKindCount("mention", in: structure)
-    let hasMentions = mentionCount > 0
+    let hasMentions = mentionCount.map { $0 > 0 }
     let selectedMentionMatched = smartFolderSelectedHashesMatch(
       expected: filter.participantUserIDSHA256s,
       actual: structure.mentionUserIDSHA256s
@@ -645,10 +648,10 @@ extension NotesCommand {
       || (filter.includedCount ?? 0) > 0
       || (filter.excludedCount ?? 0) > 0
       || !filter.participantUserIDSHA256s.isEmpty
-    let evaluatedActual: Bool
+    let evaluatedActual: Bool?
     switch filter.inclusionType {
     case 0:
-      evaluatedActual = selectedMentionMatched.map { !$0 } ?? !hasMentions
+      evaluatedActual = selectedMentionMatched.map { !$0 } ?? hasMentions.map { !$0 }
     case 1, nil:
       evaluatedActual = selectedMentionMatched ?? hasMentions
     case let unsupported?:
@@ -671,7 +674,7 @@ extension NotesCommand {
 
     if let selectedMentionMatched {
       var gates = smartFolderSemanticRawGates(rawGates)
-      if !evaluatedActual {
+      if evaluatedActual == false {
         gates.append("filter_mentions_value_comparison")
       }
       return NotesSmartFolderFilterReasonRecord(
@@ -691,6 +694,10 @@ extension NotesCommand {
       )
     }
 
+    guard let evaluatedActual else {
+      return smartFolderUnavailableBodyReason(filter,
+        source: "body_structure.attachmentKindCounts.mention", count: mentionCount, rawGates: rawGates)
+    }
     var gates = smartFolderSemanticRawGates(rawGates)
     if hasSpecificSelection {
       gates.append("mention_participant_identifier_comparison")
@@ -714,19 +721,17 @@ extension NotesCommand {
     )
   }
 
-  private func bodyAttachmentKindCount(_ kind: String, in structure: NotesBodyStructureRecord) -> Int {
-    structure.attachmentKindCounts.first { $0.kind == kind }?.count ?? 0
+  private func bodyAttachmentKindCount(_ kind: String, in structure: NotesBodyStructureRecord) -> Int? {
+    structure.attachmentKindCounts.map { $0.first { $0.kind == kind }?.count ?? 0 }
   }
 
-  private func smartFolderSelectedHashesMatch(expected: [String], actual: [String]) -> Bool? {
+  private func smartFolderSelectedHashesMatch(expected: [String], actual: [String]?) -> Bool? {
     let expectedSet = Set(expected.filter { !$0.isEmpty })
     guard !expectedSet.isEmpty else {
       return nil
     }
+    guard let actual else { return nil }
     let actualSet = Set(actual.filter { !$0.isEmpty })
-    guard !actualSet.isEmpty else {
-      return nil
-    }
     return expectedSet.isSubset(of: actualSet)
   }
 
@@ -1202,22 +1207,22 @@ extension NotesCommand {
     rawGates: [String]
   ) -> NotesSmartFolderFilterReasonRecord {
     let selectionType = filter.selectionType ?? 0
-    let count: Int
-    let actualBool: Bool
+    let count: Int?
+    let actualBool: Bool?
 
     switch selectionType {
     case 0:
       count = structure.checklistItemCount
-      actualBool = count > 0
+      actualBool = count.map { $0 > 0 }
     case 1:
       count = structure.checklistOpenCount
-      actualBool = count > 0
+      actualBool = count.map { $0 > 0 }
     case 2:
       count = structure.checklistDoneCount
-      actualBool = count > 0
+      actualBool = count.map { $0 > 0 }
     case 3:
       count = structure.checklistItemCount
-      actualBool = count == 0
+      actualBool = count.map { $0 == 0 }
     default:
       var gates = rawGates
       gates.append("filter_checklists_selection_type_\(selectionType)_boolean_evaluation")
@@ -1233,6 +1238,9 @@ extension NotesCommand {
       )
     }
 
+    guard let actualBool else {
+      return smartFolderUnavailableBodyReason(filter, source: "body_structure", count: count, rawGates: rawGates)
+    }
     return NotesSmartFolderFilterReasonRecord(
       ordinal: filter.ordinal,
       kind: filter.kind,
@@ -1243,6 +1251,24 @@ extension NotesCommand {
       actualCount: count,
       rawValueComparisonStatus: smartFolderSemanticRawValueStatus(filter),
       gatedReasoningFamilies: smartFolderSemanticRawGates(rawGates)
+    )
+  }
+
+  private func smartFolderUnavailableBodyReason(
+    _ filter: NotesSmartFolderCriteriaFilterExplanation,
+    source: String,
+    count: Int?,
+    rawGates: [String]
+  ) -> NotesSmartFolderFilterReasonRecord {
+    NotesSmartFolderFilterReasonRecord(
+      ordinal: filter.ordinal,
+      kind: filter.kind,
+      reasoningStatus: "body_readback_unavailable",
+      matchStatus: "matched_by_private_smart_folder_readback",
+      evidenceSource: source,
+      actualCount: count,
+      rawValueComparisonStatus: filter.rawValuePresent ? "gated_hash_only" : "not_applicable",
+      gatedReasoningFamilies: Array(Set(rawGates + ["filter_\(filter.kind)_body_readback"])).sorted()
     )
   }
 
@@ -1278,7 +1304,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.smart-folders.explain",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_smart_folder_criteria_explanation+matching_note_readback",
       targetIDSHA256: sha256Hex(smartFolder.id),
       checks: checks,
@@ -1431,7 +1457,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.smart-folders.reasoning",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_smart_folder_membership_reasoning+criteria_summary+boolean_trace",
       targetIDSHA256: sha256Hex(smartFolder.id),
       checks: checks,

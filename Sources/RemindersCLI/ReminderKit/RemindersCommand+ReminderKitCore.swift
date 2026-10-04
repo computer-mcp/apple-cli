@@ -7,7 +7,8 @@ extension RemindersCommand {
   func fetchReminderKitLists() throws -> [ReminderListRecord] {
     let store = try coreReminderKitStore(operation: "lists")
     let lists = try reminderKitFetchLists(store: store, operation: "lists")
-    return lists.map(coreReminderListRecord).sorted {
+    let records = lists.map(coreReminderListRecord) + (try fetchReminderSmartListSnapshots(store: store)).map(\.list)
+    return records.sorted {
       $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
     }
   }
@@ -57,9 +58,15 @@ extension RemindersCommand {
 
   func fetchReminderKitReminders(_ query: ReminderQuery) throws -> [ReminderSummary] {
     let store = try coreReminderKitStore(operation: "list-reminders")
-    let lists = try coreResolveLists(store: store, selector: query.listSelector)
-    let reminders = try reminderKitFetchReminders(
-      store: store, lists: lists, operation: "list-reminders")
+    let lists = try reminderKitFetchLists(store: store, operation: "list-reminders")
+    let selection = try fetchReminderKitReadSelection(store: store, lists: lists, selector: query.listSelector)
+    let reminders: [REMReminder]
+    if let smartList = selection.smartList {
+      reminders = try reminderKitQuerySmartList(store: store, list: smartList, completion: query.completion)
+    } else {
+      reminders = try reminderKitFetchReminders(
+        store: store, lists: selection.lists, operation: "list-reminders")
+    }
     let listTitles = Dictionary(
       uniqueKeysWithValues: lists.map {
         (coreObjectIDString($0.remObjectID), $0.displayName ?? $0.name ?? "")
@@ -201,6 +208,14 @@ extension RemindersCommand {
     guard let reminder = try coreFetchReminder(store: store, id: id, operation: "complete") else {
       throw CLIError(code: .notFound, message: "Reminder was not found.", details: ["id": id])
     }
+    let completionDate = coreReminderCompletionDate(
+      current: reminder.completionDate,
+      completed: completed,
+      completedAt: completedAt
+    )
+    if coreReminderIsCompleted(reminder) == completed && reminder.completionDate == completionDate {
+      return coreReminderDetail(reminder)
+    }
     let saveRequest = try coreReminderKitSaveRequest(store: store, operation: "complete")
     guard let change = saveRequest.updateReminder(reminder) as? REMReminderChangeItem else {
       throw coreReminderKitError(
@@ -210,7 +225,7 @@ extension RemindersCommand {
       )
     }
     change.completed = completed
-    change.completionDate = completed ? (completedAt ?? Date()) : nil
+    change.completionDate = completionDate
     try coreSaveReminderKit(saveRequest, operation: "complete")
     return coreReminderDetail(store.refreshReminder(reminder) as? REMReminder ?? reminder)
   }

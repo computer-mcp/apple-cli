@@ -35,6 +35,10 @@ framework as the broad production implementation mechanism.
   Foundation plist reads/writes, backup state, bounded subprocess calls,
   LaunchDaemon plist installation, local preflight checks, and rollback
   confinement.
+- `Sources/IntelligenceCLI/CountryCache.swift` owns bounded archive graph validation,
+  selective country changes, and structural preservation verification.
+- `Sources/IntelligenceCLI/CacheWrite.swift` owns prepared cache snapshots and
+  write/readback checks.
 - `Sources/IntelligenceCLI/Models.swift` owns typed target models: patch scopes,
   cache files, domains, mechanisms, state manifests, verification results, and
   `typed operation result`.
@@ -87,7 +91,7 @@ implemented mechanisms are:
 - comprehensive patch: extends answer patching with known GREYMATTER/CALCIUM
   status input values;
 - country cache rewrite: optionally rewrites `countryd` alpha-2 country-code
-  strings;
+  fields on the active combined estimate;
 - recompute and service persistence: refresh `eligibilityd` through bounded
   Swift-owned command paths.
 
@@ -126,9 +130,27 @@ Feature version landmarks and product boundaries:
 - Answer and comprehensive patch scopes are typed `IntelligencePatchRule` values
   written with `PropertyListSerialization`.
 - Country cache rewriting uses `--eligibility-country`, validates a
-  two-letter country code, rewrites all uppercase alpha-2 country-code string
-  values in the `countryd` plist, reports `countryd` as the touched subsystem,
-  and emits an iPhone Mirroring pairing warning.
+  two-letter country code, and follows `$top.root` to the active
+  `CombinedEstimate`. Supported input is an `NSKeyedArchiver` archive with
+  archive version `100000`, `RDCachedData` version `5`, an array of `RDEstimate`
+  records, and native UID references. Missing, empty, cyclic, dangling, or
+  unsupported structures are refused before backup, unlocking, or cache writes.
+  Copies of changed estimates, their collection, and the root are appended;
+  only `$top.root` switches to the copied branch. Existing objects, historical
+  estimates, local observations, timestamps, priorities, unrelated values, and
+  other top-level references retain their content and references. A matching
+  active country preserves the country archive bytes. The result reports
+  `countryd` as the touched subsystem and an iPhone Mirroring pairing warning.
+- Enablement prepares every requested cache change before writing, backs up the
+  captured bytes, checks for changes since preflight, and reads back both each
+  write and the completed group. Country readback compares the entire archive
+  graph as well as the active country. On failure, automatic recovery restores
+  only files whose current bytes still match this operation's write. Concurrent
+  replacement is retained and reported as unconfirmed with a backup for manual
+  recovery. Separate cache files do not form an atomic system transaction;
+  daemons can replace them again after verification.
+- Manual rollback validates all backup digests before unlocking or restoring,
+  and confirms restored bytes by readback after atomic replacement.
 - Reset uses known cache paths and optional `launchctl kickstart`, not broad
   deletion.
 - Recompute uses a fixed `lldb` command sequence only with explicit debug-attach

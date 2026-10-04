@@ -57,29 +57,38 @@ public struct KeynoteCommand: Sendable {
           code: .notFound, message: "Keynote presentation was not found.", details: ["path": path])
       }
       return try result(slides, human: slidesHumanOutput(slides), options: options)
-    case ["slides", "export"]:
+    case ["previews", "list"]:
+      try validateReadOnly(options)
+      try validateTargetOptions(options, allowedOptions: ["path"])
+      let path = try requiredOption("path", options: options)
+      guard let previews = try backend.listPreviews(path: path, limit: try commandLimit(options)) else {
+        throw CLIError(
+          code: .notFound, message: "Keynote presentation was not found.", details: ["path": path])
+      }
+      return try result(previews, human: previewsHumanOutput(previews), options: options)
+    case ["previews", "export"]:
       try validateTargetOptions(options, allowedOptions: ["path", "format", "to"])
-      try validateMutationIntent(options, commandDescription: "Keynote slide export")
-      let format = try slideExportFormat(options)
+      try validateMutationIntent(options, commandDescription: "Keynote preview export")
+      let format = try previewExportFormat(options)
       let destinationPath = standardizedAbsolutePath(try requiredOption("to", options: options))
       if options.dryRun {
-        try validateSlideExportDestination(destinationPath)
+        try validatePreviewExportDestination(destinationPath)
       } else {
         try CLISafety.requireFlag(
           "allow-artifact-action",
           in: options,
           category: .artifactAction,
           message:
-            "Keynote slide export writes filesystem artifacts and requires `--allow-artifact-action`."
+            "Keynote preview export writes filesystem artifacts and requires `--allow-artifact-action`."
         )
       }
       let path = try requiredOption("path", options: options)
-      guard let slides = try backend.listSlides(path: path, limit: try commandLimit(options)) else {
+      guard let previews = try backend.listPreviews(path: path, limit: try commandLimit(options)) else {
         throw CLIError(
           code: .notFound, message: "Keynote presentation was not found.", details: ["path": path])
       }
-      return try exportSlides(
-        slides, format: format, destinationPath: destinationPath, options: options)
+      return try exportPreviews(
+        previews, format: format, destinationPath: destinationPath, options: options)
     case ["presentations", "open"]:
       try validateTargetOptions(options, allowedOptions: ["path"])
       if !options.dryRun {
@@ -188,12 +197,10 @@ public struct KeynoteCommand: Sendable {
       "format": format,
       "destination_path": destinationPath,
     ]
-    if format == "package" {
-      try validatePackageExportRelationship(
-        source: URL(fileURLWithPath: presentation.path).standardizedFileURL,
-        destination: URL(fileURLWithPath: destinationPath).standardizedFileURL
-      )
-    }
+    try validatePresentationArtifactRelationship(
+      source: URL(fileURLWithPath: presentation.path).standardizedFileURL,
+      destination: URL(fileURLWithPath: destinationPath).standardizedFileURL
+    )
 
     if options.dryRun {
       try validateDryRunOptions(options)
@@ -225,15 +232,15 @@ public struct KeynoteCommand: Sendable {
     )
   }
 
-  private func exportSlides(
-    _ response: KeynoteSlidesResponse,
+  private func exportPreviews(
+    _ response: KeynotePreviewsResponse,
     format: String,
     destinationPath: String,
     options: CLIOptions
   ) throws -> CLICommandResult {
-    let operation = "keynote.slides-export"
-    let artifacts = try slideExportArtifacts(response, destinationPath: destinationPath)
-    let scopeDigest = slideExportScopeDigest(
+    let operation = "keynote.previews-export"
+    let artifacts = try previewExportArtifacts(response, destinationPath: destinationPath)
+    let scopeDigest = previewExportScopeDigest(
       response.presentation,
       artifacts: artifacts,
       format: format,
@@ -244,8 +251,8 @@ public struct KeynoteCommand: Sendable {
       "name": response.presentation.name,
       "format": format,
       "destination_path": destinationPath,
-      "slides": "\(artifacts.count)",
-      "sha256": slideExportDigest(artifacts),
+      "previews": "\(artifacts.count)",
+      "sha256": previewExportDigest(artifacts),
     ]
 
     if options.dryRun {
@@ -269,18 +276,18 @@ public struct KeynoteCommand: Sendable {
       in: options,
       category: .artifactAction,
       message:
-        "Keynote slide export writes filesystem artifacts and requires `--allow-artifact-action`."
+        "Keynote preview export writes filesystem artifacts and requires `--allow-artifact-action`."
     )
-    try writeSlideExportArtifacts(artifacts, destinationPath: destinationPath)
+    try writePreviewExportArtifacts(artifacts, destinationPath: destinationPath)
 
     return try result(
-      KeynoteSlideExportResult(
+      KeynotePreviewExportResult(
         operation: operation,
         changed: true,
         sourcePath: response.presentation.path,
         destinationPath: destinationPath,
         format: format,
-        exportedSlideCount: artifacts.count,
+        exportedPreviewCount: artifacts.count,
         files: artifacts.map(\.file)
       ),
       human: "\(operation) executed",

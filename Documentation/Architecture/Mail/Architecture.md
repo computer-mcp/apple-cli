@@ -21,6 +21,10 @@ actions.
 Mail uses target-local structured Mail.app scripting. Persistent `.emlx` or
 full-text indexing is not part of the accepted implementation mechanism.
 
+Send success reports Mail's accepted submission through `sent.submitted`.
+Rejected or unconfirmed submissions return a structured error; Mail owns
+delivery tracking. Body preview limits apply to UTF-8 bytes.
+
 ## Validation
 
 Use `apple mail doctor --json`, bounded message commands, and Mail command

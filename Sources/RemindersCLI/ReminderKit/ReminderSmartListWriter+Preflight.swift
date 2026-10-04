@@ -18,7 +18,6 @@ extension ReminderSmartListWriter {
         "REMSmartListCustomContextChangeItem",
         NSClassFromString("REMSmartListCustomContextChangeItem") != nil
       ),
-      ("REMSmartListsDataView", NSClassFromString("REMSmartListsDataView") != nil),
       (
         "REMObjectID.objectIDWithURL:",
         REMObjectID.responds(to: NSSelectorFromString("objectIDWithURL:"))
@@ -28,23 +27,8 @@ extension ReminderSmartListWriter {
         REMStore.instancesRespond(to: NSSelectorFromString("fetchAccountsWithError:"))
       ),
       (
-        "REMStore.fetchPrimaryActiveCloudKitAccountWithError:",
-        REMStore.instancesRespond(
-          to: NSSelectorFromString("fetchPrimaryActiveCloudKitAccountWithError:"))
-      ),
-      (
-        "REMStore.fetchDefaultAccountWithError:",
-        REMStore.instancesRespond(to: NSSelectorFromString("fetchDefaultAccountWithError:"))
-      ),
-      (
         "REMStore.fetchCustomSmartListWithObjectID:error:",
         REMStore.instancesRespond(to: #selector(REMStore.fetchCustomSmartList(withObjectID:error:)))
-      ),
-      (
-        "REMSmartListsDataView.fetchCustomSmartListsWithError:",
-        REMSmartListsDataView.instancesRespond(
-          to: NSSelectorFromString("fetchCustomSmartListsWithError:")
-        )
       ),
       (
         "REMSaveRequest.updateAccount:",

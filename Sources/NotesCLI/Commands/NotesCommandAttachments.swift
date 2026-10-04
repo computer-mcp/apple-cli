@@ -1818,7 +1818,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.attachments.list.collection",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_attachment_metadata_batch_readback",
       targetIDSHA256: sha256Hex(records.map(\.noteIDSHA256).joined(separator: "\n")),
       checks: checks
@@ -1978,7 +1978,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.attachments.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_attachment_metadata_batch_readback",
       targetIDSHA256: sha256Hex(records.map(\.noteIDSHA256).joined(separator: "\n")),
       checks: checks
@@ -3904,7 +3904,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.attachments.workflow.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "capability_accounting+privacy_boundary+no_backend_calls",
       targetIDSHA256: sha256Hex("notes.attachments.workflow.audit"),
       checks: checks

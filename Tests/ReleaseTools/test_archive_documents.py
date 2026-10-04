@@ -12,6 +12,11 @@ import unittest
 
 SOURCE = Path(__file__).resolve().parents[2]
 checker = runpy.run_path(str(SOURCE / "Scripts/verify-release"))
+VALIDATION_DOCUMENTS = [
+    "Documentation/Architecture/VersioningAndRelease.md",
+    "Documentation/Reference/NativeFixtureValidation.md",
+    "Documentation/Reference/NativeFixtureManifest.schema.json",
+]
 
 
 class ArchiveDocumentTests(unittest.TestCase):
@@ -28,8 +33,7 @@ class ArchiveDocumentTests(unittest.TestCase):
         self.package.mkdir()
         for name in [
             "LICENSE", "THIRD_PARTY_NOTICES.md", "Documentation/Reference/ReleaseGuide.md",
-            "Documentation/Architecture/VersioningAndRelease.md",
-        ]:
+        ] + VALIDATION_DOCUMENTS:
             for destination in [self.source, self.package]:
                 target = destination / name
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -92,15 +96,24 @@ class ArchiveDocumentTests(unittest.TestCase):
         accepted = checker["verify"](self.output, self.source)
         self.assertEqual(accepted[0]["version"], "0.1.0-alpha.1")
 
-    def test_requires_version_policy_in_the_archive(self):
-        (self.package / "Documentation/Architecture/VersioningAndRelease.md").unlink()
-        self.archive()
-        with self.assertRaises(FileNotFoundError):
-            checker["verify"](self.output, self.source)
+    def test_requires_validation_documents_in_the_archive(self):
+        for name in VALIDATION_DOCUMENTS:
+            with self.subTest(name=name):
+                path = self.package / name
+                contents = path.read_bytes()
+                path.unlink()
+                self.archive()
+                with self.assertRaises(FileNotFoundError):
+                    checker["verify"](self.output, self.source)
+                path.write_bytes(contents)
 
-    def test_rejects_version_policy_drift_from_source(self):
-        policy = self.package / "Documentation/Architecture/VersioningAndRelease.md"
-        policy.write_text(policy.read_text() + "\nDifferent archived rule.\n")
-        self.archive()
-        with self.assertRaisesRegex(ValueError, "Source input mismatch"):
-            checker["verify"](self.output, self.source)
+    def test_rejects_validation_document_drift_from_source(self):
+        for name in VALIDATION_DOCUMENTS:
+            with self.subTest(name=name):
+                path = self.package / name
+                contents = path.read_bytes()
+                path.write_bytes(contents + b"\nChanged archive input.\n")
+                self.archive()
+                with self.assertRaisesRegex(ValueError, "Source input mismatch"):
+                    checker["verify"](self.output, self.source)
+                path.write_bytes(contents)

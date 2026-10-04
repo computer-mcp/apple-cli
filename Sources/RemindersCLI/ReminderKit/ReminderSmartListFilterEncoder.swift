@@ -45,6 +45,16 @@ enum ReminderSmartListFilterEncoder {
     var fields: [String: Any] = [:]
 
     for token in tokens {
+      let field: String
+      switch token.key {
+      case "tags", "any-tag": field = "hashtags"
+      case "priority": field = "priorities"
+      case "date", "date-on", "date-before", "date-after", "date-range": field = "date"
+      default: field = token.key
+      }
+      guard fields[field] == nil else {
+        throw unsupportedCriterion(token, reason: "Specify each Smart List filter once. Use comma-separated values or date-range for a combined filter.")
+      }
       let lowerValue = token.value.lowercased()
       switch token.key {
       case "flagged":
@@ -88,6 +98,9 @@ enum ReminderSmartListFilterEncoder {
         let end = String(dates[2])
         try validateISODate(start, key: token.key)
         try validateISODate(end, key: token.key)
+        guard start <= end else {
+          throw unsupportedCriterion(token, reason: "Smart List date range must start on or before its end date.")
+        }
         fields["date"] = ["dateRange": [start, end]]
       default:
         throw unsupportedCriterion(token, reason: "Unsupported Smart List criterion.")
@@ -212,7 +225,7 @@ enum ReminderSmartListFilterEncoder {
   private static func validateISODate(_ value: String, key: String) throws {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withFullDate]
-    guard formatter.date(from: value) != nil else {
+    guard let date = formatter.date(from: value), formatter.string(from: date) == value else {
       throw CLIError(
         code: .validationError,
         message: "Smart List date criterion must use YYYY-MM-DD.",

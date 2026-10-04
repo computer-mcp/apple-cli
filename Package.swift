@@ -1,7 +1,12 @@
 // swift-tools-version: 6.3
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
+import Foundation
 import PackageDescription
+
+let appleInfoPlistPath = URL(fileURLWithPath: #filePath)
+  .deletingLastPathComponent()
+  .appendingPathComponent("Sources/AppleCLI/Info.plist").path
 
 let argumentParser: Target.Dependency = .product(
   name: "ArgumentParser",
@@ -232,6 +237,14 @@ let package = Package(
         "PrintCLI",
         "TCCCLI",
         argumentParser,
+      ],
+      exclude: ["Info.plist"],
+      linkerSettings: [
+        .unsafeFlags(
+          [
+            "-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
+            "-Xlinker", appleInfoPlistPath,
+          ], .when(platforms: [.macOS]))
       ]
     ),
     .executableTarget(

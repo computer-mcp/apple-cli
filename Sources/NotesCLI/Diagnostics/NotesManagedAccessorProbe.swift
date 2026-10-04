@@ -1,6 +1,20 @@
 import CoreData
 import Foundation
 import ObjectiveC.runtime
+import Utility
+
+func notesRequireDateAccessors(_ object: NSManagedObject, operation: String) throws {
+  for property in ["creationDate", "modificationDate"] {
+    guard object.entity.attributesByName[property]?.attributeType == .dateAttributeType else {
+      throw CLIError(code: .backendUnavailable,
+        message: "Notes object model does not expose the expected date attribute.",
+        details: ["operation": operation, "native_selector": property,
+          "reason": "model_attribute_mismatch"])
+    }
+    try NotesRuntimeMethod(owner: "ICNote", selector: property, returnType: "@")
+      .require(operation: operation, receiver: object)
+  }
+}
 
 struct NotesManagedAccessorProbe: Sendable {
   var propertiesByClass: [String: Set<String>]

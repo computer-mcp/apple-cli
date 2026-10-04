@@ -6,11 +6,19 @@ import Utility
 public struct EventKitCalendarBackend: CalendarReading, CalendarMutating {
   public init() {}
 
-  public func listCalendars() throws -> [CalendarRecord] {
+  public func listCalendars(sourceID: String? = nil) throws -> [CalendarRecord] {
     let store = try eventStoreWithReadAccess()
+    if let sourceID, store.source(withIdentifier: sourceID) == nil {
+      throw CLIError(
+        code: .notFound, message: "Calendar source was not found.", details: ["source_id": sourceID])
+    }
     return store.calendars(for: .event)
+      .filter { sourceID == nil || $0.source?.sourceIdentifier == sourceID }
       .map(calendarRecord)
-      .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+      .sorted { lhs, rhs in
+        let order = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
+        return order == .orderedSame ? lhs.id < rhs.id : order == .orderedAscending
+      }
   }
 
   public func listEvents(_ query: CalendarEventQuery) throws -> [CalendarEventSummary] {
@@ -125,7 +133,7 @@ public struct EventKitCalendarBackend: CalendarReading, CalendarMutating {
 
     let event = EKEvent(eventStore: store)
     event.calendar = calendar
-    applyDraft(draft, to: event)
+    try applyDraft(draft, to: event)
     try store.save(event, span: .thisEvent, commit: true)
     return eventDetail(event)
   }
@@ -156,7 +164,7 @@ public struct EventKitCalendarBackend: CalendarReading, CalendarMutating {
       event.calendar = calendar
     }
 
-    applyPatch(patch, to: event)
+    try applyPatch(patch, to: event)
     try store.save(event, span: .thisEvent, commit: true)
     return eventDetail(event)
   }

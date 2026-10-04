@@ -26,8 +26,6 @@ extension RemindersSQLiteReader {
   public func enrichLists(_ lists: [ReminderListRecord]) throws -> [ReminderListRecord] {
     let store = try debugStore(scope: "summary")
     var statesByListID: [String: PrivateListState] = [:]
-    var statesByTitle: [String: [PrivateListState]] = [:]
-    var privateListRecords: [ReminderListRecord] = []
 
     for file in store.sqliteFiles where file.isReadable {
       do {
@@ -66,17 +64,11 @@ extension RemindersSQLiteReader {
           guard let state = privateListState(row, orderingIndexes: orderingIndexes) else {
             continue
           }
-          if let privateRecord = privateListRecord(row: row, storePath: file.path, state: state) {
-            privateListRecords.append(privateRecord)
-          }
           if let ckIdentifier = emptyToNil(stringValue(row["ck_identifier"])) {
-            statesByListID[ckIdentifier] = state
+            statesByListID[privateListIdentifierKey(ckIdentifier)] = state
           }
           if let externalIdentifier = emptyToNil(stringValue(row["external_identifier"])) {
-            statesByListID[externalIdentifier] = state
-          }
-          if let title = emptyToNil(stringValue(row["title"])) {
-            statesByTitle[title.lowercased(), default: []].append(state)
+            statesByListID[privateListIdentifierKey(externalIdentifier)] = state
           }
         }
       } catch {
@@ -84,29 +76,13 @@ extension RemindersSQLiteReader {
       }
     }
 
-    var enrichedLists = lists.map { list in
+    return lists.map { list in
       var enriched = list
-      let titleStates = statesByTitle[list.title.lowercased()] ?? []
-      let titleState = titleStates.count == 1 ? titleStates.first : nil
-      if let state = statesByListID[list.id] ?? titleState {
+      if let state = statesByListID[privateListIdentifierKey(list.id)] {
         applyPrivateListState(state, to: &enriched)
       }
       return enriched
     }
-    var existingIDs = Set(enrichedLists.map(\.id))
-    var existingTitleTypes = Set(
-      enrichedLists.map { "\($0.title.lowercased())|\($0.listType ?? "")" }
-    )
-    for privateRecord in privateListRecords {
-      let titleType = "\(privateRecord.title.lowercased())|\(privateRecord.listType ?? "")"
-      guard !existingIDs.contains(privateRecord.id), !existingTitleTypes.contains(titleType) else {
-        continue
-      }
-      enrichedLists.append(privateRecord)
-      existingIDs.insert(privateRecord.id)
-      existingTitleTypes.insert(titleType)
-    }
-    return enrichedLists
   }
 
   public func enrichReminders(_ reminders: [ReminderSummary]) throws -> [ReminderSummary] {

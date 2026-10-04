@@ -375,7 +375,7 @@ enum ReminderListGroupWriter {
     operation: String,
     details: [String: String]
   ) throws -> REMStore {
-    guard let store = REMStore() else {
+    guard let store = try reminderKitNewStore() else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -391,7 +391,7 @@ enum ReminderListGroupWriter {
     operation: String,
     details: [String: String]
   ) throws -> REMSaveRequest {
-    guard let saveRequest = REMSaveRequest(store: store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -408,7 +408,7 @@ enum ReminderListGroupWriter {
     details: [String: String]
   ) throws {
     var saveError: AnyObject?
-    guard saveRequest.saveSynchronouslyWithError(&saveError) else {
+    guard try reminderKitSaveSynchronously(saveRequest, error: &saveError) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,

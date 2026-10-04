@@ -12,6 +12,11 @@ public struct RemindersTargetOptions: ParsableArguments, Sendable {
   @Option(name: .customLong("parent-id")) public var parentId: String?
   @Option public var title: String?
   @Option public var notes: String?
+  @Option public var text: String?
+  @Option public var occurrence: String?
+  @Option public var format: String?
+  @Option public var state: String?
+  @Option public var style: String?
   @Option public var url: String?
   @Option public var due: String?
   @Option public var location: String?
@@ -156,6 +161,11 @@ public struct RemindersTargetOptions: ParsableArguments, Sendable {
     self.parentId = parentId
     self.title = title
     self.notes = notes
+    self.text = nil
+    self.occurrence = nil
+    self.format = nil
+    self.state = nil
+    self.style = nil
     self.url = url
     self.due = due
     self.location = location
@@ -228,6 +238,11 @@ public struct RemindersTargetOptions: ParsableArguments, Sendable {
       ("parent-id", parentId),
       ("title", title),
       ("notes", notes),
+      ("text", text),
+      ("occurrence", occurrence),
+      ("format", format),
+      ("state", state),
+      ("style", style),
       ("url", url),
       ("due", due),
       ("location", location),

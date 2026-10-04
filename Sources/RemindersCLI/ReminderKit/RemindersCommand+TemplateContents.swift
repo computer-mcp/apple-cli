@@ -207,6 +207,31 @@ extension RemindersCommand {
     }
   }
 
+  public func listReminderTemplateItems(
+    template: ReminderTemplateRecord,
+    limit: Int
+  ) throws -> [ReminderTemplateItemRecord] {
+    let operation = "templates-items-list"
+    let store = try coreReminderKitStore(operation: operation)
+    let resolved = try coreFetchTemplate(store: store, selector: template.id, operation: operation)
+    let templateID = coreObjectIDString(resolved.template.remObjectID)
+    let accountID = coreObjectIDString(resolved.account.remObjectID)
+    let ids = try RemindersSQLiteReader().templateItemIDs(
+      templateID: templateID, limit: limit)
+    return try ids.map { id in
+      let reminder = try coreFetchTemplateSavedReminder(store: store, id: id, operation: operation)
+      guard reminder.remObjectID?.entityName == "REMCDSavedReminder",
+        coreObjectIDString(reminder.listID) == templateID,
+        coreObjectIDString(reminder.accountID) == accountID
+      else {
+        throw coreReminderKitError(operation: operation,
+          message: "ReminderKit returned an item outside the selected template.",
+          details: ["template_id": templateID, "item_id": id])
+      }
+      return coreReminderTemplateItemRecord(reminder)
+    }
+  }
+
   public func addReminderTemplateItem(
     template: ReminderTemplateRecord,
     title: String,
@@ -421,13 +446,6 @@ private func coreTemplateSectionObjectID(
   return objectID
 }
 
-private func coreObjectIDsMatch(_ lhs: REMObjectID?, _ rhs: REMObjectID?) -> Bool {
-  guard let lhs, let rhs else {
-    return lhs == nil && rhs == nil
-  }
-  return lhs.uuid == rhs.uuid || lhs.urlRepresentation == rhs.urlRepresentation
-}
-
 private func coreReminderTemplateSectionRecord(
   _ section: REMTemplateSection,
   template: REMTemplate
@@ -465,11 +483,14 @@ private func coreReminderTemplateSectionRecord(
   return coreReminderTemplateSectionRecord(section, template: resolved.template)
 }
 
-private func coreTemplateListRepresentation(
+func coreTemplateListRepresentation(
   store: REMStore,
   template: REMTemplate,
   operation: String
 ) throws -> REMList {
+  try ReminderKitRuntimeMethod(owner: "REMListsDataView", selector: "initWithStore:",
+    returnType: "@", argumentTypes: ["@"]
+  ).require(operation: operation)
   guard let dataView = REMListsDataView(store: store) else {
     throw coreReminderKitError(
       operation: operation,
@@ -477,11 +498,17 @@ private func coreTemplateListRepresentation(
     )
   }
   var error: AnyObject?
+  try ReminderKitRuntimeMethod(owner: "REMListsDataView",
+    selector: "fetchListRepresentationOfTemplateWithObjectID:error:",
+    returnType: "@", argumentTypes: ["@", "^@"]
+  ).require(operation: operation, receiver: dataView)
   guard
     let representation = dataView.fetchListRepresentationOfTemplate(
       withObjectID: template.remObjectID,
       error: &error
-    ) as? REMList
+    ) as? REMList, error == nil,
+    coreObjectIDsMatch(representation.remObjectID, template.remObjectID),
+    coreObjectIDsMatch(representation.accountID, template.accountID)
   else {
     throw coreReminderKitError(
       operation: operation,
@@ -500,27 +527,46 @@ func coreFetchTemplateSavedReminder(
   id: String,
   operation: String
 ) throws -> REMReminder {
-  guard let objectID = coreREMObjectID(entity: "REMCDSavedReminder", identifier: id) else {
+  guard let objectID = try coreREMObjectID(entity: "REMCDSavedReminder", identifier: id) else {
     throw CLIError(
       code: .validationError,
       message: "Template item ID was not a valid ReminderKit saved reminder ID.",
       details: ["id": id]
     )
   }
+  try ReminderKitRuntimeMethod(
+    owner: "REMRemindersDataView", selector: "initWithStore:",
+    returnType: "@", argumentTypes: ["@"]
+  ).require(operation: operation)
   guard let dataView = REMRemindersDataView(store: store) else {
     throw coreReminderKitError(
       operation: operation,
       message: "ReminderKit reminders data view could not be created."
     )
   }
+  try ReminderKitRuntimeMethod(
+    owner: "REMReminderFetchOptions", selector: "defaultFetchOptions", scope: .classMethod,
+    returnType: "@"
+  ).require(operation: operation)
+  try ReminderKitRuntimeMethod(
+    owner: "REMRemindersDataView", selector: "fetchReminderWithObjectID:fetchOptions:error:",
+    returnType: "@", argumentTypes: ["@", "@", "^@"]
+  ).require(operation: operation, receiver: dataView)
   var error: AnyObject?
-  let options = REMReminderFetchOptions.defaultFetchOptions() as? REMReminderFetchOptions
+  guard let options = REMReminderFetchOptions.defaultFetchOptions() as? REMReminderFetchOptions else {
+    throw coreReminderKitError(operation: operation,
+      message: "ReminderKit template item fetch options could not be created.")
+  }
+  let fetched = dataView.fetchReminder(withObjectID: objectID, fetchOptions: options, error: &error)
+  if let error = error as? NSError,
+    !(fetched == nil && error.domain == "com.apple.reminderkit" && error.code == -3000)
+  {
+    throw coreReminderKitError(operation: operation,
+      message: "ReminderKit template item could not be read.",
+      details: ["id": id, "fetch_error": reminderKitErrorSummary(error)])
+  }
   guard
-    let reminder = dataView.fetchReminder(
-      withObjectID: objectID,
-      fetchOptions: options,
-      error: &error
-    ) as? REMReminder
+    let reminder = fetched as? REMReminder
   else {
     throw CLIError(
       code: .notFound,

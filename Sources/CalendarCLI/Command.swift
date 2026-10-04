@@ -13,15 +13,118 @@ public struct CalendarCommand: Sendable {
 
   public func run(options: CLIOptions) throws -> CLICommandResult? {
     switch options.positionals {
-    case ["calendars", "list"]:
+    case ["sources", "list"]:
       try validateReadOnly(options)
       try validateTargetOptions(options, allowedOptions: [])
-      let calendars = try backend.listCalendars()
+      let sources = try backend.listSources()
+      let selected = Array(sources.prefix(options.limit ?? sources.count))
       return try result(
-        CalendarListResponse(calendars: calendars),
-        human: calendarsHumanOutput(calendars),
+        CalendarSourceListResponse(sources: selected, truncated: selected.count < sources.count),
+        human: calendarSourcesHumanOutput(selected), options: options)
+    case ["sources", "read"]:
+      try validateReadOnly(options)
+      try validateTargetOptions(options, allowedOptions: ["id"])
+      let id = try requiredOption("id", options: options)
+      guard let source = try backend.readSource(id: id) else {
+        throw CLIError(
+          code: .notFound, message: "Calendar source was not found.", details: ["source_id": id])
+      }
+      return try result(
+        CalendarSourceResponse(source: source), human: calendarSourcesHumanOutput([source]),
+        options: options)
+    case ["calendars", "list"]:
+      try validateReadOnly(options)
+      try validateTargetOptions(options, allowedOptions: ["source"])
+      let sourceID = try options.targetOption("source").map { _ in
+        try requiredOption("source", options: options)
+      }
+      let calendars = try backend.listCalendars(sourceID: sourceID)
+      let selected = Array(calendars.prefix(options.limit ?? calendars.count))
+      return try result(
+        CalendarListResponse(calendars: selected, truncated: selected.count < calendars.count),
+        human: calendarsHumanOutput(selected),
         options: options
       )
+    case ["calendars", "read"]:
+      try validateReadOnly(options)
+      try validateTargetOptions(options, allowedOptions: ["id"])
+      let calendar = try calendarCollectionIdentity(options)
+      return try result(
+        CalendarResponse(calendar: calendar), human: calendarsHumanOutput([calendar]), options: options)
+    case ["calendars", "create"]:
+      try validateTargetOptions(options, allowedOptions: ["source", "title", "color"])
+      let draft = CalendarCreateDraft(
+        sourceId: try requiredOption("source", options: options),
+        title: try validatedCalendarTitle(requiredOption("title", options: options)),
+        color: try options.targetOption("color").map(validatedCalendarColor))
+      guard let source = try backend.readSource(id: draft.sourceId) else {
+        throw CLIError(
+          code: .notFound, message: "Calendar source was not found.",
+          details: ["source_id": draft.sourceId])
+      }
+      try requireCalendarCreationSource(source)
+      return try mutation(
+        operation: "calendars.create",
+        scopeDigest: calendarCollectionScope(
+          operation: "calendars.create",
+          payload: CalendarCollectionMutationScope(source: source, draft: draft)),
+        summary: [
+          "source_id": source.id, "source_title": source.title, "title": draft.title,
+          "color": draft.color ?? "default",
+        ], options: options
+      ) {
+        let calendar = try backend.createCalendar(draft)
+        return CalendarMutationResult(
+          operation: "calendars.create", changed: true, event: nil, deletedID: nil, calendar: calendar)
+      }
+    case ["calendars", "update"]:
+      try validateTargetOptions(options, allowedOptions: ["id", "title", "color"])
+      let patch = CalendarPatch(
+        title: try options.targetOption("title").map(validatedCalendarTitle),
+        color: try options.targetOption("color").map(validatedCalendarColor))
+      guard patch.title != nil || patch.color != nil else {
+        throw CLIError(
+          code: .validationError, message: "At least one calendar field must be supplied for update.")
+      }
+      let current = try calendarCollectionIdentity(options)
+      let unchanged = (patch.title == nil || patch.title == current.title)
+        && (patch.color == nil || patch.color == current.color)
+      if !unchanged { try requireMutableCalendar(current) }
+      return try mutation(
+        operation: "calendars.update",
+        scopeDigest: calendarCollectionScope(
+          operation: "calendars.update",
+          payload: CalendarCollectionMutationScope(current: current, patch: patch)),
+        summary: [
+          "id": current.id, "source_id": current.sourceId ?? "unavailable",
+          "title": patch.title ?? current.title, "color": patch.color ?? current.color ?? "unavailable",
+        ], options: options
+      ) {
+        if unchanged {
+          return CalendarMutationResult(
+            operation: "calendars.update", changed: false, event: nil, deletedID: nil, calendar: current)
+        }
+        let calendar = try backend.updateCalendar(current: current, patch: patch)
+        return CalendarMutationResult(
+          operation: "calendars.update", changed: calendar != current, event: nil, deletedID: nil,
+          calendar: calendar)
+      }
+    case ["calendars", "delete"]:
+      try validateTargetOptions(options, allowedOptions: ["id"])
+      let current = try calendarCollectionIdentity(options)
+      try requireMutableCalendar(current)
+      return try mutation(
+        operation: "calendars.delete",
+        scopeDigest: calendarCollectionScope(operation: "calendars.delete", payload: current),
+        summary: [
+          "id": current.id, "source_id": current.sourceId ?? "unavailable", "title": current.title,
+          "deletes_calendar_and_contents": "true",
+        ], options: options
+      ) {
+        let changed = try backend.deleteCalendar(current: current)
+        return CalendarMutationResult(
+          operation: "calendars.delete", changed: changed, event: nil, deletedID: current.id)
+      }
     case ["events", "list"]:
       try validateReadOnly(options)
       try validateTargetOptions(options, allowedOptions: ["from", "to", "calendar"])
@@ -125,7 +228,7 @@ public struct CalendarCommand: Sendable {
     case ["events", "create"]:
       try validateTargetOptions(
         options,
-        allowedOptions: [
+        allowedOptions: recurrenceOptionNames.union([
           "calendar",
           "title",
           "start",
@@ -134,11 +237,7 @@ public struct CalendarCommand: Sendable {
           "notes",
           "alarm-minutes-before",
           "alarm-at",
-          "recurrence-frequency",
-          "recurrence-interval",
-          "recurrence-count",
-          "recurrence-until",
-        ],
+        ]),
         allowedFlags: ["all-day"]
       )
       try validateMutationIntent(options)
@@ -156,7 +255,7 @@ public struct CalendarCommand: Sendable {
     case ["events", "update"]:
       try validateTargetOptions(
         options,
-        allowedOptions: [
+        allowedOptions: recurrenceOptionNames.union([
           "id",
           "calendar",
           "title",
@@ -166,11 +265,7 @@ public struct CalendarCommand: Sendable {
           "notes",
           "alarm-minutes-before",
           "alarm-at",
-          "recurrence-frequency",
-          "recurrence-interval",
-          "recurrence-count",
-          "recurrence-until",
-        ],
+        ]),
         allowedFlags: [
           "all-day", "timed", "clear-location", "clear-notes", "clear-alarms", "clear-recurrence",
         ]
@@ -207,15 +302,17 @@ public struct CalendarCommand: Sendable {
     }
   }
 
-  private func eventCreateDraft(_ options: CLIOptions) throws -> CalendarEventDraft {
-    let calendar = try backend.calendarForMutation(
-      selector: try requiredOption("calendar", options: options))
-    guard calendar.allowsContentModifications else {
+  private func calendarCollectionIdentity(_ options: CLIOptions) throws -> CalendarRecord {
+    let id = try requiredOption("id", options: options)
+    guard let calendar = try backend.readCalendar(id: id) else {
       throw CLIError(
-        code: .validationError, message: "Calendar does not allow modifications.",
-        details: ["calendar": calendar.title])
+        code: .notFound, message: "Calendar was not found.", details: ["calendar_id": id])
     }
+    return calendar
+  }
 
+  private func eventCreateDraft(_ options: CLIOptions) throws -> CalendarEventDraft {
+    let calendarSelector = try requiredOption("calendar", options: options)
     let title = try requiredOption("title", options: options).trimmingCharacters(
       in: .whitespacesAndNewlines)
     guard !title.isEmpty else {
@@ -226,6 +323,15 @@ public struct CalendarCommand: Sendable {
     let end = try parseEventDate(try requiredOption("end", options: options))
     try validateEventRange(start: start, end: end)
 
+    let relativeAlarms = try alarmMinutesBeforeOption(options) ?? []
+    let absoluteAlarms = try alarmAtOption(options) ?? []
+    let recurrence = try recurrenceRuleOption(options, effectiveStart: start)
+    let calendar = try backend.calendarForMutation(selector: calendarSelector)
+    guard calendar.allowsContentModifications else {
+      throw CLIError(code: .validationError, message: "Calendar does not allow modifications.",
+        details: ["calendar": calendar.title])
+    }
+
     return CalendarEventDraft(
       calendarId: calendar.id,
       title: title,
@@ -234,9 +340,9 @@ public struct CalendarCommand: Sendable {
       isAllDay: options.hasTargetFlag("all-day"),
       location: options.targetOption("location"),
       notes: options.targetOption("notes"),
-      alarmMinutesBefore: try alarmMinutesBeforeOption(options) ?? [],
-      absoluteAlarmDates: try alarmAtOption(options) ?? [],
-      recurrence: try recurrenceRuleOption(options, effectiveStart: start)
+      alarmMinutesBefore: relativeAlarms,
+      absoluteAlarmDates: absoluteAlarms,
+      recurrence: recurrence
     )
   }
 
@@ -338,7 +444,7 @@ public struct CalendarCommand: Sendable {
         "end": formatDate(event.end),
         "alarm_minutes_before": alarmList(event.alarmMinutesBefore),
         "alarm_at": dateList(event.absoluteAlarmDates),
-        "recurrence": recurrenceSummary(event.recurrence),
+        "recurrence": recurrenceRulesSummary(event.recurrenceRules ?? event.recurrence.map { [$0] } ?? []),
         "attendee_count": "\(event.attendees.count)",
         "attendees_sha256": sha256Hex(attendeeList(event.attendees)),
       ]
@@ -376,6 +482,7 @@ public struct CalendarCommand: Sendable {
     destinationPath: String,
     options: CLIOptions
   ) throws -> CLICommandResult {
+    let content = try renderICalendar(events)
     let operation = "events.export"
     let scope = "calendar-event-export"
     let eventHash = sha256Hex(calendarExportEventList(events))
@@ -412,7 +519,7 @@ public struct CalendarCommand: Sendable {
       message: "Calendar export writes a filesystem artifact and requires `--allow-artifact-action`."
     )
 
-    let data = Data(renderICalendar(events).utf8)
+    let data = Data(content.utf8)
     try writeCalendarExport(data, to: destinationPath)
     return try result(
       CalendarExportResult(

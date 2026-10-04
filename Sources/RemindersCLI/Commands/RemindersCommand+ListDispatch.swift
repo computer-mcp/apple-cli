@@ -263,14 +263,8 @@ extension RemindersCommand {
         summary: identity.summaryFields,
         options: options
       ) {
-        let list = try updateReminderSmartList(
+        return try updateReminderSmartList(
           list: identity.list,
-          criteria: criteria
-        )
-        return ReminderSmartListMutationResult(
-          operation: "reminders.lists.smart.update",
-          changed: true,
-          list: list,
           criteria: criteria
         )
       }

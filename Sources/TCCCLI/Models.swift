@@ -280,25 +280,33 @@ public struct TCCDatabaseIssue: Codable, Equatable, Sendable {
   }
 }
 
+public enum TCCOperationVerification: String, Codable, Equatable, Sendable {
+  case unverified
+}
+
 public struct TCCOperationResult: Codable, Equatable, Sendable {
   public var operation: String
-  public var changed: Bool
+  public var changed: Bool?
   public var scope: TCCScope?
   public var service: String?
   public var client: String?
   public var affectedRows: Int
   public var backupPath: String?
   public var backend: String
+  public var attempted: Bool?
+  public var verification: TCCOperationVerification?
 
   public init(
     operation: String,
-    changed: Bool,
+    changed: Bool?,
     scope: TCCScope? = nil,
     service: String? = nil,
     client: String? = nil,
     affectedRows: Int = 0,
     backupPath: String? = nil,
-    backend: String
+    backend: String,
+    attempted: Bool? = nil,
+    verification: TCCOperationVerification? = nil
   ) {
     self.operation = operation
     self.changed = changed
@@ -308,6 +316,8 @@ public struct TCCOperationResult: Codable, Equatable, Sendable {
     self.affectedRows = affectedRows
     self.backupPath = backupPath
     self.backend = backend
+    self.attempted = attempted
+    self.verification = verification
   }
 }
 

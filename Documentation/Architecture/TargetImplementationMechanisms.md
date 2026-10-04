@@ -33,17 +33,17 @@ and links to the target owner.
 | `contacts` | Contacts.framework for people, groups, labels, vCard import/export, and authorization. | [Contacts](Contacts/Architecture.md) |
 | `mail` | Mail.app structured scripting for accounts, mailboxes, messages, drafts, sends, and mailbox actions. | [Mail](Mail/Architecture.md) |
 | `messages` | Read-only Messages database inspection for reads; Messages.app structured send automation for sends. | [Messages](Messages/Architecture.md) |
-| `maps` | CoreLocation-backed place lookup and validated Maps URL external actions. | [Maps](Maps/Architecture.md) |
+| `maps` | MapKit search/place IDs/routes/ETA, CoreLocation reverse geocoding, MapsSync saved reads and collection/member changes with native verification, and validated Maps URL external actions. | [Maps](Maps/Architecture.md) |
 | `finder` | FileManager/file-resource APIs, NSWorkspace/Finder-bound external actions, and file tag/resource metadata APIs. | [Finder](Finder/Architecture.md) |
 | `numbers` | File/package metadata, QuickLook export, and Numbers.app structured scripting for sheet/table/cell behavior. | [Numbers](Numbers/Architecture.md) |
 | `pages` | File/package metadata and QuickLook export/open mechanisms. | [Pages](Pages/Architecture.md) |
-| `keynote` | File/package metadata, QuickLook slide/package export, and presentation open mechanisms. | [Keynote](Keynote/Architecture.md) |
+| `keynote` | File/package metadata, Keynote native slide/PDF scripting, explicit cached previews, package copy and presentation open mechanisms. | [Keynote](Keynote/Architecture.md) |
 | `facetime` | Contacts.framework resolution and FaceTime URL external actions. | [FaceTime](FaceTime/Architecture.md) |
 | `safari` | Safari.app structured scripting plus read-only `SafariTabs.db` snapshots for profiles, windows, and Tab Groups. | [Safari](Safari/Architecture.md) |
 | `photos` | Read-only Photos SQLite snapshots, Photos.app structured scripting, file/ImageIO export helpers, optional explicit exiftool, and gated Swift/shell hooks. | [Photos](Photos/Architecture.md) |
 | `print` | CUPS inspection and bounded `lp`/`cancel` subprocess actions. | [Print](Print/Architecture.md) |
 | `clipboard` | NSPasteboard. | [Clipboard](Clipboard/Architecture.md) |
-| `notifications` | Target-local notification preview/delivery mechanisms for this tool's notifications. | [Notifications](Notifications/Architecture.md) |
+| `notifications` | Public UserNotifications callbacks, scoped collections and exact-ID removal/readback using the embedded CLI identity. | [Notifications](Notifications/Architecture.md) |
 | `intelligence` | Foundation plist APIs plus bounded subprocess calls for local eligibility/cache/service workflows. | [Intelligence](Intelligence/Architecture.md) |
 | `tcc` | TCC service catalog, read-only SQLite inspection, `tccutil`, public permission APIs, and gated private TCC.framework diagnostics. | [TCC](TCC/Architecture.md) |
 

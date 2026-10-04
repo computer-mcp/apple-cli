@@ -148,8 +148,9 @@ Choose a target to open its user guide:
 | Documents | [`pages`](Documentation/Reference/Pages/UserGuide.md) · [`numbers`](Documentation/Reference/Numbers/UserGuide.md) · [`keynote`](Documentation/Reference/Keynote/UserGuide.md) |
 | System utilities | [`print`](Documentation/Reference/Print/UserGuide.md) · [`clipboard`](Documentation/Reference/Clipboard/UserGuide.md) · [`notifications`](Documentation/Reference/Notifications/UserGuide.md) · [`intelligence`](Documentation/Reference/Intelligence/UserGuide.md) · [`tcc`](Documentation/Reference/TCC/UserGuide.md) |
 
-Coverage varies by target. Pages and Keynote focus on metadata and export;
-Numbers supports reads, exports and single-cell writes. Safari Tab Group
+Coverage varies by target. Pages focuses on metadata and export; Keynote
+supports native slide reads and PDF export alongside cached previews. Numbers
+supports reads, exports and single-cell writes. Safari Tab Group
 mutations and some Notes media workflows return an explicit unsupported result.
 Read the [Capability List](Documentation/Architecture/CapabilityList.md) for
 the supported scope of each target.

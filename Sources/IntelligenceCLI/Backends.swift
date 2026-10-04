@@ -56,6 +56,7 @@ public struct IntelligenceSubprocessRunner: IntelligenceSystemActionRunning {
 public struct IntelligenceBackend {
   private let fileManager: FileManager
   private let systemRunner: any IntelligenceSystemActionRunning
+  private let cacheWriter: any IntelligenceCacheFileWriting
 
   public init(
     fileManager: FileManager = .default,
@@ -63,6 +64,17 @@ public struct IntelligenceBackend {
   ) {
     self.fileManager = fileManager
     self.systemRunner = systemRunner
+    self.cacheWriter = IntelligenceAtomicCacheWriter()
+  }
+
+  init(
+    fileManager: FileManager = .default,
+    systemRunner: any IntelligenceSystemActionRunning = IntelligenceSubprocessRunner(),
+    cacheWriter: any IntelligenceCacheFileWriting
+  ) {
+    self.fileManager = fileManager
+    self.systemRunner = systemRunner
+    self.cacheWriter = cacheWriter
   }
 
   public func support() -> IntelligenceSupportAssessment {
@@ -131,92 +143,97 @@ public struct IntelligenceBackend {
     skipLock: Bool
   ) throws -> IntelligenceOperationResult {
     let rules = intelligenceRules(patchScope: patchScope)
-    var targets = Array(Set(rules.map { targetPath(for: $0.file, paths: paths) })).sorted()
-    if eligibilityCountry != nil {
-      targets.append(paths.countrydPlist)
-    }
-
+    let preparation = try prepareEnable(
+      paths: paths, rules: rules, country: eligibilityCountry, createMissing: createMissing)
+    let writes = preparation.writes
+    for write in writes { try write.requireOriginal() }
+    let targets = writes.map(\.path)
+    let snapshots = Dictionary(uniqueKeysWithValues: writes.compactMap { write in
+      write.originalData.map { (write.path, $0) }
+    })
     let state = try createBackupState(
-      paths: paths,
-      targets: targets.filter { fileManager.fileExists(atPath: $0) },
+      paths: paths, targets: Array(snapshots.keys),
       metadata: [
-        "operation": "intelligence.enable",
-        "patch_scope": patchScope.rawValue,
+        "operation": "intelligence.enable", "patch_scope": patchScope.rawValue,
         "eligibility_country": eligibilityCountry ?? "",
-      ]
-    )
+      ], snapshots: snapshots)
+    for write in writes { try write.requireOriginal() }
 
-    var actions = state.actions
-    actions.append(contentsOf: lockActions(targets, unlock: true, skipLock: skipLock))
-
-    let grouped = Dictionary(grouping: rules, by: { targetPath(for: $0.file, paths: paths) })
-    for (target, patchRules) in grouped.sorted(by: { $0.key < $1.key }) {
-      if !fileManager.fileExists(atPath: target) {
-        if createMissing {
+    var actions = state.actions + preparation.skippedActions
+    let unlock = lockActions(targets, unlock: true, skipLock: skipLock)
+    actions.append(contentsOf: unlock)
+    var warnings: [String] = eligibilityCountry == nil ? [] : [
+      "Changing the eligibility country cache may affect iPhone Mirroring expectations; pair iPhone Mirroring before changing the eligibility country when that workflow matters."
+    ]
+    var attempted: [IntelligencePreparedCacheWrite] = []
+    var activePath: String?
+    do {
+      guard !unlock.contains(where: { $0.status == "failed" }) else {
+        throw CLIError(code: .unsafeMutationRefused, message: "Eligibility cache unlock failed.")
+      }
+      for write in writes {
+        activePath = write.path
+        try write.requireOriginal()
+        if write.updatedData != write.originalData {
           try fileManager.createDirectory(
-            at: URL(fileURLWithPath: target).deletingLastPathComponent(),
-            withIntermediateDirectories: true
-          )
-          try writePlist([String: Any](), to: target, binary: true)
-          actions.append(
-            IntelligenceActionResult(
-              kind: "plistCreate",
-              status: "created",
-              path: target,
-              mechanism: IntelligenceMechanism.directPlistPatch.rawValue
-            ))
-        } else {
-          for rule in patchRules {
-            actions.append(
-              IntelligenceActionResult(
-                kind: "plistPatch",
-                status: "missing",
-                path: target,
-                domain: rule.domain.rawValue,
-                key: rule.keyPath.joined(separator: ":"),
-                current: "\(rule.value)",
-                mechanism: rule.mechanism.rawValue
-              ))
+            at: URL(fileURLWithPath: write.path).deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+          attempted.append(write)
+          try cacheWriter.write(write.updatedData, to: URL(fileURLWithPath: write.path))
+        }
+        try write.verifyReadback(Data(contentsOf: URL(fileURLWithPath: write.path)))
+        actions.append(contentsOf: write.actions)
+      }
+      // Confirm the group again: a daemon can replace an earlier file during a later write.
+      for write in writes {
+        activePath = write.path
+        try write.verifyReadback(Data(contentsOf: URL(fileURLWithPath: write.path)))
+      }
+    } catch {
+      actions.append(IntelligenceActionResult(
+        kind: "cacheWrite", status: "failed", path: activePath,
+        mechanism: IntelligenceMechanism.directPlistPatch.rawValue,
+        detail: (error as? CLIError)?.message ?? "Cache write or readback failed."))
+      for write in attempted.reversed() {
+        do {
+          if try write.matchesOriginal() { continue }
+          // Only restore bytes still attributable to this operation; preserve a concurrent writer.
+          guard try Data(contentsOf: URL(fileURLWithPath: write.path)) == write.updatedData else {
+            actions.append(IntelligenceActionResult(
+              kind: "rollbackRestore", status: "unconfirmed", path: write.path,
+              mechanism: IntelligenceMechanism.rollbackRestore.rawValue,
+              detail: "Current bytes differ from this operation's write; automatic restore was refused."))
+            warnings.append("A cache changed concurrently; inspect the backup before manual rollback.")
+            continue
           }
-          continue
+          if let original = write.originalData {
+            try cacheWriter.write(original, to: URL(fileURLWithPath: write.path))
+          } else {
+            try fileManager.removeItem(atPath: write.path)
+          }
+          guard try write.matchesOriginal() else {
+            throw CLIError(code: .backendUnavailable, message: "Cache rollback readback failed.")
+          }
+          actions.append(IntelligenceActionResult(
+            kind: "rollbackRestore", status: "restored", path: write.path,
+            mechanism: IntelligenceMechanism.rollbackRestore.rawValue))
+        } catch {
+          actions.append(IntelligenceActionResult(
+            kind: "rollbackRestore", status: "failed", path: write.path,
+            mechanism: IntelligenceMechanism.rollbackRestore.rawValue,
+            detail: "Automatic restore could not be confirmed; inspect the saved backup."))
         }
       }
-
-      let plist = try mutableDictionary(from: target)
-      for rule in patchRules {
-        actions.append(
-          setNested(
-            plist,
-            keyPath: rule.keyPath,
-            value: rule.value,
-            createMissing: createMissing,
-            path: target,
-            domain: rule.domain.rawValue,
-            mechanism: rule.mechanism
-          ))
-      }
-      try writePlist(plist, to: target, binary: true)
+      actions.append(contentsOf: lockActions(targets, unlock: false, skipLock: skipLock))
+      let remainingChanges = attempted.contains { (try? $0.matchesOriginal()) != true }
+      return operationResult(
+        operation: "intelligence.enable", actions: actions, state: state.state,
+        warnings: warnings, changed: remainingChanges)
     }
-
-    var warnings: [String] = []
-    if let eligibilityCountry {
-      actions.append(
-        contentsOf: try rewriteCountryCache(
-          path: paths.countrydPlist,
-          country: eligibilityCountry
-        ))
-      warnings.append(
-        "Changing the eligibility country cache may affect iPhone Mirroring expectations; pair iPhone Mirroring before changing the eligibility country when that workflow matters."
-      )
-    }
-
     actions.append(contentsOf: lockActions(targets, unlock: false, skipLock: skipLock))
     return operationResult(
-      operation: "intelligence.enable",
-      actions: actions,
-      state: state.state,
-      warnings: warnings
-    )
+      operation: "intelligence.enable", actions: actions, state: state.state,
+      warnings: warnings, changed: writes.contains { $0.originalData != $0.updatedData })
   }
 
   public func resetCache(paths: IntelligencePaths, kickstart: Bool, skipLock: Bool) throws
@@ -285,17 +302,31 @@ public struct IntelligenceBackend {
     let manifest = try JSONDecoder().decode(IntelligenceStateManifest.self, from: data)
     try validateManifestConfinement(manifest, manifestPath: selected.manifestPath, paths: paths)
 
+    let restoreData = try manifest.backups.map { row in
+      let data = try Data(contentsOf: URL(fileURLWithPath: row.backup))
+      let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+      guard digest == row.sha256 else {
+        throw intelligenceError(
+          code: .unsafeMutationRefused, failure: .backupDigestMismatch, details: ["path": row.backup])
+      }
+      return (row, data)
+    }
+
     let targets = manifest.backups.map(\.target)
     var actions = lockActions(targets, unlock: true, skipLock: skipLock)
-    for row in manifest.backups {
+    guard !actions.contains(where: { $0.status == "failed" }) else {
+      throw CLIError(code: .unsafeMutationRefused, message: "Eligibility cache unlock failed.")
+    }
+    for (row, data) in restoreData {
       try fileManager.createDirectory(
         at: URL(fileURLWithPath: row.target).deletingLastPathComponent(),
         withIntermediateDirectories: true
       )
-      if fileManager.fileExists(atPath: row.target) {
-        try fileManager.removeItem(atPath: row.target)
+      try cacheWriter.write(data, to: URL(fileURLWithPath: row.target))
+      guard try Data(contentsOf: URL(fileURLWithPath: row.target)) == data else {
+        throw intelligenceError(
+          code: .backendUnavailable, failure: .cacheVerificationFailed, details: ["path": row.target])
       }
-      try fileManager.copyItem(atPath: row.backup, toPath: row.target)
       actions.append(
         IntelligenceActionResult(
           kind: "rollbackRestore",
@@ -472,41 +503,74 @@ public struct IntelligenceBackend {
     }
   }
 
-  private func rewriteCountryCache(path: String, country: String) throws
-    -> [IntelligenceActionResult]
-  {
-    guard fileManager.fileExists(atPath: path) else {
-      return [
-        IntelligenceActionResult(
-          kind: "countryRewrite",
-          status: "missing",
-          path: path,
-          current: country,
+  private func prepareEnable(
+    paths: IntelligencePaths, rules: [IntelligencePatchRule], country: String?, createMissing: Bool
+  ) throws -> (writes: [IntelligencePreparedCacheWrite], skippedActions: [IntelligenceActionResult]) {
+    var countryWrite: IntelligencePreparedCacheWrite?
+    if let country {
+      guard fileManager.fileExists(atPath: paths.countrydPlist) else {
+        throw intelligenceError(
+          code: .unsafeMutationRefused, failure: .countryCacheMissing,
+          details: ["path": paths.countrydPlist])
+      }
+      let data = try Data(contentsOf: URL(fileURLWithPath: paths.countrydPlist))
+      let rewrite = try IntelligenceCountryCacheRewrite(data: data, country: country)
+      countryWrite = IntelligencePreparedCacheWrite(
+        path: paths.countrydPlist, originalData: data, updatedData: rewrite.updatedData,
+        actions: [IntelligenceActionResult(
+          kind: "countryRewrite", status: rewrite.changedEstimateCount > 0 ? "changed" : "unchanged",
+          path: paths.countrydPlist, current: country,
           mechanism: IntelligenceMechanism.countryCacheRewrite.rawValue,
-          subsystem: "countryd"
-        )
-      ]
+          detail: "changed_estimates=\(rewrite.changedEstimateCount); verification=verified",
+          subsystem: "countryd")], countryRewrite: rewrite)
     }
-    let plist = try loadPlist(path)
-    let rewrite = rewriteCountryCodeStrings(plist, country: country)
-    try writePlist(rewrite.value, to: path, binary: true)
-    return [
-      IntelligenceActionResult(
-        kind: "countryRewrite",
-        status: rewrite.changedCount > 0 ? "changed" : "unchanged",
-        path: path,
-        current: country,
-        mechanism: IntelligenceMechanism.countryCacheRewrite.rawValue,
-        detail: "changed_values=\(rewrite.changedCount)",
-        subsystem: "countryd"
-      )
-    ]
+    var writes: [IntelligencePreparedCacheWrite] = []
+    var skipped: [IntelligenceActionResult] = []
+    let grouped = Dictionary(grouping: rules, by: { targetPath(for: $0.file, paths: paths) })
+    for (path, patchRules) in grouped.sorted(by: { $0.key < $1.key }) {
+      let exists = fileManager.fileExists(atPath: path)
+      if !exists && !createMissing {
+        skipped += patchRules.map {
+          IntelligenceActionResult(
+            kind: "plistPatch", status: "missing", path: path, domain: $0.domain.rawValue,
+            key: $0.keyPath.joined(separator: ":"), current: "\($0.value)", mechanism: $0.mechanism.rawValue)
+        }
+        continue
+      }
+      let original = exists ? try Data(contentsOf: URL(fileURLWithPath: path)) : nil
+      let plist: NSMutableDictionary
+      if let original {
+        guard let dictionary = try PropertyListSerialization.propertyList(
+          from: original, options: [], format: nil) as? [String: Any]
+        else {
+          throw intelligenceError(
+            code: .validationError, failure: .plistRootNotDictionary, details: ["path": path])
+        }
+        plist = NSMutableDictionary(dictionary: dictionary)
+      } else { plist = NSMutableDictionary() }
+      var actions: [IntelligenceActionResult] = exists ? [] : [IntelligenceActionResult(
+        kind: "plistCreate", status: "created", path: path,
+        mechanism: IntelligenceMechanism.directPlistPatch.rawValue)]
+      for rule in patchRules {
+        actions.append(setNested(
+          plist, keyPath: rule.keyPath, value: rule.value, createMissing: createMissing,
+          path: path, domain: rule.domain.rawValue, mechanism: rule.mechanism))
+      }
+      let data: Data
+      if let original, !actions.contains(where: { $0.status == "changed" }) { data = original }
+      else { data = try PropertyListSerialization.data(fromPropertyList: plist, format: .binary, options: 0) }
+      writes.append(IntelligencePreparedCacheWrite(
+        path: path, originalData: original, updatedData: data, actions: actions, countryRewrite: nil))
+    }
+    if let countryWrite { writes.append(countryWrite) }
+    return (writes, skipped)
   }
 
   private func createBackupState(
     paths: IntelligencePaths,
     targets: [String],
-    metadata: [String: String]
+    metadata: [String: String],
+    snapshots: [String: Data]? = nil
   ) throws -> (state: IntelligenceOperationState?, actions: [IntelligenceActionResult]) {
     let stateID = backupID()
     let backupDir = URL(fileURLWithPath: paths.stateDir)
@@ -527,7 +591,11 @@ public struct IntelligenceBackend {
       if fileManager.fileExists(atPath: destination.path) {
         try fileManager.removeItem(at: destination)
       }
-      try fileManager.copyItem(atPath: target, toPath: destination.path)
+      if let snapshot = snapshots?[target] {
+        try snapshot.write(to: destination, options: .atomic)
+      } else {
+        try fileManager.copyItem(atPath: target, toPath: destination.path)
+      }
       let digest = try sha256Hex(path: destination.path)
       entries.append(IntelligenceBackupEntry(target: target, backup: destination.path, sha256: digest))
       actions.append(
@@ -734,7 +802,8 @@ public struct IntelligenceBackend {
     actions: [IntelligenceActionResult],
     state: IntelligenceOperationState?,
     rollback: IntelligenceRollbackHint? = nil,
-    warnings: [String] = []
+    warnings: [String] = [],
+    changed changedOverride: Bool? = nil
   ) -> IntelligenceOperationResult {
     let status: IntelligenceOperationStatus
     if actions.contains(where: { $0.status == "failed" }) {
@@ -745,7 +814,7 @@ public struct IntelligenceBackend {
       status = .succeeded
     }
     let changedStatuses = Set(["changed", "created", "removed", "restored", "copied"])
-    let changed = actions.contains { changedStatuses.contains($0.status) }
+    let changed = changedOverride ?? actions.contains { $0.kind != "backupCreate" && changedStatuses.contains($0.status) }
     let rollbackHint =
       rollback
       ?? state.map {
@@ -837,21 +906,6 @@ private func loadPlist(_ path: String) throws -> Any {
   return try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
 }
 
-private func mutableDictionary(from path: String) throws -> NSMutableDictionary {
-  let plist = try loadPlist(path)
-  if let dict = plist as? NSMutableDictionary {
-    return dict
-  }
-  if let dict = plist as? [String: Any] {
-    return NSMutableDictionary(dictionary: dict)
-  }
-  throw intelligenceError(
-    code: .validationError,
-    failure: .plistRootNotDictionary,
-    details: ["path": path]
-  )
-}
-
 private func writePlist(_ plist: Any, to path: String, binary: Bool) throws {
   let format: PropertyListSerialization.PropertyListFormat = binary ? .binary : .xml
   let data = try PropertyListSerialization.data(fromPropertyList: plist, format: format, options: 0)
@@ -938,36 +992,6 @@ private func setNested(
     current: "\(value)",
     mechanism: mechanism.rawValue
   )
-}
-
-private func rewriteCountryCodeStrings(_ value: Any, country: String) -> (value: Any, changedCount: Int) {
-  if let dict = value as? [String: Any] {
-    var result: [String: Any] = [:]
-    var count = 0
-    for (key, child) in dict {
-      let rewritten = rewriteCountryCodeStrings(child, country: country)
-      result[key] = rewritten.value
-      count += rewritten.changedCount
-    }
-    return (result, count)
-  }
-  if let array = value as? [Any] {
-    var count = 0
-    let result = array.map { child -> Any in
-      let rewritten = rewriteCountryCodeStrings(child, country: country)
-      count += rewritten.changedCount
-      return rewritten.value
-    }
-    return (result, count)
-  }
-  if let string = value as? String, isUppercaseCountryCode(string) {
-    return (country, string == country ? 0 : 1)
-  }
-  return (value, 0)
-}
-
-private func isUppercaseCountryCode(_ value: String) -> Bool {
-  value.count == 2 && value.allSatisfy { $0 >= "A" && $0 <= "Z" }
 }
 
 private func stringify(_ value: Any) -> String {

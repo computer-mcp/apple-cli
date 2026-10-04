@@ -1,18 +1,19 @@
 import ArgumentParser
 import EventKit
+import Foundation
 import Utility
 
 public struct CalendarTarget: ParsableCommand {
   public static let targetName = "calendar"
   public static let targetStatus =
-    "Implemented: EventKit calendar/event read-search, bounded recurring occurrences, attendee metadata, availability/statistics paths, dry-run previewed iCalendar export, and dry-run previewed event create/update/delete with basic relative/absolute alarms and recurrence rules."
+    "Implemented: Calendar source/calendar reads, calendar create/update/delete, event read-search, bounded recurring occurrences, attendee metadata, availability/statistics, non-recurring iCalendar export, and event create/update/delete with relative/absolute alarms and custom recurrence conditions."
   public static let isImplemented = true
 
   public static let configuration = CommandConfiguration(
     commandName: "calendar",
     abstract: "Calendar and event workflows.",
     version: CLIVersion.current,
-    subcommands: [Calendars.self, Events.self, Availability.self, Doctor.self]
+    subcommands: [Sources.self, Calendars.self, Events.self, Availability.self, Doctor.self]
   )
 
   @OptionGroup public var shared: CLISharedOptions
@@ -31,7 +32,7 @@ public struct CalendarTarget: ParsableCommand {
   public struct Calendars: ParsableCommand {
     public static let configuration = CommandConfiguration(
       commandName: "calendars",
-      subcommands: [List.self]
+      subcommands: [List.self, Read.self, Create.self, Update.self, Delete.self]
     )
     public init() {}
 
@@ -39,7 +40,7 @@ public struct CalendarTarget: ParsableCommand {
       public static let configuration = CommandConfiguration(commandName: "list")
       public static let positionals = ["calendars", "list"]
       @OptionGroup public var shared: CLISharedOptions
-      @OptionGroup public var targetOptions: CalendarTargetOptions
+      @OptionGroup public var targetOptions: CalendarListOptions
       public init() {}
     }
   }
@@ -182,9 +183,10 @@ extension CalendarTarget {
   }
 
   public protocol Leaf: ParsableCommand {
+    associatedtype TargetOptions: CalendarCommandOptions
     static var positionals: [String] { get }
     var shared: CLISharedOptions { get }
-    var targetOptions: CalendarTargetOptions { get }
+    var targetOptions: TargetOptions { get }
   }
 }
 
@@ -199,7 +201,16 @@ extension CalendarTarget.Leaf {
   }
 }
 
-public struct CalendarTargetOptions: ParsableArguments, Sendable {
+public protocol CalendarCommandOptions: ParsableArguments {
+  var cliTargetOptions: [String: String] { get }
+  var cliTargetFlags: Set<String> { get }
+}
+
+extension CalendarCommandOptions {
+  public var cliTargetFlags: Set<String> { [] }
+}
+
+public struct CalendarTargetOptions: CalendarCommandOptions, Sendable {
   @Option public var from: String?
   @Option public var to: String?
   @Option public var calendar: String?
@@ -218,6 +229,12 @@ public struct CalendarTargetOptions: ParsableArguments, Sendable {
   @Option(name: .customLong("recurrence-interval")) public var recurrenceInterval: String?
   @Option(name: .customLong("recurrence-count")) public var recurrenceCount: String?
   @Option(name: .customLong("recurrence-until")) public var recurrenceUntil: String?
+  @Option(name: .customLong("recurrence-by-day"), help: "Weekdays such as MO,WE or numbered monthly/yearly weekdays such as 2FR,-1MO.") public var recurrenceByDay: String? = nil
+  @Option(name: .customLong("recurrence-by-month-day"), help: "Monthly days: 1...31 or -31...-1, counted from the month end.") public var recurrenceByMonthDay: String? = nil
+  @Option(name: .customLong("recurrence-by-month"), help: "Months 1...12 for yearly recurrence.") public var recurrenceByMonth: String? = nil
+  @Option(name: .customLong("recurrence-by-week-no"), help: "Yearly weeks: 1...53 or -53...-1.") public var recurrenceByWeekNo: String? = nil
+  @Option(name: .customLong("recurrence-by-year-day"), help: "Yearly days: 1...366 or -366...-1.") public var recurrenceByYearDay: String? = nil
+  @Option(name: .customLong("recurrence-by-set-pos"), help: "Positions within another selector's results, such as -1 for the last match.") public var recurrenceBySetPos: String? = nil
   @Flag(name: .customLong("all-day")) public var allDay = false
   @Flag public var timed = false
   @Flag(name: .customLong("clear-location")) public var clearLocation = false
@@ -247,6 +264,12 @@ public struct CalendarTargetOptions: ParsableArguments, Sendable {
       ("recurrence-interval", recurrenceInterval),
       ("recurrence-count", recurrenceCount),
       ("recurrence-until", recurrenceUntil),
+      ("recurrence-by-day", recurrenceByDay),
+      ("recurrence-by-month-day", recurrenceByMonthDay),
+      ("recurrence-by-month", recurrenceByMonth),
+      ("recurrence-by-week-no", recurrenceByWeekNo),
+      ("recurrence-by-year-day", recurrenceByYearDay),
+      ("recurrence-by-set-pos", recurrenceBySetPos),
     ])
   }
 
@@ -263,7 +286,22 @@ public struct CalendarTargetOptions: ParsableArguments, Sendable {
 }
 
 public func calendarDoctorChecks() -> [CLIDoctorCheck] {
-  [
+  let missingUsageDescriptions = [
+    "NSCalendarsFullAccessUsageDescription", "NSCalendarsUsageDescription",
+  ].filter { key in
+    (Bundle.main.object(forInfoDictionaryKey: key) as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+  }
+  return [
+    CLIDoctorCheck(
+      name: "calendar_usage_descriptions",
+      status: missingUsageDescriptions.isEmpty ? .ok : .backendUnavailable,
+      message: missingUsageDescriptions.isEmpty
+        ? "The executable includes Calendar access purpose descriptions."
+        : "The executable is missing Calendar access purpose descriptions.",
+      details: missingUsageDescriptions.isEmpty
+        ? [:] : ["missing_keys": missingUsageDescriptions.joined(separator: ",")]
+    ),
     eventKitAuthorizationCheck(
       entityType: .event,
       name: "eventkit_calendar_authorization",
@@ -280,7 +318,7 @@ public func calendarDoctorChecks() -> [CLIDoctorCheck] {
       name: "eventkit_mutation_backend",
       status: .ok,
       message:
-        "Calendar EventKit event create/update/delete commands are dry-run previewed, including basic relative/absolute alarms and recurrence rules."
+        "Calendar EventKit event create/update/delete commands are dry-run previewed, including relative/absolute alarms and validated custom recurrence conditions."
     ),
   ]
 }

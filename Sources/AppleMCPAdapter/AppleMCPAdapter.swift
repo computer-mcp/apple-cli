@@ -21,7 +21,8 @@ public struct CLIProcessResult: Codable, Equatable, Sendable {
 }
 
 public protocol CLIProcessRunning: Sendable {
-  func run(target: String, arguments: [String], timeoutSeconds: Int) async throws -> CLIProcessResult
+  func run(target: String, arguments: [String], timeoutSeconds: Int) async throws
+    -> CLIProcessResult
 }
 
 public struct CLIProcessRunner: CLIProcessRunning {
@@ -77,11 +78,13 @@ public struct CLIProcessRunner: CLIProcessRunning {
     var size: UInt32 = 0
     _ = _NSGetExecutablePath(nil, &size)
     guard size > 0 else {
-      throw CLIError(code: .backendUnavailable, message: "Could not locate the running MCP executable.")
+      throw CLIError(
+        code: .backendUnavailable, message: "Could not locate the running MCP executable.")
     }
     var buffer = [CChar](repeating: 0, count: Int(size))
     guard _NSGetExecutablePath(&buffer, &size) == 0 else {
-      throw CLIError(code: .backendUnavailable, message: "Could not locate the running MCP executable.")
+      throw CLIError(
+        code: .backendUnavailable, message: "Could not locate the running MCP executable.")
     }
     let pathBytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
     return URL(fileURLWithPath: String(decoding: pathBytes, as: UTF8.self))
@@ -184,7 +187,8 @@ private func inferredCatalogOptionValueType(names: [String], valueName: String?)
   guard let valueName else {
     return "boolean"
   }
-  let normalizedNames = names
+  let normalizedNames =
+    names
     .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "-")).lowercased() }
   let normalizedValueName = valueName.lowercased()
   let tokens = Set(normalizedNames + [normalizedValueName])
@@ -193,12 +197,16 @@ private func inferredCatalogOptionValueType(names: [String], valueName: String?)
     "column",
     "count",
     "duration",
+    "delay-seconds",
     "from-ordinal",
     "index",
+    "if-change-count",
     "limit",
+    "max-bytes",
     "max-commands",
     "max-depth",
     "occurrence",
+    "offset",
     "ordinal",
     "relative-amount",
     "row",
@@ -427,11 +435,13 @@ public struct AppleMCPAdapter: Sendable {
         target: target, arguments: ["doctor", "--json"], timeoutSeconds: timeoutArgument(arguments))
     case "apple_cli_status":
       let target = try targetArgument(arguments)
-      return try await run(target: target, arguments: ["--json"], timeoutSeconds: timeoutArgument(arguments))
+      return try await run(
+        target: target, arguments: ["--json"], timeoutSeconds: timeoutArgument(arguments))
     case "apple_cli_help":
       let target = try targetArgument(arguments)
       return try await run(
-        target: target, arguments: helpArguments(arguments), timeoutSeconds: timeoutArgument(arguments))
+        target: target, arguments: helpArguments(arguments),
+        timeoutSeconds: timeoutArgument(arguments))
     case "apple_cli_command_catalog":
       let target = try targetArgument(arguments)
       return try await commandCatalog(
@@ -641,7 +651,8 @@ public struct AppleMCPAdapter: Sendable {
     properties["arguments"] = .object([
       "type": .string("array"),
       "items": .object(["type": .string("string")]),
-      "description": .string("Optional target subcommand path to inspect. `--help` is appended when omitted."),
+      "description": .string(
+        "Optional target subcommand path to inspect. `--help` is appended when omitted."),
       "default": .array([]),
     ])
     root["properties"] = .object(properties)
@@ -683,19 +694,23 @@ public struct AppleMCPAdapter: Sendable {
     var subcommands: [String] = []
     var options: [CLICommandCatalogOption] = []
     var readingSubcommands = false
+    var subcommandIndent: Int?
     var readingOptions = false
+    var optionIndent: Int?
     var currentOptionIndex: Int?
 
     for line in lines {
       let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
       if trimmed == "OPTIONS:" {
         readingOptions = true
+        optionIndent = nil
         readingSubcommands = false
         currentOptionIndex = nil
         continue
       }
       if trimmed == "SUBCOMMANDS:" {
         readingSubcommands = true
+        subcommandIndent = nil
         readingOptions = false
         currentOptionIndex = nil
         continue
@@ -711,7 +726,9 @@ public struct AppleMCPAdapter: Sendable {
           currentOptionIndex = nil
           continue
         }
-        if let option = parseOptionLine(trimmed) {
+        let indent = line.prefix(while: { $0.isWhitespace }).count
+        if optionIndent == nil || optionIndent == indent, let option = parseOptionLine(trimmed) {
+          optionIndent = indent
           options.append(option)
           currentOptionIndex = options.indices.last
           continue
@@ -737,11 +754,16 @@ public struct AppleMCPAdapter: Sendable {
         readingSubcommands = false
         continue
       }
+      let indent = line.prefix(while: { $0.isWhitespace }).count
+      if let subcommandIndent, indent != subcommandIndent {
+        continue
+      }
       guard let name = trimmed.split(separator: " ", maxSplits: 1).first else {
         continue
       }
       let subcommand = String(name)
       if !subcommand.hasPrefix("-") {
+        subcommandIndent = indent
         subcommands.append(subcommand)
       }
     }
@@ -805,7 +827,8 @@ public struct AppleMCPAdapter: Sendable {
     valueName: String?,
     description: String
   ) {
-    let tokens = line
+    let tokens =
+      line
       .split(whereSeparator: { $0 == " " || $0 == "\t" })
       .map(String.init)
     var names: [String] = []

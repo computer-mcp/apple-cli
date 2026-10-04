@@ -2333,8 +2333,8 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
       throw writeError(operation: operation, reason: "ICNote.newNoteWithString returned nil.", error: error)
     }
 
-    if draft.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-      try replaceText(title: draft.title, body: draft.body, in: note, operation: operation)
+    if !draft.body.isEmpty {
+      try persistNoteTextContent(note, operation: operation)
     }
 
     if draft.isSystemPaper {
@@ -2526,12 +2526,12 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
       richImportBoolCheck(
         name: "semantic_heading_accounted",
         expected: true,
-        actual: bodyStructure == nil || bodyStructure?.headingCount ?? 0 >= min(1, draft.source.semanticSummary.headingCount)
+        actual: bodyStructure?.headingCount.map { $0 >= min(1, draft.source.semanticSummary.headingCount) }
       ),
       richImportBoolCheck(
         name: "semantic_list_accounted",
         expected: true,
-        actual: bodyStructure == nil || bodyStructure?.listItemCount ?? 0 >= min(1, draft.source.semanticSummary.listItemCount)
+        actual: bodyStructure?.listItemCount.map { $0 >= min(1, draft.source.semanticSummary.listItemCount) }
       ),
       richImportBoolCheck(
         name: "attributed_runs_accounted",
@@ -3112,10 +3112,14 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     let operation = patch.appendBody == nil ? "notes.update" : "notes.append"
     if let appendBody = patch.appendBody {
       try appendText(appendBody, to: note)
+    } else if let body = patch.body {
+      try replaceBody(body, title: patch.title, expectedTitle: before.title, in: note, operation: operation)
+    } else if let title = patch.title {
+      try notesValidateTitleEdit(title)
+      guard !before.title.utf8.elementsEqual(title.utf8) else { return before }
+      try replaceTitle(title, expectedTitle: before.title, in: note, operation: operation)
     } else {
-      let title = patch.title ?? before.title
-      let body = patch.body ?? before.body ?? ""
-      try replaceText(title: title, body: body, in: note, operation: operation)
+      throw CLIError(code: .validationError, message: "At least one note field must be supplied for update.")
     }
 
     try save(note: note, context: context, operation: operation)
@@ -3352,7 +3356,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
           let updated = NSMutableAttributedString(attributedString: current)
           let range = NSRange(location: 0, length: updated.length)
           if range.length > 0 {
-            applyInlineFormat(draft.format, enabled: draft.enabled, to: updated, range: range)
+            try applyInlineFormat(draft.format, enabled: draft.enabled, to: updated, range: range)
           }
           try setTableCellAttributedString(table, attributedString: updated, row: row, column: column, operation: operation)
         }
@@ -5050,8 +5054,9 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
       textStorage: textStorage,
       operation: operation
     )
-    let hasTargetState = inlineRangeHasFormat(draft.format, in: textStorage, range: target.range)
-    guard hasTargetState != draft.enabled else {
+    let hasTargetState = try inlineRangeMatchesFormat(
+      draft.format, enabled: draft.enabled, in: textStorage, range: target.range)
+    guard !hasTargetState else {
       let detail = try readback(note: note, operation: operation)
       let structure = try reader.readBodyStructure(noteID: draft.noteID)
       return NotesBodyInlineFormatWriteResult(
@@ -5063,9 +5068,15 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     }
 
     note.beginEditing()
-    applyInlineFormat(draft.format, enabled: draft.enabled, to: textStorage, range: target.range)
-    note.didChangeText()
-    note.endEditing()
+    do {
+      try applyInlineFormat(draft.format, enabled: draft.enabled, to: textStorage, range: target.range)
+      note.didChangeText()
+      note.endEditing()
+    } catch {
+      note.endEditing()
+      throw error
+    }
+    try persistNoteTextContent(note, operation: operation)
 
     try save(note: note, context: context, operation: operation)
     let detail = try readback(note: note, operation: operation)
@@ -5122,7 +5133,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     )
     let font = try inlineFont(family: draft.family, pointSize: draft.pointSize, operation: operation)
     let fontSHA256 = notesFontSHA256(font)
-    let alreadyApplied = inlineRangeFontMatches(
+    let alreadyApplied = try inlineRangeFontMatches(
       fontSHA256: fontSHA256,
       in: textStorage,
       range: target.range
@@ -5139,9 +5150,20 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     }
 
     note.beginEditing()
-    textStorage.addAttribute(.font, value: font, range: target.range)
-    note.didChangeText()
-    note.endEditing()
+    do {
+      try notesMutateNativeInlineAttributes(in: textStorage, range: target.range,
+        ownedKeys: ["TTHints", "ICTTFont"], operation: operation) { attributes in
+          var updated = attributes
+          updated[.font] = font
+          return updated
+        }
+      note.didChangeText()
+      note.endEditing()
+    } catch {
+      note.endEditing()
+      throw error
+    }
+    try persistNoteTextContent(note, operation: operation)
 
     try save(note: note, context: context, operation: operation)
     let detail = try readback(note: note, operation: operation)
@@ -5253,7 +5275,9 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
   func deleteNote(id: String) throws -> Bool {
     let context = try noteContext()
     let note = try note(id: id)
-    note.markForDeletion()
+    try NotesRuntimeMethod(owner: "ICNote", selector: "deleteNote:", scope: .classMethod,
+      returnType: "v", argumentTypes: ["@"]).require(operation: "notes.delete")
+    ICNote.delete(note)
     try save(note: note, context: context, operation: "notes.delete")
     return true
   }
@@ -6748,17 +6772,17 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
   private func richImportBoolCheck(
     name: String,
     expected: Bool,
-    actual: Bool
+    actual: Bool?
   ) -> NotesVerificationCheckRecord {
     NotesVerificationCheckRecord(
       name: name,
-      status: expected == actual ? "passed" : "failed",
+      status: actual.map { expected == $0 ? "passed" : "failed" } ?? "unavailable",
       expectedBool: expected,
       actualBool: actual
     )
   }
 
-  private func checklistAttributedString(text: String, checked: Bool) throws -> NSAttributedString {
+  func checklistAttributedString(text: String, checked: Bool) throws -> NSAttributedString {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedText.isEmpty else {
       throw CLIError(
@@ -6768,16 +6792,16 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     }
 
     let style = try checklistParagraphStyle(checked: checked)
-    let attributedString = NSMutableAttributedString(string: "\n\(trimmedText)")
+    let attributedString = NSMutableAttributedString(string: trimmedText)
     attributedString.addAttribute(
       NSAttributedString.Key(paragraphStyleAttributeName()),
       value: style,
-      range: NSRange(location: 1, length: (trimmedText as NSString).length)
+      range: NSRange(location: 0, length: (trimmedText as NSString).length)
     )
     return attributedString
   }
 
-  private func listAttributedString(
+  func listAttributedString(
     text: String,
     style listStyle: NotesBodyListStyle,
     operation: String
@@ -6791,20 +6815,18 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     }
 
     let style = try listParagraphStyle(style: listStyle, operation: operation)
-    let attributedString = NSMutableAttributedString(string: "\n\(trimmedText)")
+    let attributedString = NSMutableAttributedString(string: trimmedText)
     attributedString.addAttribute(
       NSAttributedString.Key(paragraphStyleAttributeName()),
       value: style,
-      range: NSRange(location: 1, length: (trimmedText as NSString).length)
+      range: NSRange(location: 0, length: (trimmedText as NSString).length)
     )
     return attributedString
   }
 
-  private func checklistParagraphStyle(checked: Bool) throws -> ICTTParagraphStyle {
+  func checklistParagraphStyle(checked: Bool) throws -> ICTTParagraphStyle {
     guard
-      let style =
-        (ICTTMutableParagraphStyle.paragraphStyleNamed(0) as? ICTTMutableParagraphStyle)
-        ?? ICTTMutableParagraphStyle()
+      let style = ICTTMutableParagraphStyle.paragraphStyleNamed(103) as? ICTTMutableParagraphStyle
     else {
       throw writeError(
         operation: "notes.body.checklist.add",
@@ -6817,8 +6839,14 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
         reason: "ICTTTodo could not be created."
       )
     }
-    style.todo = checked ? (baseTodo.todo(withDone: true) as? ICTTTodo ?? baseTodo) : baseTodo
+    guard let todo = baseTodo.todo(withDone: checked) as? ICTTTodo, todo.done == checked else {
+      throw writeError(operation: "notes.body.checklist.add", reason: "Checklist completion style is unavailable.")
+    }
+    style.todo = todo
     style.uuid = UUID()
+    guard style.isChecklist, style.isList, !style.isHeader else {
+      throw writeError(operation: "notes.body.checklist.add", reason: "Checklist paragraph style is unavailable.")
+    }
     return style
   }
 
@@ -6939,7 +6967,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     )
     let color = try draft.color.map { try inlineColor($0, operation: operation) }
     let colorSHA256 = color.flatMap { colorHash($0) }
-    let alreadyApplied = inlineRangeColorMatches(
+    let alreadyApplied = try inlineRangeColorMatches(
       colorSHA256: colorSHA256,
       attribute: attribute,
       in: textStorage,
@@ -6957,13 +6985,20 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     }
 
     note.beginEditing()
-    if let color {
-      textStorage.addAttribute(attribute, value: color, range: target.range)
-    } else {
-      textStorage.removeAttribute(attribute, range: target.range)
+    do {
+      try notesMutateNativeInlineAttributes(in: textStorage, range: target.range,
+        ownedKeys: [role == "foreground" ? "TTColor" : "TTEmphasis"], operation: operation) { attributes in
+          var updated = attributes
+          updated[attribute] = color
+          return updated
+        }
+      note.didChangeText()
+      note.endEditing()
+    } catch {
+      note.endEditing()
+      throw error
     }
-    note.didChangeText()
-    note.endEditing()
+    try persistNoteTextContent(note, operation: operation)
 
     try save(note: note, context: context, operation: operation)
     let detail = try readback(note: note, operation: operation)
@@ -6991,96 +7026,56 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
         message: "Inline body formatting requires non-empty `--text`."
       )
     }
-    let paragraph = try paragraphStyleTarget(
-      noteID: noteID,
-      paragraphIDSHA256: paragraphIDSHA256,
-      ordinal: ordinal,
-      textStorage: textStorage,
-      operation: operation
-    )
-    let searchRange = paragraphRange(in: textStorage, around: paragraph.range)
     let string = textStorage.string as NSString
-    var matches: [NSRange] = []
-    var cursor = searchRange.location
-    let end = searchRange.location + searchRange.length
-    while cursor < end {
-      let remaining = NSRange(location: cursor, length: end - cursor)
-      let match = string.range(of: text, options: [], range: remaining)
-      guard match.location != NSNotFound else {
-        break
-      }
-      matches.append(match)
-      cursor = match.location + max(match.length, 1)
+    let nativeParagraphs = notesStyledParagraphs(in: textStorage) { value -> (id: String, style: ICTTParagraphStyle)? in
+      guard let style = value as? ICTTParagraphStyle, let id = style.uuid?.uuidString else { return nil }
+      return (id, style)
     }
-    guard matches.isEmpty == false else {
-      throw CLIError(
-        code: .notFound,
-        message: "Inline body formatting text selector did not match the selected paragraph.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-          "paragraph_sha256": paragraphIDSHA256 ?? "",
-          "ordinal": ordinal.map(String.init) ?? "",
-          "text_sha256": sha256Hex(text),
-        ]
-      )
-    }
-    let selectedOccurrence: Int
-    let range: NSRange
-    if let occurrence {
-      guard occurrence > 0, occurrence <= matches.count else {
-        throw CLIError(
-          code: .notFound,
-          message: "Inline body formatting occurrence did not match the selected paragraph.",
-          details: [
-            "operation": operation,
-            "id_sha256": sha256Hex(noteID),
-            "requested_occurrence": "\(occurrence)",
-            "match_count": "\(matches.count)",
-          ]
-        )
-      }
-      selectedOccurrence = occurrence
-      range = matches[occurrence - 1]
-    } else {
-      guard matches.count == 1 else {
-        throw CLIError(
-          code: .ambiguousIdentity,
-          message: "Inline body formatting text selector matched multiple ranges; use `--occurrence`.",
-          details: [
-            "operation": operation,
-            "id_sha256": sha256Hex(noteID),
-            "match_count": "\(matches.count)",
-            "text_sha256": sha256Hex(text),
-          ]
-        )
-      }
-      selectedOccurrence = 1
-      range = matches[0]
-    }
+    let paragraph = try notesInlineParagraph(noteID: noteID, in: string,
+      nativeAnchors: nativeParagraphs.map { NotesInlineParagraph(range: $0.range, idSHA256: sha256Hex($0.id)) },
+      paragraphIDSHA256: paragraphIDSHA256, ordinal: ordinal, operation: operation)
+    let selection = try notesInlineTextSelection(in: string, text: text,
+      paragraphRange: paragraph.range, occurrence: occurrence, operation: operation)
+    let range = selection.range
+    let selectedOccurrence = selection.occurrence
 
     return NotesInlineTextTarget(
       range: range,
-      paragraphIDSHA256: paragraph.paragraphIDSHA256,
+      paragraphIDSHA256: paragraph.idSHA256,
       textByteCount: text.utf8.count,
       textSHA256: sha256Hex(text),
-      occurrence: selectedOccurrence
+      occurrence: selectedOccurrence,
+      richTextSHA256: sha256Hex(textStorage.string)
     )
   }
 
-  private func inlineRangeHasFormat(
+  func inlineRangeMatchesFormat(
     _ format: NotesBodyInlineFormat,
-    in textStorage: NSTextStorage,
+    enabled: Bool,
+    in textStorage: NSAttributedString,
     range: NSRange
-  ) -> Bool {
+  ) throws -> Bool {
+    guard range.location >= 0, range.length > 0, range.location <= textStorage.length,
+      range.length <= textStorage.length - range.location else {
+      throw CLIError(
+        code: .backendUnavailable,
+        message: "Notes inline format selection is outside the available body."
+      )
+    }
     var allRunsMatch = true
+    let converter = try inlineStyleConverter(for: textStorage)
+    var failure: Error?
     textStorage.enumerateAttributes(in: range, options: []) { attributes, _, stop in
-      guard inlineAttributes(attributes, contain: format) else {
+      let presentation: [NSAttributedString.Key: Any]
+      do { presentation = try converter?.presentation(attributes) ?? attributes }
+      catch { failure = error; stop.pointee = true; return }
+      guard inlineAttributes(presentation, contain: format) == enabled else {
         allRunsMatch = false
         stop.pointee = true
         return
       }
     }
+    if let failure { throw failure }
     return allRunsMatch
   }
 
@@ -7089,16 +7084,22 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     attribute: NSAttributedString.Key,
     in textStorage: NSTextStorage,
     range: NSRange
-  ) -> Bool {
+  ) throws -> Bool {
     var allRunsMatch = true
-    textStorage.enumerateAttribute(attribute, in: range, options: []) { value, _, stop in
-      let actual = value.flatMap(colorHash)
+    let converter = try inlineStyleConverter(for: textStorage)
+    var failure: Error?
+    textStorage.enumerateAttributes(in: range, options: []) { attributes, _, stop in
+      let presentation: [NSAttributedString.Key: Any]
+      do { presentation = try converter?.presentation(attributes) ?? attributes }
+      catch { failure = error; stop.pointee = true; return }
+      let actual = presentation[attribute].flatMap(colorHash)
       guard actual == colorSHA256 else {
         allRunsMatch = false
         stop.pointee = true
         return
       }
     }
+    if let failure { throw failure }
     return allRunsMatch
   }
 
@@ -7106,16 +7107,29 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     fontSHA256: String,
     in textStorage: NSTextStorage,
     range: NSRange
-  ) -> Bool {
+  ) throws -> Bool {
     var allRunsMatch = true
-    textStorage.enumerateAttribute(.font, in: range, options: []) { value, _, stop in
-      guard let font = value as? NSFont, notesFontSHA256(font) == fontSHA256 else {
+    let converter = try inlineStyleConverter(for: textStorage)
+    var failure: Error?
+    textStorage.enumerateAttributes(in: range, options: []) { attributes, _, stop in
+      let presentation: [NSAttributedString.Key: Any]
+      do { presentation = try converter?.presentation(attributes) ?? attributes }
+      catch { failure = error; stop.pointee = true; return }
+      guard let font = presentation[.font] as? NSFont, notesFontSHA256(font) == fontSHA256 else {
         allRunsMatch = false
         stop.pointee = true
         return
       }
     }
+    if let failure { throw failure }
     return allRunsMatch
+  }
+
+  private func inlineStyleConverter(for text: NSAttributedString) throws -> NotesNativeInlineStyle? {
+    if text is ICTTTextStorage || notesHasModelAttributes(text) {
+      return try NotesNativeInlineStyle(operation: "notes.body.inline")
+    }
+    return nil
   }
 
   private func applyInlineFormat(
@@ -7123,7 +7137,30 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     enabled: Bool,
     to textStorage: NSMutableAttributedString,
     range: NSRange
-  ) {
+  ) throws {
+    if textStorage is ICTTTextStorage || notesHasModelAttributes(textStorage) {
+      let ownedKeys: [String]
+      switch format {
+      case .bold, .italic: ownedKeys = ["TTHints", "ICTTFont"]
+      case .underline: ownedKeys = ["TTUnderline"]
+      case .strikethrough: ownedKeys = ["TTStrikethrough"]
+      }
+      try notesMutateNativeInlineAttributes(in: textStorage, range: range, ownedKeys: ownedKeys,
+        operation: "notes.body.inline.format") { attributes in
+          var updated = attributes
+          switch format {
+          case .bold, .italic:
+            let font = attributes[.font] as? NSFont ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            let trait: NSFontTraitMask = format == .bold ? .boldFontMask : .italicFontMask
+            updated[.font] = enabled ? NSFontManager.shared.convert(font, toHaveTrait: trait)
+              : NSFontManager.shared.convert(font, toNotHaveTrait: trait)
+          case .underline: updated[.underlineStyle] = enabled ? NSUnderlineStyle.single.rawValue : nil
+          case .strikethrough: updated[.strikethroughStyle] = enabled ? NSUnderlineStyle.single.rawValue : nil
+          }
+          return updated
+        }
+      return
+    }
     switch format {
     case .bold:
       applyFontTrait(.boldFontMask, enabled: enabled, to: textStorage, range: range)
@@ -7414,7 +7451,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     return style
   }
 
-  private func checklistParagraphStyle(
+  func checklistParagraphStyle(
     from currentStyle: ICTTParagraphStyle,
     checked: Bool,
     operation: String
@@ -7428,7 +7465,11 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     guard let updatedTodo = currentTodo.todo(withDone: checked) as? ICTTTodo else {
       throw writeError(operation: operation, reason: "ICTTTodo.todoWithDone returned nil.")
     }
+    style.style = 103
     style.todo = updatedTodo
+    guard style.isChecklist, style.isList, !style.isHeader, updatedTodo.done == checked else {
+      throw writeError(operation: operation, reason: "Checklist paragraph style is unavailable.")
+    }
     return style
   }
 
@@ -7459,431 +7500,130 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     )
   }
 
-  private func checklistParagraphTarget(
-    noteID: String,
-    paragraphIDSHA256: String?,
-    ordinal: Int?,
-    textStorage: NSTextStorage,
-    operation: String
+  func checklistParagraphTarget(
+    noteID: String, paragraphIDSHA256: String?, ordinal: Int?,
+    textStorage: NSTextStorage, operation: String
   ) throws -> NotesChecklistParagraphTarget {
-    guard paragraphIDSHA256 != nil || ordinal != nil else {
-      throw CLIError(
-        code: .validationError,
-        message: "Checklist set requires a paragraph hash or ordinal.",
-        details: ["operation": operation]
-      )
-    }
-    let fullRange = NSRange(location: 0, length: textStorage.length)
-    guard fullRange.length > 0 else {
-      throw CLIError(
-        code: .notFound,
-        message: "Checklist selector did not match any checklist item.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-          "paragraph_sha256": paragraphIDSHA256 ?? "",
-          "ordinal": ordinal.map(String.init) ?? "",
-        ]
-      )
-    }
-
-    var currentOrdinal = 0
-    var target: NotesChecklistParagraphTarget?
-    textStorage.enumerateAttributes(in: fullRange, options: []) { attributes, range, stop in
-      for value in attributes.values {
-        guard let style = value as? ICTTParagraphStyle, style.isChecklist else {
-          continue
-        }
-        currentOrdinal += 1
-        let paragraphIDSHA256 = style.uuid.map { sha256Hex($0.uuidString) }
-        let ordinalMatches = ordinal.map { $0 == currentOrdinal } ?? false
-        let paragraphMatches = paragraphIDSHA256.map { $0 == paragraphIDSHA256 } ?? false
-        if ordinalMatches || paragraphMatches {
-          target = NotesChecklistParagraphTarget(
-            range: range,
-            style: style,
-            checked: style.todo?.done == true,
-            paragraphIDSHA256: paragraphIDSHA256,
-            indentationLevel: Int(style.indent)
-          )
-          stop.pointee = true
-        }
-        return
-      }
-    }
-
-    guard let target else {
-      throw CLIError(
-        code: .notFound,
-        message: "Checklist selector did not match any checklist item.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-          "paragraph_sha256": paragraphIDSHA256 ?? "",
-          "ordinal": ordinal.map(String.init) ?? "",
-          "checklist_item_count": "\(currentOrdinal)",
-        ]
-      )
+    let targets = nativeParagraphTargets(in: textStorage) { $0.isChecklist }
+    guard let target = try selectedParagraphTarget(in: targets, paragraphIDSHA256: paragraphIDSHA256,
+      ordinal: ordinal, noteID: noteID, operation: operation) else {
+      throw CLIError(code: .notFound, message: "Checklist selector did not match any checklist item.",
+        details: ["operation": operation, "id_sha256": sha256Hex(noteID),
+          "paragraph_sha256": paragraphIDSHA256 ?? "", "ordinal": ordinal.map(String.init) ?? "",
+          "checklist_item_count": "\(targets.count)"])
     }
     return target
   }
 
-  private func checklistParagraphTargets(
-    noteID: String,
-    textStorage: NSTextStorage,
-    operation: String
+  func checklistParagraphTargets(
+    noteID: String, textStorage: NSTextStorage, operation: String
   ) throws -> [NotesChecklistParagraphTarget] {
-    let fullRange = NSRange(location: 0, length: textStorage.length)
-    guard fullRange.length > 0 else {
-      throw CLIError(
-        code: .notFound,
-        message: "No checklist items were found on the target note.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-        ]
-      )
-    }
-
-    var targets: [NotesChecklistParagraphTarget] = []
-    textStorage.enumerateAttributes(in: fullRange, options: []) { attributes, range, _ in
-      for value in attributes.values {
-        guard let style = value as? ICTTParagraphStyle, style.isChecklist else {
-          continue
-        }
-        targets.append(
-          NotesChecklistParagraphTarget(
-            range: range,
-            style: style,
-            checked: style.todo?.done == true,
-            paragraphIDSHA256: style.uuid.map { sha256Hex($0.uuidString) },
-            indentationLevel: Int(style.indent)
-          ))
-        return
-      }
-    }
-
+    let targets = nativeParagraphTargets(in: textStorage) { $0.isChecklist }
     guard !targets.isEmpty else {
-      throw CLIError(
-        code: .notFound,
-        message: "No checklist items were found on the target note.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-        ]
-      )
+      throw CLIError(code: .notFound, message: "No checklist items were found on the target note.",
+        details: ["operation": operation, "id_sha256": sha256Hex(noteID)])
     }
     return targets
   }
 
-  private func listParagraphTarget(
-    noteID: String,
-    paragraphIDSHA256: String?,
-    ordinal: Int?,
-    textStorage: NSTextStorage,
-    operation: String
+  func listParagraphTarget(
+    noteID: String, paragraphIDSHA256: String?, ordinal: Int?,
+    textStorage: NSTextStorage, operation: String
   ) throws -> NotesChecklistParagraphTarget {
-    guard paragraphIDSHA256 != nil || ordinal != nil else {
-      throw CLIError(
-        code: .validationError,
-        message: "List operation requires a paragraph hash or ordinal.",
-        details: ["operation": operation]
-      )
-    }
-    let fullRange = NSRange(location: 0, length: textStorage.length)
-    guard fullRange.length > 0 else {
-      throw CLIError(
-        code: .notFound,
-        message: "List selector did not match any ordinary list item.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-          "paragraph_sha256": paragraphIDSHA256 ?? "",
-          "ordinal": ordinal.map(String.init) ?? "",
-        ]
-      )
-    }
-
-    var currentOrdinal = 0
-    var target: NotesChecklistParagraphTarget?
-    textStorage.enumerateAttributes(in: fullRange, options: []) { attributes, range, stop in
-      for value in attributes.values {
-        guard let style = value as? ICTTParagraphStyle, style.isList, !style.isChecklist else {
-          continue
-        }
-        currentOrdinal += 1
-        let paragraphIDSHA256 = style.uuid.map { sha256Hex($0.uuidString) }
-        let ordinalMatches = ordinal.map { $0 == currentOrdinal } ?? false
-        let paragraphMatches = paragraphIDSHA256.map { $0 == paragraphIDSHA256 } ?? false
-        if ordinalMatches || paragraphMatches {
-          target = NotesChecklistParagraphTarget(
-            range: range,
-            style: style,
-            checked: false,
-            paragraphIDSHA256: paragraphIDSHA256,
-            indentationLevel: Int(style.indent)
-          )
-          stop.pointee = true
-        }
-        return
-      }
-    }
-
-    guard let target else {
-      throw CLIError(
-        code: .notFound,
-        message: "List selector did not match any ordinary list item.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-          "paragraph_sha256": paragraphIDSHA256 ?? "",
-          "ordinal": ordinal.map(String.init) ?? "",
-          "ordinary_list_item_count": "\(currentOrdinal)",
-        ]
-      )
+    let targets = nativeParagraphTargets(in: textStorage) { $0.isList && !$0.isChecklist }
+    guard let target = try selectedParagraphTarget(in: targets, paragraphIDSHA256: paragraphIDSHA256,
+      ordinal: ordinal, noteID: noteID, operation: operation) else {
+      throw CLIError(code: .notFound, message: "List selector did not match any ordinary list item.",
+        details: ["operation": operation, "id_sha256": sha256Hex(noteID),
+          "paragraph_sha256": paragraphIDSHA256 ?? "", "ordinal": ordinal.map(String.init) ?? "",
+          "ordinary_list_item_count": "\(targets.count)"])
     }
     return target
   }
 
-  private func listParagraphTargets(
-    noteID: String,
-    textStorage: NSTextStorage,
-    operation: String
+  func listParagraphTargets(
+    noteID: String, textStorage: NSTextStorage, operation: String
   ) throws -> [NotesChecklistParagraphTarget] {
-    let fullRange = NSRange(location: 0, length: textStorage.length)
-    guard fullRange.length > 0 else {
-      throw CLIError(
-        code: .notFound,
-        message: "No ordinary list items were found on the target note.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-        ]
-      )
-    }
-
-    var targets: [NotesChecklistParagraphTarget] = []
-    textStorage.enumerateAttributes(in: fullRange, options: []) { attributes, range, _ in
-      for value in attributes.values {
-        guard let style = value as? ICTTParagraphStyle, style.isList, !style.isChecklist else {
-          continue
-        }
-        targets.append(
-          NotesChecklistParagraphTarget(
-            range: range,
-            style: style,
-            checked: false,
-            paragraphIDSHA256: style.uuid.map { sha256Hex($0.uuidString) },
-            indentationLevel: Int(style.indent)
-          ))
-        return
-      }
-    }
-
+    let targets = nativeParagraphTargets(in: textStorage) { $0.isList && !$0.isChecklist }
     guard !targets.isEmpty else {
-      throw CLIError(
-        code: .notFound,
-        message: "No ordinary list items were found on the target note.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-        ]
-      )
+      throw CLIError(code: .notFound, message: "No ordinary list items were found on the target note.",
+        details: ["operation": operation, "id_sha256": sha256Hex(noteID)])
     }
     return targets
   }
 
   private func paragraphStyleTarget(
-    draft: NotesBodyChecklistConvertDraft,
-    textStorage: NSTextStorage,
-    operation: String
+    draft: NotesBodyChecklistConvertDraft, textStorage: NSTextStorage, operation: String
   ) throws -> NotesChecklistParagraphTarget {
-    guard draft.paragraphIDSHA256 != nil || draft.ordinal != nil else {
-      throw CLIError(
-        code: .validationError,
-        message: "Checklist convert requires a paragraph hash or ordinal.",
-        details: ["operation": operation]
-      )
-    }
-    let fullRange = NSRange(location: 0, length: textStorage.length)
-    guard fullRange.length > 0 else {
-      throw CLIError(
-        code: .notFound,
-        message: "Paragraph selector did not match any body paragraph anchor.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(draft.noteID),
-          "paragraph_sha256": draft.paragraphIDSHA256 ?? "",
-          "ordinal": draft.ordinal.map(String.init) ?? "",
-        ]
-      )
-    }
+    try paragraphStyleTarget(noteID: draft.noteID, paragraphIDSHA256: draft.paragraphIDSHA256,
+      ordinal: draft.ordinal, textStorage: textStorage, operation: operation)
+  }
 
-    var currentOrdinal = 0
-    var target: NotesChecklistParagraphTarget?
-    textStorage.enumerateAttributes(in: fullRange, options: []) { attributes, range, stop in
-      for value in attributes.values {
-        guard let style = value as? ICTTParagraphStyle else {
-          continue
-        }
-        guard let paragraphID = style.uuid?.uuidString else {
-          continue
-        }
-        currentOrdinal += 1
-        let paragraphIDSHA256 = sha256Hex(paragraphID)
-        let ordinalMatches = draft.ordinal.map { $0 == currentOrdinal } ?? false
-        let paragraphMatches = draft.paragraphIDSHA256.map { $0 == paragraphIDSHA256 } ?? false
-        if ordinalMatches || paragraphMatches {
-          target = NotesChecklistParagraphTarget(
-            range: range,
-            style: style,
-            checked: style.todo?.done == true,
-            paragraphIDSHA256: paragraphIDSHA256,
-            indentationLevel: Int(style.indent)
-          )
-          stop.pointee = true
-        }
-        return
-      }
-    }
-
-    guard let target else {
-      throw CLIError(
-        code: .notFound,
-        message: "Paragraph selector did not match any body paragraph anchor.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(draft.noteID),
-          "paragraph_sha256": draft.paragraphIDSHA256 ?? "",
-          "ordinal": draft.ordinal.map(String.init) ?? "",
-          "paragraph_anchor_count": "\(currentOrdinal)",
-        ]
-      )
+  func paragraphStyleTarget(
+    noteID: String, paragraphIDSHA256: String?, ordinal: Int?,
+    textStorage: NSTextStorage, operation: String
+  ) throws -> NotesChecklistParagraphTarget {
+    let targets = nativeParagraphTargets(in: textStorage) { $0.uuid != nil }
+    guard let target = try selectedParagraphTarget(in: targets, paragraphIDSHA256: paragraphIDSHA256,
+      ordinal: ordinal, noteID: noteID, operation: operation) else {
+      throw CLIError(code: .notFound, message: "Paragraph selector did not match any body paragraph anchor.",
+        details: ["operation": operation, "id_sha256": sha256Hex(noteID),
+          "paragraph_sha256": paragraphIDSHA256 ?? "", "ordinal": ordinal.map(String.init) ?? "",
+          "paragraph_anchor_count": "\(targets.count)"])
     }
     return target
   }
 
-  private func paragraphStyleTarget(
-    noteID: String,
-    paragraphIDSHA256: String?,
-    ordinal: Int?,
-    textStorage: NSTextStorage,
-    operation: String
-  ) throws -> NotesChecklistParagraphTarget {
-    guard paragraphIDSHA256 != nil || ordinal != nil else {
-      throw CLIError(
-        code: .validationError,
-        message: "Paragraph conversion requires a paragraph hash or ordinal.",
-        details: ["operation": operation]
-      )
-    }
-    let fullRange = NSRange(location: 0, length: textStorage.length)
-    guard fullRange.length > 0 else {
-      throw CLIError(
-        code: .notFound,
-        message: "Paragraph selector did not match any body paragraph anchor.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-          "paragraph_sha256": paragraphIDSHA256 ?? "",
-          "ordinal": ordinal.map(String.init) ?? "",
-        ]
-      )
-    }
-
-    var currentOrdinal = 0
-    var target: NotesChecklistParagraphTarget?
-    textStorage.enumerateAttributes(in: fullRange, options: []) { attributes, range, stop in
-      for value in attributes.values {
-        guard let style = value as? ICTTParagraphStyle else {
-          continue
-        }
-        guard let paragraphID = style.uuid?.uuidString else {
-          continue
-        }
-        currentOrdinal += 1
-        let currentParagraphIDSHA256 = sha256Hex(paragraphID)
-        let ordinalMatches = ordinal.map { $0 == currentOrdinal } ?? false
-        let paragraphMatches = paragraphIDSHA256.map { $0 == currentParagraphIDSHA256 } ?? false
-        if ordinalMatches || paragraphMatches {
-          target = NotesChecklistParagraphTarget(
-            range: range,
-            style: style,
-            checked: style.todo?.done == true,
-            paragraphIDSHA256: currentParagraphIDSHA256,
-            indentationLevel: Int(style.indent)
-          )
-          stop.pointee = true
-        }
-        return
-      }
-    }
-
-    guard let target else {
-      throw CLIError(
-        code: .notFound,
-        message: "Paragraph selector did not match any body paragraph anchor.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-          "paragraph_sha256": paragraphIDSHA256 ?? "",
-          "ordinal": ordinal.map(String.init) ?? "",
-          "paragraph_anchor_count": "\(currentOrdinal)",
-        ]
-      )
-    }
-    return target
-  }
-
-  private func paragraphStyleTargets(
-    noteID: String,
-    textStorage: NSTextStorage,
-    operation: String
+  func paragraphStyleTargets(
+    noteID: String, textStorage: NSTextStorage, operation: String
   ) throws -> [NotesChecklistParagraphTarget] {
-    let fullRange = NSRange(location: 0, length: textStorage.length)
-    guard fullRange.length > 0 else {
-      throw CLIError(
-        code: .notFound,
-        message: "No body paragraph anchors were found on the target note.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-        ]
-      )
-    }
-
-    var targets: [NotesChecklistParagraphTarget] = []
-    textStorage.enumerateAttributes(in: fullRange, options: []) { attributes, range, _ in
-      for value in attributes.values {
-        guard let style = value as? ICTTParagraphStyle else {
-          continue
-        }
-        guard let paragraphID = style.uuid?.uuidString else {
-          continue
-        }
-        targets.append(
-          NotesChecklistParagraphTarget(
-            range: range,
-            style: style,
-            checked: style.todo?.done == true,
-            paragraphIDSHA256: sha256Hex(paragraphID),
-            indentationLevel: Int(style.indent)
-          ))
-        return
-      }
-    }
-
+    let targets = nativeParagraphTargets(in: textStorage) { $0.uuid != nil }
     guard !targets.isEmpty else {
-      throw CLIError(
-        code: .notFound,
-        message: "No body paragraph anchors were found on the target note.",
-        details: [
-          "operation": operation,
-          "id_sha256": sha256Hex(noteID),
-        ]
-      )
+      throw CLIError(code: .notFound, message: "No body paragraph anchors were found on the target note.",
+        details: ["operation": operation, "id_sha256": sha256Hex(noteID)])
     }
     return targets
+  }
+
+  private func nativeParagraphTargets(
+    in text: NSAttributedString, matching include: (ICTTParagraphStyle) -> Bool
+  ) -> [NotesChecklistParagraphTarget] {
+    notesStyledParagraphs(in: text) { value -> (id: String, style: ICTTParagraphStyle)? in
+      guard let style = value as? ICTTParagraphStyle, include(style) else { return nil }
+      return (style.uuid?.uuidString ?? "", style)
+    }.map { paragraph in
+      NotesChecklistParagraphTarget(range: paragraph.range, style: paragraph.style,
+        checked: paragraph.style.todo?.done == true,
+        paragraphIDSHA256: paragraph.style.uuid.map { sha256Hex($0.uuidString) },
+        indentationLevel: Int(paragraph.style.indent))
+    }
+  }
+
+  private func selectedParagraphTarget(
+    in targets: [NotesChecklistParagraphTarget], paragraphIDSHA256: String?, ordinal: Int?,
+    noteID: String, operation: String
+  ) throws -> NotesChecklistParagraphTarget? {
+    guard let index = try selectedParagraphTargetIndex(in: targets, paragraphIDSHA256: paragraphIDSHA256,
+      ordinal: ordinal, noteID: noteID, operation: operation) else { return nil }
+    return targets[index]
+  }
+
+  private func selectedParagraphTargetIndex(
+    in targets: [NotesChecklistParagraphTarget], paragraphIDSHA256: String?, ordinal: Int?,
+    noteID: String, operation: String
+  ) throws -> Int? {
+    guard (paragraphIDSHA256 != nil) != (ordinal != nil) else {
+      throw CLIError(code: .validationError, message: "Select exactly one paragraph hash or ordinal.",
+        details: ["operation": operation])
+    }
+    if let ordinal { return ordinal > 0 && ordinal <= targets.count ? ordinal - 1 : nil }
+    let matches = targets.indices.filter { targets[$0].paragraphIDSHA256 == paragraphIDSHA256 }
+    guard matches.count <= 1 else {
+      throw CLIError(code: .ambiguousIdentity, message: "Paragraph hash matches more than one paragraph.",
+        details: ["operation": operation, "id_sha256": sha256Hex(noteID),
+          "paragraph_sha256": paragraphIDSHA256 ?? "", "matches": "\(matches.count)"])
+    }
+    return matches.first
   }
 
   private func collapsibleSectionTarget(
@@ -7969,92 +7709,30 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     return record
   }
 
-  private func checklistParagraphTargetIndex(
-    draft: NotesBodyChecklistReorderDraft,
-    targets: [NotesChecklistParagraphTarget],
-    operation: String
+  func checklistParagraphTargetIndex(
+    draft: NotesBodyChecklistReorderDraft, targets: [NotesChecklistParagraphTarget], operation: String
   ) throws -> Int {
-    if let ordinal = draft.ordinal {
-      guard ordinal > 0 && ordinal <= targets.count else {
-        throw CLIError(
-          code: .notFound,
-          message: "Checklist selector did not match any checklist item.",
-          details: [
-            "operation": operation,
-            "id_sha256": sha256Hex(draft.noteID),
-            "ordinal": "\(ordinal)",
-            "checklist_item_count": "\(targets.count)",
-          ]
-        )
-      }
-      return ordinal - 1
+    guard let index = try selectedParagraphTargetIndex(in: targets, paragraphIDSHA256: draft.paragraphIDSHA256,
+      ordinal: draft.ordinal, noteID: draft.noteID, operation: operation) else {
+      throw CLIError(code: .notFound, message: "Checklist selector did not match any checklist item.",
+        details: ["operation": operation, "id_sha256": sha256Hex(draft.noteID),
+          "paragraph_sha256": draft.paragraphIDSHA256 ?? "", "ordinal": draft.ordinal.map(String.init) ?? "",
+          "checklist_item_count": "\(targets.count)"])
     }
-
-    if let paragraphIDSHA256 = draft.paragraphIDSHA256 {
-      guard let index = targets.firstIndex(where: { $0.paragraphIDSHA256 == paragraphIDSHA256 }) else {
-        throw CLIError(
-          code: .notFound,
-          message: "Checklist selector did not match any checklist item.",
-          details: [
-            "operation": operation,
-            "id_sha256": sha256Hex(draft.noteID),
-            "paragraph_sha256": paragraphIDSHA256,
-            "checklist_item_count": "\(targets.count)",
-          ]
-        )
-      }
-      return index
-    }
-
-    throw CLIError(
-      code: .validationError,
-      message: "Checklist reorder requires a paragraph hash or ordinal.",
-      details: ["operation": operation]
-    )
+    return index
   }
 
-  private func listParagraphTargetIndex(
-    draft: NotesBodyListReorderDraft,
-    targets: [NotesChecklistParagraphTarget],
-    operation: String
+  func listParagraphTargetIndex(
+    draft: NotesBodyListReorderDraft, targets: [NotesChecklistParagraphTarget], operation: String
   ) throws -> Int {
-    if let ordinal = draft.ordinal {
-      guard ordinal > 0 && ordinal <= targets.count else {
-        throw CLIError(
-          code: .notFound,
-          message: "List selector did not match any ordinary list item.",
-          details: [
-            "operation": operation,
-            "id_sha256": sha256Hex(draft.noteID),
-            "ordinal": "\(ordinal)",
-            "ordinary_list_item_count": "\(targets.count)",
-          ]
-        )
-      }
-      return ordinal - 1
+    guard let index = try selectedParagraphTargetIndex(in: targets, paragraphIDSHA256: draft.paragraphIDSHA256,
+      ordinal: draft.ordinal, noteID: draft.noteID, operation: operation) else {
+      throw CLIError(code: .notFound, message: "List selector did not match any ordinary list item.",
+        details: ["operation": operation, "id_sha256": sha256Hex(draft.noteID),
+          "paragraph_sha256": draft.paragraphIDSHA256 ?? "", "ordinal": draft.ordinal.map(String.init) ?? "",
+          "ordinary_list_item_count": "\(targets.count)"])
     }
-
-    if let paragraphIDSHA256 = draft.paragraphIDSHA256 {
-      guard let index = targets.firstIndex(where: { $0.paragraphIDSHA256 == paragraphIDSHA256 }) else {
-        throw CLIError(
-          code: .notFound,
-          message: "List selector did not match any ordinary list item.",
-          details: [
-            "operation": operation,
-            "id_sha256": sha256Hex(draft.noteID),
-            "paragraph_sha256": paragraphIDSHA256,
-            "ordinary_list_item_count": "\(targets.count)",
-          ]
-        )
-      }
-      return index
-    }
-
-    throw CLIError(
-      code: .validationError,
-      message: "List reorder requires a paragraph hash or ordinal.",
-      details: ["operation": operation]
-    )
+    return index
   }
 
   private func paragraphRange(in textStorage: NSTextStorage, around range: NSRange) -> NSRange {
@@ -8108,8 +7786,11 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     before: NotesBodyStructureRecord,
     after: NotesBodyStructureRecord
   ) -> NotesBodyParagraphAnchorRecord? {
-    let beforeIDs = Set(before.paragraphAnchors.map(\.idSHA256))
-    return after.paragraphAnchors
+    guard let beforeAnchors = before.paragraphAnchors, let afterAnchors = after.paragraphAnchors else {
+      return nil
+    }
+    let beforeIDs = Set(beforeAnchors.map(\.idSHA256))
+    return afterAnchors
       .sorted { $0.ordinal < $1.ordinal }
       .first {
         !beforeIDs.contains($0.idSHA256)
@@ -8137,29 +7818,66 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     return nonEmpty(model?.paragraphStyleAttributeName) ?? "ICTTParagraphStyle"
   }
 
-  private func replaceText(title: String, body: String, in note: ICNote, operation: String) throws {
+  private func replaceTitle(_ title: String, expectedTitle: String, in note: ICNote, operation: String) throws {
+    try validateBodyMutationTarget(note, operation: operation)
     guard let textStorage = note.textStorage() as? NSTextStorage else {
       throw writeError(operation: operation, reason: "ICNote.textStorage returned no NSTextStorage.")
     }
-    let replacement = noteText(title: title, body: body)
-
+    let nativeRange = try nativeTitleRange(note, text: textStorage.string as NSString,
+      expectedTitle: expectedTitle, operation: operation)
     note.beginEditing()
-    _ = replaceMergeableStringText(replacement, in: note)
-    textStorage.setAttributedString(NSAttributedString(string: replacement))
-    note.didChangeText()
-    note.endEditing()
+    do {
+      try notesReplaceTitle(in: textStorage, nativeRange: nativeRange,
+        expectedTitle: expectedTitle, title: title)
+      note.didChangeText()
+      note.endEditing()
+    } catch {
+      note.endEditing()
+      throw error
+    }
+    _ = note.regenerateTitle(true, snippet: true)
     try persistNoteTextContent(note, operation: operation)
   }
 
-  private func replaceMergeableStringText(_ text: String, in note: ICNote) -> Bool {
-    guard let mergeableString = note.mergeableString() as? ICTTMergeableString else {
-      return false
+  private func replaceBody(
+    _ body: String, title: String?, expectedTitle: String, in note: ICNote, operation: String
+  ) throws {
+    try validateBodyMutationTarget(note, operation: operation)
+    guard let textStorage = note.textStorage() as? NSTextStorage else {
+      throw writeError(operation: operation, reason: "ICNote.textStorage returned no NSTextStorage.")
     }
-    let range = NSRange(location: 0, length: Int(mergeableString.length()))
-    mergeableString.replaceCharacters(in: range, withString: text)
-    mergeableString.hasLocalChanges = true
-    mergeableString.endEditing()
-    return true
+    if let title { try notesValidateTitleEdit(title) }
+    let range = try nativeTitleRange(note, text: textStorage.string as NSString,
+      expectedTitle: expectedTitle, operation: operation)
+    _ = try notesBodyReplacementRange(in: textStorage.string as NSString,
+      nativeTitleRange: range, expectedTitle: expectedTitle)
+    note.beginEditing()
+    do {
+      try notesReplaceBody(in: textStorage, nativeTitleRange: range, expectedTitle: expectedTitle, body: body)
+      if let title, !title.utf8.elementsEqual(expectedTitle.utf8) {
+        try notesReplaceTitle(in: textStorage, nativeRange: range, expectedTitle: expectedTitle, title: title)
+      }
+      note.didChangeText()
+      note.endEditing()
+    } catch {
+      note.endEditing()
+      throw error
+    }
+    _ = note.regenerateTitle(true, snippet: true)
+    try persistNoteTextContent(note, operation: operation)
+  }
+
+  private func nativeTitleRange(
+    _ note: ICNote, text: NSString, expectedTitle: String, operation: String
+  ) throws -> NSRange {
+    try NotesRuntimeMethod(owner: "ICNote", selector: "rangeForTitle:",
+      returnType: "{_NSRange=QQ}", argumentTypes: ["^B"]).require(operation: operation, receiver: note)
+    try NotesRuntimeMethod(owner: "ICNote", selector: "regenerateTitle:snippet:",
+      returnType: "B", argumentTypes: ["B", "B"]).require(operation: operation, receiver: note)
+    var truncated = false
+    let range = note.range(forTitle: &truncated)
+    return try notesTitleReplacementRange(in: text, nativeRange: range,
+      expectedTitle: expectedTitle, truncated: truncated)
   }
 
   private func persistNoteTextContent(_ note: ICNote, operation: String) throws {
@@ -8195,17 +7913,23 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
   }
 
   private func save(note: ICNote, context: ICNoteContext, operation: String) throws {
+    try NotesNativeContext.preflightSave(context, operation: operation)
+    try NotesNativeContext.noteSave.require(operation: operation, receiver: note)
     note.save()
     try save(context: context, operation: operation)
   }
 
   private func save(context: ICNoteContext, operation: String) throws {
+    try NotesNativeContext.preflightSave(context, operation: operation)
     var error: AnyObject?
     guard context.save(&error) else {
       throw writeError(operation: operation, reason: "ICNoteContext.save returned false.", error: error)
     }
-    if let managedObjectContext = context.managedObjectContext, !managedObjectContext.ic_save() {
-      throw writeError(operation: operation, reason: "NSManagedObjectContext.ic_save returned false.")
+    if let managedObjectContext = context.managedObjectContext {
+      try NotesNativeContext.managedSave.require(operation: operation, receiver: managedObjectContext)
+      guard managedObjectContext.ic_save() else {
+        throw writeError(operation: operation, reason: "NSManagedObjectContext.ic_save returned false.")
+      }
     }
   }
 
@@ -8936,7 +8660,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
   private func note(id: String, includeDeleted: Bool = false) throws -> ICNote {
     let managedObjectContext = try managedObjectContext()
     if includeDeleted,
-      let note = try managedObject(id: id, context: managedObjectContext) as? ICNote
+      let note = try NotesManagedObjectLookup.resolve(id: id, context: managedObjectContext) as? ICNote
     {
       return note
     }
@@ -8965,16 +8689,6 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
     }
 
     throw CLIError(code: .notFound, message: "Note was not found.", details: ["id_sha256": sha256Hex(id)])
-  }
-
-  private func managedObject(id: String, context: NSManagedObjectContext) throws -> NSManagedObject? {
-    guard id.hasPrefix("x-coredata://"),
-      let url = URL(string: id),
-      let objectID = context.persistentStoreCoordinator?.managedObjectID(forURIRepresentation: url)
-    else {
-      return nil
-    }
-    return try context.existingObject(with: objectID)
   }
 
   private func folder(id: String, name: String, accountName: String) throws -> ICFolder {
@@ -13198,23 +12912,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
   }
 
   private func noteContext() throws -> ICNoteContext {
-    if let context = ICNoteContext.sharedContext() as? ICNoteContext {
-      return context
-    }
-
-    ICNoteContext.startSharedContext(withOptions: 0)
-    if let context = ICNoteContext.sharedContext() as? ICNoteContext {
-      return context
-    }
-
-    if let context = ICNoteContext(options: 0) {
-      return context
-    }
-
-    throw CLIError(
-      code: .backendUnavailable,
-      message: "Notes private framework context could not be started."
-    )
+    try NotesNativeContext.open(requiresSave: true)
   }
 
   private func noteText(title: String, body: String) -> String {
@@ -13407,7 +13105,7 @@ struct NotesWriter: NotesFolderPurging, NotesAttachmentMutating, NotesLinkMutati
   }
 }
 
-private struct NotesChecklistParagraphTarget {
+struct NotesChecklistParagraphTarget {
   var range: NSRange
   var style: ICTTParagraphStyle
   var checked: Bool
@@ -13463,6 +13161,7 @@ private struct NotesInlineTextTarget {
   var textByteCount: Int
   var textSHA256: String
   var occurrence: Int
+  var richTextSHA256: String
 
   func evidence(
     role: String,
@@ -13476,7 +13175,9 @@ private struct NotesInlineTextTarget {
       occurrence: occurrence,
       role: role,
       colorSHA256: colorSHA256,
-      fontSHA256: fontSHA256
+      fontSHA256: fontSHA256,
+      utf16Location: range.location, utf16Length: range.length,
+      richTextSHA256: richTextSHA256
     )
   }
 }

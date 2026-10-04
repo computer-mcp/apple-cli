@@ -1,6 +1,8 @@
 .DS_Store
 /.agent/
 /.build
+__pycache__/
+*.pyc
 /tmp/
 /Packages
 xcuserdata/

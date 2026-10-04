@@ -37,46 +37,23 @@ extension RemindersSQLiteReader {
   }
 
   func applyPrivateListState(_ state: PrivateListState, to list: inout ReminderListRecord) {
-    list.listType = state.listType
-    list.smartListType = state.smartListType
-    list.isPinned = state.isPinned
-    list.displayOrder = state.displayOrder
-    list.sortingStyle = state.sortingStyle
-    list.showingLargeAttachments = state.showingLargeAttachments
-    list.hasColor = state.hasColor
+    list.listType = list.listType ?? state.listType
+    list.smartListType = list.smartListType ?? state.smartListType
+    list.isPinned = list.isPinned ?? state.isPinned
+    list.displayOrder = list.displayOrder ?? state.displayOrder
+    list.sortingStyle = list.sortingStyle ?? state.sortingStyle
+    list.showingLargeAttachments = list.showingLargeAttachments ?? state.showingLargeAttachments
+    list.hasColor = list.hasColor ?? state.hasColor
   }
 
-  func privateListRecord(
-    row: [String: Any],
-    storePath: String,
-    state: PrivateListState
-  ) -> ReminderListRecord? {
-    guard let title = emptyToNil(stringValue(row["title"])) else {
-      return nil
+  func privateListIdentifierKey(_ identifier: String) -> String {
+    if let url = URL(string: identifier), url.scheme == "x-apple-reminderkit",
+      ["REMCDList", "REMCDSmartList"].contains(url.host ?? ""),
+      url.pathComponents.count == 2, UUID(uuidString: url.lastPathComponent) != nil
+    {
+      return url.lastPathComponent.lowercased()
     }
-    let id =
-      emptyToNil(stringValue(row["ck_identifier"]))
-      ?? emptyToNil(stringValue(row["external_identifier"]))
-      ?? int64Value(row["primary_key"]).map {
-        "private-list:\(String(sha256Hex("\(storePath)|\($0)|\(title)").prefix(12)))"
-      }
-    guard let id else {
-      return nil
-    }
-    return ReminderListRecord(
-      id: id,
-      title: title,
-      sourceId: "",
-      sourceTitle: "",
-      allowsContentModifications: true,
-      listType: state.listType,
-      smartListType: state.smartListType,
-      isPinned: state.isPinned,
-      displayOrder: state.displayOrder,
-      sortingStyle: state.sortingStyle,
-      showingLargeAttachments: state.showingLargeAttachments,
-      hasColor: state.hasColor
-    )
+    return identifier.lowercased()
   }
 
   func deduplicateSections(

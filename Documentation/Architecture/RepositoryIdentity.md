@@ -19,6 +19,10 @@ apple <target> <resource?> <action> [options]
 The optional adapter executable is `apple-cli-mcp`. It is an adapter over the
 canonical CLI contract and does not own behavior.
 
+The `apple` executable embeds the application identity
+`org.computer-mcp.apple-cli`. Notifications uses that identity for its per-app
+native authorization and request namespace.
+
 ## Target Catalog
 
 The accepted target catalog is:
@@ -77,8 +81,9 @@ Implemented target capabilities:
   add/update/remove/file URL add/update/remove/note link add/update/remove/paragraph note-link add/remove/body structure/note
   state/list/search/read plus safety-gated create/import markdown/update/append/delete/tag
   membership.
-- `calendar`: EventKit read/search/occurrences/availability/statistics plus
-  safety-gated iCalendar export and event create/update/delete with
+- `calendar`: EventKit source/account and calendar reads, calendar lifecycle,
+  event read/search/occurrences/availability/statistics plus iCalendar export
+  and event create/update/delete with
   attendee metadata, relative/absolute alarms, and recurrence rules.
 - `reminders`: ReminderKit read/search, reminder/list lifecycle mutations,
   visible URL/link cards, file/image attachments, tags, sections, subtasks,
@@ -94,8 +99,10 @@ Implemented target capabilities:
 - `messages`: read-only local Messages database conversations/messages
   list/search/read plus safety-gated iMessage send, existing-chat
   conversation send, and explicit-recipient send-many.
-- `maps`: CoreLocation-backed place search/read, coordinate-aware directions
-  preview, and safety-gated Maps open.
+- `maps`: native MapKit address/POI search and place detail, driving/walking/cycling
+  routes, transit-capable ETA, MapsSync saved favorite reads, collection lifecycle
+  and existing member links, directions link previews
+  and safety-gated Maps open.
 - `finder`: path-validated item list/search/metadata plus safety-gated
   open/reveal/tag/move/trash/delete/write-text/overwrite-text. Delete and
   overwrite-text are limited to one regular file; write-text is create-only.
@@ -104,9 +111,8 @@ Implemented target capabilities:
   document open, and QuickLook PDF/thumbnail/package export.
 - `pages`: path-bounded document metadata, safety-gated document open, and
   QuickLook PDF/thumbnail/package export.
-- `keynote`: path-bounded presentation metadata, QuickLook-backed slide list,
-  safety-gated slide image export, presentation open, and QuickLook
-  PDF/thumbnail/package export.
+- `keynote`: path-bounded file/package metadata, native slide reads and PDF
+  export, explicit cached preview list/export, presentation open and package copy.
 - `facetime`: Contacts-backed contact resolve, call prepare, and
   safety-gated call start.
 - `safari`: Safari.app windows/tabs/page reads, profile, snapshot window, and
@@ -124,8 +130,9 @@ Implemented target capabilities:
   submit/cancel.
 - `clipboard`: NSPasteboard type/read/write/clear with DryRun preview for
   mutation.
-- `notifications`: local notification preview/send for notifications created by
-  this tool, with DryRun preview for send.
+- `notifications`: local notification preview, settings, explicit authorization,
+  callback-confirmed submission and scoped pending/delivered management for this
+  tool, with DryRun previews for authorization, send and exact-ID removal.
 - `intelligence`: Apple Intelligence workflows, currently implemented as a
   Swift-owned local-cache path. The current backend uses macOS eligibility
   cache files and `eligibilityd`. It includes

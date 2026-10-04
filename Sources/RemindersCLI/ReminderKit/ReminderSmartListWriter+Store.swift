@@ -10,28 +10,15 @@ extension ReminderSmartListWriter {
     operation: String,
     details: [String: String]
   ) throws -> REMAccount {
-    var fetchError: AnyObject?
-    if let accounts = store.fetchAccountsWithError(&fetchError) as? [REMAccount] {
-      let matches = accounts.filter { accountMatches($0, sourceID: sourceID) }
-      if let match = matches.first {
-        return match
-      }
+    guard let expectedID = try coreREMObjectID(entity: "REMCDAccount", identifier: sourceID) else {
+      throw CLIError(code: .validationError, message: "A valid Reminders account ID is required.", details: details)
     }
-    if let account = store.fetchPrimaryActiveCloudKitAccountWithError(&fetchError) as? REMAccount {
-      return account
+    let account = try coreResolveAccount(store: store, sourceID: sourceID, operation: operation)
+    guard coreObjectIDsMatch(account.remObjectID, expectedID) else {
+      throw reminderKitOperationFailed(capability: capability, operation: operation,
+        message: "ReminderKit could not verify the selected Smart List account.", details: details)
     }
-    if let account = store.fetchDefaultAccountWithError(&fetchError) as? REMAccount {
-      return account
-    }
-    throw reminderKitOperationFailed(
-      capability: capability,
-      operation: operation,
-      message: "ReminderKit account could not be resolved for Smart List mutation.",
-      details: details.merging(
-        ["fetch_error": reminderKitErrorSummary(fetchError)],
-        uniquingKeysWith: { _, new in new }
-      )
-    )
+    return account
   }
 
   static func validateCustomSmartListsSupported(
@@ -80,7 +67,7 @@ extension ReminderSmartListWriter {
     operation: String,
     details: [String: String]
   ) throws -> REMStore {
-    guard let store = REMStore() else {
+    guard let store = try reminderKitNewStore() else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -96,7 +83,7 @@ extension ReminderSmartListWriter {
     operation: String,
     details: [String: String]
   ) throws -> REMSaveRequest {
-    guard let saveRequest = REMSaveRequest(store: store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -113,7 +100,7 @@ extension ReminderSmartListWriter {
     details: [String: String]
   ) throws {
     var saveError: AnyObject?
-    guard saveRequest.saveSynchronouslyWithError(&saveError) else {
+    guard try reminderKitSaveSynchronously(saveRequest, error: &saveError) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,

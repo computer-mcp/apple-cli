@@ -227,6 +227,13 @@ public struct MailCommand: Sendable {
         options: options
       ) {
         let record = try backend.sendMail(draft)
+        guard record.submitted else {
+          throw CLIError(
+            code: .backendUnavailable,
+            message: "Mail rejected the send request. Inspect outgoing drafts before retrying.",
+            details: ["submission_status": "rejected", "retry_guidance": "inspect_mail_before_retrying"]
+          )
+        }
         return MailMutationResult(operation: "mail.send", changed: true, draft: nil, sent: record)
       }
     case ["mail", "move"]:

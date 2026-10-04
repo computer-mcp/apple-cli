@@ -2279,9 +2279,36 @@ indentation levels, checklist/table/math/link/attachment counts, and rich-state 
 `body list set-style`, `body list reorder`, `body list indent`, or
 `body list delete`. Use `paragraphAnchors[].ordinal` with
 `body checklist convert-range` and `body list convert-range`.
+
+For inline format, color, highlight, font, and selected-text link insertion,
+`--ordinal` selects the actual text paragraph, counting the title as paragraph
+1. This includes ordinary body paragraphs without a persistent anchor.
+`--paragraph` accepts a native anchor hash or the text snapshot hash returned
+in an inline operation's paragraph evidence. Text snapshot hashes identify a
+range in that note's current text and must be selected again after text edits.
+Persistent native anchor hashes continue to select paragraph links and
+structural paragraph operations.
+
+Commands selecting an existing checklist or ordinary-list item use an ordinal
+within that item family. Conversion commands use `paragraphAnchors[].ordinal`.
+Inline font or color changes do not add items or change those ordinals.
+Structural edits apply to the complete selected paragraph. Item edits and
+reordering return `ambiguous_identity` when a paragraph hash matches multiple
+paragraphs; select the intended item by ordinal.
+
 It does not print note body text, note title, raw attributed content, raw
 paragraph UUIDs, paragraph titles, raw paragraph style data, raw colors, raw
 font objects, or private color/font objects.
+
+Counts, collections, and rich-state flags are omitted when their readback is
+unavailable. Zero counts and empty collections mean the data was read and found
+empty. Available plain-text, link, attachment, and state metadata remains in
+the summary. `body surfaces` marks missing counts as unavailable and does not
+verify them; table/math/outline listing reports an error when its source cannot
+be read. Smart Folder reasons retain unknown body evidence, including criteria
+that exclude checklists or mentions. If required evidence is unavailable after
+a mutation, the command reports verification failure; read the note before
+retrying.
 
 `body surfaces` is the higher-level special-surface accounting view:
 
@@ -2571,9 +2598,13 @@ and a point size from 1 through 288. If the selected text appears more than once
 in the selected paragraph, add `--occurrence N`. Dry-run and result output hash
 the selected text, colors, and font-family evidence; they do not print selected
 text, raw attributed content, raw colors, raw font objects, or private color/font
-objects. Execution verifies target run readback, font-hash readback for font
-changes, paragraph-anchor order preservation, body byte-count/hash preservation,
-and note identity/title/folder/account preservation.
+objects. Text selection is literal. Execution independently locates the requested
+occurrence and verifies that the whole selected range has the requested format,
+font, or color, even when other attributes split it into several runs. It also
+checks paragraph-anchor order, body byte-count/hash preservation, and note
+identity/title/folder/account. Missing selection or formatting readback prevents
+verified success. Structure run/paragraph positions use UTF-16 offsets in the
+whole attributed body; `richTextSHA256` hashes that body's text.
 
 `body paragraph style` changes one non-list, non-checklist, non-block-quote
 paragraph to an Apple Notes paragraph style. Prefer the paragraph hash from
@@ -3647,6 +3678,19 @@ apple notes tags delete --tags Urgent,Review --dry-run --json
 apple notes tags delete --tags Urgent,Review --allow-destructive-selection --json
 apple notes delete --id NOTE_ID --dry-run --json
 ```
+
+`update --title` changes only the title and preserves the existing attributed
+body and its paragraph separator. The title must be one non-empty paragraph.
+For readable notes, the CLI reports the complete title paragraph when native
+evidence resolves Notes' shortened display title.
+Submitting the current title again returns `changed: false` without saving the
+note. An explicit `update --body` replaces the plain-text body; use the rich
+content replacement commands for formatted content.
+
+Create, update, and append keep the supplied body text exactly, including
+leading and trailing whitespace. `update --body ""` clears the body while
+preserving the title and its formatting. Supplying both `--title` and `--body`
+updates them together. Append requires a non-empty body.
 
 `quick-note create` creates one persisted Quick Note/system-paper note through
 the private note writer in an explicit folder. Execution verifies ordinary note

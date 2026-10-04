@@ -92,15 +92,17 @@ Secondary resources remain explicit, such as `apple calendar events list`,
   forward-draft/send/move/archive/delete.
 - `messages`: conversations/messages search/read, iMessage send,
   existing-chat conversation send, and explicit-recipient send-many.
-- `maps`: place search/read, coordinate-aware directions, and open-in-Maps.
+- `maps`: place search/read, saved favorite reads, collection lifecycle and existing
+  member links, route calculation and ETA,
+  coordinate-aware directions links, and open-in-Maps.
 - `finder`: file listing, reveal/open, metadata/tag/search, move/trash/delete,
   create-only text write, and single-file overwrite.
 - `numbers`: document/sheet/table read, table CSV/TSV export, single-cell table
   text write, document open, and QuickLook PDF/thumbnail/package export.
 - `pages`: document read/open/export, including QuickLook
   PDF/thumbnail/package export.
-- `keynote`: presentation/slide read, slide image export, open, and QuickLook
-  PDF/thumbnail/package export.
+- `keynote`: file/package metadata, native slide reads and PDF export, cached
+  preview reads/exports, open, and package copy.
 - `facetime`: contact/call preparation and gated call initiation.
 - `safari`: windows/tabs/current/read, profile, snapshot window, and Tab Group
   snapshot reads including snapshot window mappings, bounded page text/source reads, state-action

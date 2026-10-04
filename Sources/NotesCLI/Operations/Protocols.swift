@@ -391,12 +391,21 @@ public protocol NotesFolderMoveImpactReading: Sendable {
 
 public protocol NotesBodyStructureReading: Sendable {
   func readBodyStructure(noteID id: String) throws -> NotesBodyStructureRecord
+  func readInlineSelection(noteID: String, paragraphIDSHA256: String?, ordinal: Int?,
+    text: String, occurrence: Int?) throws -> NotesBodyInlineSelectionReadback
   func listTables(noteID id: String) throws -> [NotesBodyTableRecord]
   func readTableCell(noteID id: String, tableOrdinal: Int, row: Int, column: Int) throws
     -> NotesBodyTableCellRecord
   func listMathResults(noteID id: String) throws -> [NotesBodyMathResultRecord]
   func readMathResultsPreference(noteID id: String) throws -> NotesBodyMathResultsPreferenceRecord
   func listCollapsibleSections(noteID id: String) throws -> [NotesBodyCollapsibleSectionRecord]
+}
+
+public extension NotesBodyStructureReading {
+  func readInlineSelection(noteID: String, paragraphIDSHA256: String?, ordinal: Int?,
+    text: String, occurrence: Int?) throws -> NotesBodyInlineSelectionReadback {
+    throw CLIError(code: .backendUnavailable, message: "Notes inline selection readback is unavailable.")
+  }
 }
 
 public protocol NotesBodyMathExpressionScanning: Sendable {

@@ -167,6 +167,7 @@ func main() throws {
   for file in [
     "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", "Package.resolved",
     "Documentation/Reference/ReleaseGuide.md", "Documentation/Architecture/VersioningAndRelease.md",
+    "Documentation/Reference/NativeFixtureValidation.md", "Documentation/Reference/NativeFixtureManifest.schema.json",
     "Documentation/Reference/ThirdPartyLicenses/swift-runtime/LICENSE.txt",
   ] {
     guard manager.fileExists(atPath: root.appendingPathComponent(file).path) else {
@@ -328,9 +329,11 @@ func main() throws {
     at: licenses.deletingLastPathComponent(), withIntermediateDirectories: true)
   try manager.copyItem(
     at: root.appendingPathComponent("Documentation/Reference/ThirdPartyLicenses"), to: licenses)
-  try manager.copyItem(
-    at: root.appendingPathComponent("Documentation/Reference/ReleaseGuide.md"),
-    to: licenses.deletingLastPathComponent().appendingPathComponent("ReleaseGuide.md"))
+  for name in ["ReleaseGuide.md", "NativeFixtureValidation.md", "NativeFixtureManifest.schema.json"] {
+    try manager.copyItem(
+      at: root.appendingPathComponent("Documentation/Reference/\(name)"),
+      to: licenses.deletingLastPathComponent().appendingPathComponent(name))
+  }
   let architectureDocs = package.appendingPathComponent(
     "Documentation/Architecture", isDirectory: true)
   try manager.createDirectory(at: architectureDocs, withIntermediateDirectories: true)

@@ -146,21 +146,39 @@ enum ReminderSubtaskWriter {
       guard child.parentReminderID != nil else {
         return
       }
+      guard let list = child.list, objectIDsMatch(child.listID, list.remObjectID) else {
+        throw reminderKitOperationFailed(
+          capability: capability,
+          operation: "promote",
+          message: "ReminderKit subtask list could not be resolved.",
+          details: ["reminder_id": reminderID]
+        )
+      }
 
       let saveRequest = try makeSaveRequest(
         store: store,
         operation: "promote",
         details: ["reminder_id": reminderID]
       )
-      guard let childChange = saveRequest.updateReminder(child) as? REMReminderChangeItem else {
+      try ReminderKitRuntimeMethod(
+        owner: "REMSaveRequest", selector: "updateList:",
+        returnType: "@", argumentTypes: ["@"]
+      ).require(operation: "subtasks.promote", receiver: saveRequest)
+      guard let childChange = saveRequest.updateReminder(child) as? REMReminderChangeItem,
+        let listChange = saveRequest.updateList(list) as? REMListChangeItem
+      else {
         throw reminderKitOperationFailed(
           capability: capability,
           operation: "promote",
-          message: "ReminderKit reminder change item could not be updated.",
+          message: "ReminderKit subtask and list change items could not be updated.",
           details: ["reminder_id": reminderID]
         )
       }
-      childChange.removeFromParentReminder()
+      try ReminderKitRuntimeMethod(
+        owner: "REMListChangeItem", selector: "addReminderChangeItem:",
+        returnType: "v", argumentTypes: ["@"]
+      ).require(operation: "subtasks.promote", receiver: listChange)
+      listChange.addReminderChangeItem(childChange)
       try save(saveRequest: saveRequest, operation: "promote", details: ["reminder_id": reminderID])
     }
   }
@@ -194,7 +212,7 @@ enum ReminderSubtaskWriter {
     operation: String,
     details: [String: String]
   ) throws -> REMStore {
-    guard let store = REMStore() else {
+    guard let store = try reminderKitNewStore() else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -247,7 +265,7 @@ enum ReminderSubtaskWriter {
     operation: String,
     details: [String: String]
   ) throws -> REMSaveRequest {
-    guard let saveRequest = REMSaveRequest(store: store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -365,7 +383,7 @@ enum ReminderSubtaskWriter {
     details additionalDetails: [String: String]
   ) throws {
     var saveError: AnyObject?
-    guard saveRequest.saveSynchronouslyWithError(&saveError) else {
+    guard try reminderKitSaveSynchronously(saveRequest, error: &saveError) else {
       var details = additionalDetails
       details["save_error"] = reminderKitErrorSummary(saveError)
       throw reminderKitOperationFailed(
@@ -399,6 +417,7 @@ enum ReminderSubtaskWriter {
       ("REMObjectID", NSClassFromString("REMObjectID") != nil),
       ("REMReminder", NSClassFromString("REMReminder") != nil),
       ("REMReminderChangeItem", NSClassFromString("REMReminderChangeItem") != nil),
+      ("REMListChangeItem", NSClassFromString("REMListChangeItem") != nil),
       (
         "REMReminderSubtaskContextChangeItem",
         NSClassFromString("REMReminderSubtaskContextChangeItem") != nil
@@ -438,10 +457,12 @@ enum ReminderSubtaskWriter {
         REMReminderChangeItem.instancesRespond(to: NSSelectorFromString("subtaskContext"))
       ),
       (
-        "REMReminderChangeItem.removeFromParentReminder",
-        REMReminderChangeItem.instancesRespond(
-          to: #selector(REMReminderChangeItem.removeFromParentReminder)
-        )
+        "REMSaveRequest.updateList:",
+        REMSaveRequest.instancesRespond(to: #selector(REMSaveRequest.updateList(_:)))
+      ),
+      (
+        "REMListChangeItem.addReminderChangeItem:",
+        REMListChangeItem.instancesRespond(to: NSSelectorFromString("addReminderChangeItem:"))
       ),
       (
         "REMReminderSubtaskContextChangeItem.addReminderChangeItem:",

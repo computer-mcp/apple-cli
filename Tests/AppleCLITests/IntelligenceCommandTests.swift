@@ -206,23 +206,20 @@ struct IntelligenceCommandTests {
         ])))
 
     let country = try readPlist(root.appendingPathComponent("private/var/db/com.apple.countryd/countryCodeCache.plist"))
-    #expect(country["CountryCode"] as? String == "US")
-    let nested = try #require(country["nested"] as? [String: Any])
-    #expect(nested["billingCountry"] as? String == "US")
+    #expect(try intelligenceCountryArchiveCodes(country) == ["US"])
+    #expect(try intelligenceCountryArchiveCodes(country, branch: "LastKnownCombinedEstimate") == ["CN"])
+    #expect(try intelligenceCountryArchiveCodes(country, branch: "LocalEstimates") == ["CN"])
     let objects = try #require(country["$objects"] as? [Any])
-    #expect(objects[2] as? String == "US")
-    #expect(objects[3] as? String == "US")
-    #expect(objects[4] as? String == "LL/A")
-    #expect(objects[5] as? String == "en")
-    let archivedEstimate = try #require(objects[1] as? [String: Any])
-    let combinedEstimate = try #require(archivedEstimate["CombinedEstimate"] as? [String: Any])
-    let archivedCountries = try #require(combinedEstimate["NS.objects"] as? [[String: Any]])
-    #expect(archivedCountries[0]["CountryCode"] as? String == "US")
-    #expect(archivedCountries[1]["Other"] as? String == "US")
-    let archivedDictionary = try #require(objects[6] as? [String: Any])
-    #expect(archivedDictionary["CountryCode"] as? String == "US")
-    #expect(archivedDictionary["NonCountryTwoLetter"] as? String == "US")
-    #expect(archivedDictionary["ThreeLetter"] as? String == "USA")
+    #expect(objects[4] as? String == "CN")
+    #expect(objects[11] as? String == "JP")
+    let unrelated = try #require(objects[21] as? [String: Any])
+    #expect(unrelated["CountryCode"] as? String == "GB")
+    #expect(unrelated["NonCountryTwoLetter"] as? String == "CA")
+    #expect(unrelated["Region"] as? String == "LL/A")
+    #expect(unrelated["Language"] as? String == "en")
+    let metadata = try #require(country["metadata"] as? [String: Any])
+    #expect(metadata["billingCountry"] as? String == "CA")
+    #expect(metadata["Other"] as? String == "JP")
     let data = try intelligenceData(result.stdout ?? "")
     let warnings = try #require(data["warnings"] as? [String])
     #expect(warnings.contains { $0.contains("iPhone Mirroring") })
@@ -407,7 +404,7 @@ struct IntelligenceCommandTests {
   }
 }
 
-private func makeIntelligenceRoot(includeCountry: Bool = false) throws -> URL {
+func makeIntelligenceRoot(includeCountry: Bool = false) throws -> URL {
   let root = FileManager.default.temporaryDirectory
     .appendingPathComponent("apple-cli-intelligence-\(UUID().uuidString)", isDirectory: true)
   try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -437,32 +434,7 @@ private func makeIntelligenceRoot(includeCountry: Bool = false) throws -> URL {
   )
   if includeCountry {
     try writePlist(
-      [
-        "$archiver": "NSKeyedArchiver",
-        "$objects": [
-          "$null",
-          [
-            "CombinedEstimate": [
-              "NS.objects": [
-                ["CountryCode": "CN"],
-                ["Other": "JP"],
-              ]
-            ]
-          ],
-          "CN",
-          "US",
-          "LL/A",
-          "en",
-          [
-            "CountryCode": "GB",
-            "NonCountryTwoLetter": "CA",
-            "ThreeLetter": "USA",
-          ],
-        ],
-        "CountryCode": "CN",
-        "nested": ["billingCountry": "CA"],
-        "other": "unchanged",
-      ],
+      intelligenceCountryArchiveFixture(),
       to: root.appendingPathComponent("private/var/db/com.apple.countryd/countryCodeCache.plist")
     )
   }

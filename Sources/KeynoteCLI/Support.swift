@@ -1,5 +1,6 @@
 import AppKit
 import CryptoKit
+import Darwin
 import Foundation
 import Utility
 
@@ -69,40 +70,35 @@ func presentationExportScopeDigest(
   return "keynote-export:\(sha256Hex(payload))"
 }
 
-struct SlideExportArtifact {
-  var file: KeynoteSlideExportFile
+struct PreviewExportArtifact {
+  var file: KeynotePreviewExportFile
   var data: Data
 }
 
-func slideExportArtifacts(
-  _ response: KeynoteSlidesResponse,
+func previewExportArtifacts(
+  _ response: KeynotePreviewsResponse,
   destinationPath: String
-) throws -> [SlideExportArtifact] {
-  guard !response.slides.isEmpty else {
+) throws -> [PreviewExportArtifact] {
+  guard !response.previews.isEmpty else {
     throw CLIError(
       code: .unsupportedOperation,
-      message: "Keynote presentation does not contain QuickLook slide preview artifacts.",
+      message: "Keynote presentation does not contain QuickLook image preview artifacts.",
       details: ["path": response.presentation.path]
     )
   }
 
   let destination = URL(fileURLWithPath: destinationPath).standardizedFileURL
-  return try response.slides.map { slide in
-    guard let previewPath = slide.previewPath else {
-      throw CLIError(
-        code: .unsupportedOperation,
-        message: "Keynote slide does not contain a QuickLook preview artifact.",
-        details: ["slide_id": slide.id]
-      )
-    }
-    let source = URL(fileURLWithPath: previewPath).standardizedFileURL
+  try validatePresentationArtifactRelationship(
+    source: URL(fileURLWithPath: response.presentation.path), destination: destination)
+  return try response.previews.map { preview in
+    let source = URL(fileURLWithPath: preview.previewPath).standardizedFileURL
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: source.path, isDirectory: &isDirectory),
       !isDirectory.boolValue
     else {
       throw CLIError(
         code: .notFound,
-        message: "Keynote slide preview artifact was not found.",
+        message: "Keynote preview artifact was not found.",
         details: ["path": source.path]
       )
     }
@@ -110,12 +106,12 @@ func slideExportArtifacts(
     let data = try Data(contentsOf: source)
     let fileExtension = source.pathExtension.lowercased()
     let destinationFile = destination.appendingPathComponent(
-      "slide-\(String(format: "%03d", slide.index)).\(fileExtension)"
+      "preview-\(String(format: "%03d", preview.index)).\(fileExtension)"
     )
-    return SlideExportArtifact(
-      file: KeynoteSlideExportFile(
-        slideID: slide.id,
-        index: slide.index,
+    return PreviewExportArtifact(
+      file: KeynotePreviewExportFile(
+        previewID: preview.id,
+        index: preview.index,
         sourcePath: source.path,
         destinationPath: destinationFile.path,
         byteCount: data.count,
@@ -126,15 +122,15 @@ func slideExportArtifacts(
   }
 }
 
-func slideExportScopeDigest(
+func previewExportScopeDigest(
   _ presentation: KeynotePresentationRecord,
-  artifacts: [SlideExportArtifact],
+  artifacts: [PreviewExportArtifact],
   format: String,
   destinationPath: String
 ) -> String {
   let artifactPayload = artifacts.map { artifact in
     [
-      artifact.file.slideID,
+      artifact.file.previewID,
       "\(artifact.file.index)",
       artifact.file.sourcePath,
       artifact.file.destinationPath,
@@ -148,20 +144,11 @@ func slideExportScopeDigest(
     destinationPath,
     artifactPayload,
   ].joined(separator: "|")
-  return "keynote-slides-export:\(sha256Hex(payload))"
+  return "keynote-previews-export:\(sha256Hex(payload))"
 }
 
-func slideExportDigest(_ artifacts: [SlideExportArtifact]) -> String {
+func previewExportDigest(_ artifacts: [PreviewExportArtifact]) -> String {
   sha256Hex(artifacts.map(\.file.sha256).joined(separator: "|"))
-}
-
-func keynoteSlideID(presentation: KeynotePresentationRecord, preview: URL, index: Int) -> String {
-  let payload = [
-    presentationIdentityScopeDigest(presentation),
-    String(index),
-    preview.lastPathComponent,
-  ].joined(separator: "|")
-  return "slide-\(index)-\(String(sha256Hex(payload).prefix(8)))"
 }
 
 func requiredOption(_ name: String, options: CLIOptions) throws -> String {
@@ -177,21 +164,21 @@ func exportFormat(_ options: CLIOptions) throws -> String {
   let value = try requiredOption("format", options: options).trimmingCharacters(
     in: .whitespacesAndNewlines
   ).lowercased()
-  guard ["pdf", "thumbnail", "package"].contains(value) else {
+  guard ["pdf", "preview-pdf", "thumbnail", "package"].contains(value) else {
     throw CLIError(
       code: .unsupportedOperation,
-      message: "Keynote export currently supports only `pdf`, `thumbnail`, and `package`.")
+      message: "Keynote export currently supports `pdf`, `preview-pdf`, `thumbnail`, and `package`.")
   }
   return value
 }
 
-func slideExportFormat(_ options: CLIOptions) throws -> String {
+func previewExportFormat(_ options: CLIOptions) throws -> String {
   let value = try requiredOption("format", options: options).trimmingCharacters(
     in: .whitespacesAndNewlines
   ).lowercased()
   guard value == "images" else {
     throw CLIError(
-      code: .unsupportedOperation, message: "Keynote slide export currently supports only `images`."
+      code: .unsupportedOperation, message: "Keynote preview export currently supports `images`."
     )
   }
   return value
@@ -207,7 +194,7 @@ func standardizedAbsolutePath(_ path: String) -> String {
   ).standardizedFileURL.path
 }
 
-func validateSlideExportDestination(_ destinationPath: String) throws {
+func validatePreviewExportDestination(_ destinationPath: String) throws {
   let destination = URL(fileURLWithPath: destinationPath).standardizedFileURL
   guard !FileManager.default.fileExists(atPath: destination.path) else {
     throw CLIError(
@@ -225,11 +212,17 @@ func validateSlideExportDestination(_ destinationPath: String) throws {
   }
 }
 
-func writeSlideExportArtifacts(_ artifacts: [SlideExportArtifact], destinationPath: String) throws {
-  try validateSlideExportDestination(destinationPath)
+func writePreviewExportArtifacts(_ artifacts: [PreviewExportArtifact], destinationPath: String) throws {
+  try validatePreviewExportDestination(destinationPath)
   let destination = URL(fileURLWithPath: destinationPath).standardizedFileURL
+  guard mkdir(destination.path, 0o755) == 0 else {
+    throw CLIError(
+      code: errno == EEXIST ? .validationError : .backendUnavailable,
+      message: "Could not create the preview export directory without replacing an existing path.",
+      details: ["path": destination.path]
+    )
+  }
   do {
-    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
     for artifact in artifacts {
       try artifact.data.write(
         to: URL(fileURLWithPath: artifact.file.destinationPath), options: .withoutOverwriting)
@@ -241,7 +234,7 @@ func writeSlideExportArtifacts(_ artifacts: [SlideExportArtifact], destinationPa
     try? FileManager.default.removeItem(at: destination)
     throw CLIError(
       code: .internalError,
-      message: "Failed to write Keynote slide export.",
+      message: "Failed to write Keynote preview export.",
       details: CLIError.diagnosticDetails(for: error).merging(["path": destination.path]) { _, new in new }
     )
   }
@@ -251,7 +244,7 @@ func validatePresentationExportDestination(_ destinationPath: String, format: St
   let destination = URL(fileURLWithPath: destinationPath).standardizedFileURL
   let expectedExtensions: [String]
   switch format {
-  case "pdf":
+  case "pdf", "preview-pdf":
     expectedExtensions = ["pdf"]
   case "thumbnail":
     expectedExtensions = ["jpg", "jpeg"]
@@ -260,7 +253,7 @@ func validatePresentationExportDestination(_ destinationPath: String, format: St
   default:
     throw CLIError(
       code: .unsupportedOperation,
-      message: "Keynote export currently supports only `pdf`, `thumbnail`, and `package`.")
+      message: "Keynote export currently supports `pdf`, `preview-pdf`, `thumbnail`, and `package`.")
   }
   guard expectedExtensions.contains(destination.pathExtension.lowercased()) else {
     let extensionList = expectedExtensions.map { ".\($0)" }.joined(separator: "` or `")
@@ -285,9 +278,36 @@ func validatePresentationExportDestination(_ destinationPath: String, format: St
   }
 }
 
-func validatePackageExportRelationship(source: URL, destination: URL) throws {
-  let sourcePath = source.standardizedFileURL.path
-  let destinationPath = destination.standardizedFileURL.path
+func validatePresentationArtifactRelationship(source: URL, destination: URL) throws {
+  let sourcePath = source.standardizedFileURL.resolvingSymlinksInPath().path
+  // The export leaf is absent; resolve its existing ancestor before adding missing components.
+  var ancestor = destination.standardizedFileURL
+  var components: [String] = []
+  while !FileManager.default.fileExists(atPath: ancestor.path) && ancestor.path != "/" {
+    components.append(ancestor.lastPathComponent)
+    ancestor = ancestor.deletingLastPathComponent()
+  }
+  var resolvedDestination = ancestor.resolvingSymlinksInPath()
+  for component in components.reversed() {
+    resolvedDestination.appendPathComponent(component)
+  }
+  let destinationPath = resolvedDestination.standardizedFileURL.path
+  let identityKeys: Set<URLResourceKey> = [.fileResourceIdentifierKey, .volumeIdentifierKey]
+  let sourceIdentity = try? source.resourceValues(forKeys: identityKeys)
+  var current = ancestor.resolvingSymlinksInPath()
+  while true {
+    let candidate = try? current.resourceValues(forKeys: identityKeys)
+    if let sourceFile = sourceIdentity?.fileResourceIdentifier as? NSObject,
+      let sourceVolume = sourceIdentity?.volumeIdentifier as? NSObject,
+      let candidateFile = candidate?.fileResourceIdentifier as? NSObject,
+      let candidateVolume = candidate?.volumeIdentifier as? NSObject,
+      sourceFile.isEqual(candidateFile), sourceVolume.isEqual(candidateVolume)
+    {
+      throw CLIError(code: .validationError, message: "Export destination must be outside the source presentation.")
+    }
+    if current.path == "/" { break }
+    current = current.deletingLastPathComponent()
+  }
   guard sourcePath != destinationPath else {
     throw CLIError(
       code: .validationError, message: "Destination path must differ from source path.",
@@ -333,7 +353,13 @@ func presentationHumanOutput(_ presentation: KeynotePresentationRecord) -> Strin
 
 func slidesHumanOutput(_ response: KeynoteSlidesResponse) -> String {
   response.slides
-    .map { "\($0.index)\t\($0.id)\t\($0.previewPath ?? "")" }
+    .map { "\($0.index)\t\($0.id)\tskipped=\($0.skipped)\t\($0.title ?? "")" }
+    .joined(separator: "\n")
+}
+
+func previewsHumanOutput(_ response: KeynotePreviewsResponse) -> String {
+  response.previews
+    .map { "\($0.index)\t\($0.id)\t\($0.previewPath)" }
     .joined(separator: "\n")
 }
 

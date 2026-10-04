@@ -261,6 +261,29 @@ extension RemindersCommand {
           section: sections.first(where: { $0.id == sectionSelector || $0.title == sectionSelector })
         )
       }
+    case ["templates", "items", "list"]:
+      try validateReadOnly(options)
+      try validateTargetOptions(options, allowedOptions: ["template"])
+      let limit = try commandLimit(options)
+      let template = try reminderTemplate(
+        selector: try requiredOption("template", options: options),
+        in: listReminderTemplates()
+      )
+      let items = try listReminderTemplateItems(template: template, limit: limit)
+      return try result(
+        ReminderTemplateItemsResponse(items: items),
+        human: items.map { "\($0.id)\t\($0.title)" }.joined(separator: "\n"),
+        options: options
+      )
+    case ["templates", "items", "read"]:
+      try validateReadOnly(options)
+      try validateTargetOptions(options, allowedOptions: ["id"])
+      let item = try readReminderTemplateItemRecord(id: try requiredOption("id", options: options))
+      return try result(
+        ReminderTemplateItemResponse(item: item),
+        human: reminderTemplateItemHumanOutput(item),
+        options: options
+      )
     case ["templates", "items", "add"]:
       try validateTargetOptions(
         options,

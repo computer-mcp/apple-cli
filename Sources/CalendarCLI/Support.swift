@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import EventKit
 import Foundation
@@ -93,10 +94,11 @@ func eventIdentityScopeDigest(_ event: CalendarEventDetail) -> String {
     formatDate(event.end),
     "\(event.isAllDay)",
     event.location ?? "",
+    event.timeZoneIdentifier ?? "",
     event.notes ?? "",
     alarmList(event.alarmMinutesBefore),
     dateList(event.absoluteAlarmDates),
-    recurrenceSummary(event.recurrence),
+    recurrenceRulesSummary(event.recurrenceRules ?? event.recurrence.map { [$0] } ?? []),
     attendeeList(event.attendees),
   ].joined(separator: "|")
   return "calendar-event:\(sha256Hex(payload))"
@@ -153,9 +155,10 @@ func calendarExportEventList(_ events: [CalendarEventSummary]) -> String {
         formatDate(event.end),
         "\(event.isAllDay)",
         event.location ?? "",
+        event.timeZoneIdentifier ?? "",
         alarmList(event.alarmMinutesBefore),
         dateList(event.absoluteAlarmDates),
-        recurrenceSummary(event.recurrence),
+        recurrenceRulesSummary(event.recurrenceRules ?? event.recurrence.map { [$0] } ?? []),
         attendeeList(event.attendees),
       ].joined(separator: "~")
     }
@@ -354,55 +357,6 @@ func attendeeList(_ attendees: [CalendarAttendeeRecord]) -> String {
     .joined(separator: ",")
 }
 
-func hasRecurrenceOptions(_ options: CLIOptions) -> Bool {
-  options.targetOption("recurrence-frequency") != nil
-    || options.targetOption("recurrence-interval") != nil
-    || options.targetOption("recurrence-count") != nil
-    || options.targetOption("recurrence-until") != nil
-}
-
-func recurrenceRuleOption(_ options: CLIOptions, effectiveStart: Date) throws
-  -> CalendarRecurrenceRule?
-{
-  guard hasRecurrenceOptions(options) else {
-    return nil
-  }
-
-  let frequency = try normalizedRecurrenceFrequency(
-    try requiredOption("recurrence-frequency", options: options))
-  let interval = try positiveIntOption(
-    "recurrence-interval",
-    options: options,
-    defaultValue: 1,
-    upperBound: 999
-  )
-  let occurrenceCount = try options.targetOption("recurrence-count").map {
-    try parsePositiveInteger($0, flag: "--recurrence-count", upperBound: 9_999)
-  }
-  let until = try options.targetOption("recurrence-until").map(parseEventDate)
-
-  if occurrenceCount != nil, until != nil {
-    throw CLIError(
-      code: .validationError,
-      message: "`--recurrence-count` cannot be combined with `--recurrence-until`."
-    )
-  }
-
-  if let until, until <= effectiveStart {
-    throw CLIError(
-      code: .validationError,
-      message: "`--recurrence-until` must be later than the event start."
-    )
-  }
-
-  return CalendarRecurrenceRule(
-    frequency: frequency,
-    interval: interval,
-    occurrenceCount: occurrenceCount,
-    until: until
-  )
-}
-
 func normalizedRecurrenceFrequency(_ value: String) throws -> String {
   let frequency = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
   guard ["daily", "weekly", "monthly", "yearly"].contains(frequency) else {
@@ -458,13 +412,14 @@ func recurrenceSummary(_ recurrence: CalendarRecurrenceRule?) -> String {
 
 func recurrenceSummary(_ recurrence: CalendarRecurrenceRule) -> String {
   [
-    recurrence.frequency,
-    "interval=\(recurrence.interval)",
-    recurrence.occurrenceCount.map { "count=\($0)" } ?? "",
-    recurrence.until.map { "until=\(formatDate($0))" } ?? "",
-  ]
-  .filter { !$0.isEmpty }
-  .joined(separator: ";")
+    iCalendarRecurrence(recurrence),
+    recurrence.calendarIdentifier.map { "calendar=\($0)" } ?? "",
+    recurrence.firstDayOfTheWeek.map { "week_start=\($0)" } ?? "",
+  ].filter { !$0.isEmpty }.joined(separator: ";")
+}
+
+func recurrenceRulesSummary(_ rules: [CalendarRecurrenceRule]) -> String {
+  rules.map { recurrenceSummary($0) }.joined(separator: " || ")
 }
 
 func eventAllDayPatch(_ options: CLIOptions) -> Bool? {
@@ -547,10 +502,18 @@ func parseDateBoundary(_ value: String, role: DateBoundaryRole) throws -> Date {
 
 func parseDateOnly(_ value: String, role: DateBoundaryRole) -> Date? {
   let parts = value.split(separator: "-")
-  guard parts.count == 3,
+  guard value.utf8.count == 10,
+    parts.count == 3,
+    parts[0].utf8.count == 4,
+    parts[1].utf8.count == 2,
+    parts[2].utf8.count == 2,
     let year = Int(parts[0]),
     let month = Int(parts[1]),
-    let day = Int(parts[2])
+    let day = Int(parts[2]),
+    (1...9999).contains(year),
+    (1...12).contains(month),
+    (1...31).contains(day),
+    value == String(format: "%04d-%02d-%02d", year, month, day)
   else {
     return nil
   }
@@ -560,6 +523,10 @@ func parseDateOnly(_ value: String, role: DateBoundaryRole) -> Date? {
   let components = DateComponents(
     calendar: calendar, timeZone: calendar.timeZone, year: year, month: month, day: day)
   guard let startOfDay = components.date else {
+    return nil
+  }
+  let resolved = calendar.dateComponents([.year, .month, .day], from: startOfDay)
+  guard resolved.year == year, resolved.month == month, resolved.day == day else {
     return nil
   }
 
@@ -650,10 +617,18 @@ func eventStoreWithReadAccess() throws -> EKEventStore {
   }
 }
 
-func eventStoreWithCalendarWriteAccess() throws -> EKEventStore {
-  switch EKEventStore.authorizationStatus(for: .event) {
-  case .authorized, .fullAccess, .writeOnly:
+func eventStoreWithCalendarWriteAccess(
+  authorizationStatus: EKAuthorizationStatus = EKEventStore.authorizationStatus(for: .event)
+) throws -> EKEventStore {
+  switch authorizationStatus {
+  case .authorized, .fullAccess:
     return EKEventStore()
+  case .writeOnly:
+    throw CLIError(
+      code: .permissionDenied,
+      message: CLIPermissionWording.fullAccessRequired(
+        "Calendar", operation: "calendar selection and mutation verification")
+    )
   case .notDetermined:
     return try requestCalendarFullAccess(
       deniedMessage: CLIPermissionWording.accessNotGranted(
@@ -730,7 +705,7 @@ private final class EventKitAccessRequestBox: @unchecked Sendable {
   }
 }
 
-func applyDraft(_ draft: CalendarEventDraft, to event: EKEvent) {
+func applyDraft(_ draft: CalendarEventDraft, to event: EKEvent) throws {
   event.title = draft.title
   event.startDate = draft.start
   event.endDate = draft.end
@@ -738,10 +713,10 @@ func applyDraft(_ draft: CalendarEventDraft, to event: EKEvent) {
   event.location = draft.location
   event.notes = draft.notes
   replaceAlarms(on: event, with: draft.alarmMinutesBefore, absoluteDates: draft.absoluteAlarmDates)
-  replaceRecurrence(on: event, with: draft.recurrence)
+  try replaceRecurrence(on: event, with: draft.recurrence)
 }
 
-func applyPatch(_ patch: CalendarEventPatch, to event: EKEvent) {
+func applyPatch(_ patch: CalendarEventPatch, to event: EKEvent) throws {
   if let title = patch.title {
     event.title = title
   }
@@ -774,7 +749,7 @@ func applyPatch(_ patch: CalendarEventPatch, to event: EKEvent) {
     removeAlarms(from: event)
   }
   if let recurrence = patch.recurrence {
-    replaceRecurrence(on: event, with: recurrence)
+    try replaceRecurrence(on: event, with: recurrence)
   } else if patch.clearRecurrence {
     removeRecurrence(from: event)
   }
@@ -796,12 +771,10 @@ func removeAlarms(from event: EKEvent) {
   }
 }
 
-func replaceRecurrence(on event: EKEvent, with recurrence: CalendarRecurrenceRule?) {
+func replaceRecurrence(on event: EKEvent, with recurrence: CalendarRecurrenceRule?) throws {
+  let rule = try recurrence.map(eventKitRecurrenceRule)
   removeRecurrence(from: event)
-  guard let recurrence else {
-    return
-  }
-  event.addRecurrenceRule(eventKitRecurrenceRule(recurrence))
+  if let rule { event.addRecurrenceRule(rule) }
 }
 
 func removeRecurrence(from event: EKEvent) {
@@ -810,47 +783,137 @@ func removeRecurrence(from event: EKEvent) {
   }
 }
 
-func eventKitRecurrenceRule(_ recurrence: CalendarRecurrenceRule) -> EKRecurrenceRule {
-  let end: EKRecurrenceEnd?
-  if let occurrenceCount = recurrence.occurrenceCount {
-    end = EKRecurrenceEnd(occurrenceCount: occurrenceCount)
-  } else if let until = recurrence.until {
-    end = EKRecurrenceEnd(end: until)
-  } else {
-    end = nil
-  }
-
-  return EKRecurrenceRule(
-    recurrenceWith: eventKitRecurrenceFrequency(recurrence.frequency),
-    interval: recurrence.interval,
-    end: end
-  )
-}
-
-func eventKitRecurrenceFrequency(_ value: String) -> EKRecurrenceFrequency {
-  switch value {
-  case "weekly":
-    return .weekly
-  case "monthly":
-    return .monthly
-  case "yearly":
-    return .yearly
-  default:
-    return .daily
-  }
-}
-
 func calendarRecord(_ calendar: EKCalendar) -> CalendarRecord {
   CalendarRecord(
     id: calendar.calendarIdentifier,
     title: calendar.title,
-    sourceTitle: calendar.source.title,
-    allowsContentModifications: calendar.allowsContentModifications
+    sourceTitle: calendar.source?.title,
+    allowsContentModifications: calendar.allowsContentModifications,
+    sourceId: calendar.source?.sourceIdentifier,
+    type: calendarTypeName(calendar.type),
+    typeRawValue: calendar.type.rawValue,
+    isImmutable: calendar.isImmutable,
+    isSubscribed: calendar.isSubscribed,
+    color: calendar.color.flatMap(calendarColorString),
+    allowedEntityTypesRawValue: calendar.allowedEntityTypes.rawValue,
+    supportedEventAvailabilitiesRawValue: calendar.supportedEventAvailabilities.rawValue
   )
+}
+
+func calendarSourceRecord(_ source: EKSource) -> CalendarSourceRecord {
+  CalendarSourceRecord(
+    id: source.sourceIdentifier, title: source.title, type: calendarSourceTypeName(source.sourceType),
+    typeRawValue: source.sourceType.rawValue, isDelegate: source.isDelegate,
+    calendarIds: source.calendars(for: .event).map(\.calendarIdentifier).sorted()
+  )
+}
+
+func calendarTypeName(_ type: EKCalendarType) -> String {
+  switch type {
+  case .local: "local"
+  case .calDAV: "caldav"
+  case .exchange: "exchange"
+  case .subscription: "subscription"
+  case .birthday: "birthday"
+  @unknown default: "unknown"
+  }
+}
+
+func calendarSourceTypeName(_ type: EKSourceType) -> String {
+  switch type {
+  case .local: "local"
+  case .exchange: "exchange"
+  case .calDAV: "caldav"
+  case .mobileMe: "mobileme"
+  case .subscribed: "subscribed"
+  case .birthdays: "birthdays"
+  @unknown default: "unknown"
+  }
+}
+
+func validatedCalendarTitle(_ value: String) throws -> String {
+  let title = value.trimmingCharacters(in: .whitespacesAndNewlines)
+  guard !title.isEmpty else {
+    throw CLIError(code: .validationError, message: "`--title` must not be empty.")
+  }
+  return title
+}
+
+func validatedCalendarColor(_ value: String) throws -> String {
+  let hex = value.dropFirst()
+  guard value.hasPrefix("#"), [6, 8].contains(hex.utf8.count),
+    hex.utf8.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) })
+  else {
+    throw CLIError(code: .validationError, message: "`--color` must use #RRGGBB or #RRGGBBAA.")
+  }
+  return "#" + hex.uppercased() + (hex.utf8.count == 6 ? "FF" : "")
+}
+
+func calendarColor(_ value: String) throws -> NSColor {
+  let normalized = try validatedCalendarColor(value)
+  guard let rgba = UInt32(normalized.dropFirst(), radix: 16) else {
+    throw CLIError(code: .validationError, message: "Calendar color could not be parsed.")
+  }
+  return NSColor(
+    srgbRed: CGFloat((rgba >> 24) & 255) / 255,
+    green: CGFloat((rgba >> 16) & 255) / 255,
+    blue: CGFloat((rgba >> 8) & 255) / 255,
+    alpha: CGFloat(rgba & 255) / 255)
+}
+
+func calendarColorString(_ color: NSColor) -> String? {
+  guard let rgb = color.usingColorSpace(.sRGB) else { return nil }
+  let channels = [rgb.redComponent, rgb.greenComponent, rgb.blueComponent, rgb.alphaComponent]
+  guard channels.allSatisfy(\.isFinite) else { return nil }
+  return "#" + channels.map { String(format: "%02X", Int((min(1, max(0, $0)) * 255).rounded())) }
+    .joined()
+}
+
+func requireMutableCalendar(_ calendar: CalendarRecord) throws {
+  guard let sourceID = calendar.sourceId, !sourceID.isEmpty else {
+    throw CLIError(
+      code: .backendUnavailable, message: "Calendar source identity is unavailable.",
+      details: ["calendar_id": calendar.id])
+  }
+  guard let immutable = calendar.isImmutable else {
+    throw CLIError(
+      code: .backendUnavailable, message: "Calendar attribute permissions are unavailable.",
+      details: ["calendar_id": calendar.id])
+  }
+  guard !immutable else {
+    throw CLIError(
+      code: .unsupportedOperation, message: "This calendar's properties cannot be modified or deleted.",
+      details: ["calendar_id": calendar.id])
+  }
+}
+
+func requireCalendarCreationSource(_ source: CalendarSourceRecord) throws {
+  guard !source.isDelegate,
+    source.typeRawValue != EKSourceType.subscribed.rawValue,
+    source.typeRawValue != EKSourceType.birthdays.rawValue
+  else {
+    throw CLIError(
+      code: .unsupportedOperation, message: "This calendar source does not accept new owned calendars.",
+      details: ["source_id": source.id])
+  }
+}
+
+func calendarCollectionScope<T: Encodable>(operation: String, payload: T) throws -> String {
+  let encoder = JSONEncoder()
+  encoder.outputFormatting = [.sortedKeys]
+  return operation + ":" + sha256Hex(try encoder.encode(payload))
+}
+
+struct CalendarCollectionMutationScope: Encodable {
+  var current: CalendarRecord? = nil
+  var source: CalendarSourceRecord? = nil
+  var draft: CalendarCreateDraft? = nil
+  var patch: CalendarPatch? = nil
 }
 
 func eventSummary(_ event: EKEvent) -> CalendarEventSummary {
   let id = event.eventIdentifier ?? event.calendarItemIdentifier
+  let rules = event.recurrenceRules?.map(recurrenceRecord) ?? []
   return CalendarEventSummary(
     id: id,
     calendarId: event.calendar.calendarIdentifier,
@@ -862,13 +925,17 @@ func eventSummary(_ event: EKEvent) -> CalendarEventSummary {
     location: event.location,
     alarmMinutesBefore: relativeAlarmMinutesBefore(event),
     absoluteAlarmDates: absoluteAlarmDates(event),
-    recurrence: recurrenceRule(event),
-    attendees: eventAttendees(event)
+    recurrence: rules.first,
+    attendees: eventAttendees(event),
+    recurrenceRules: rules,
+    isDetached: event.isDetached,
+    timeZoneIdentifier: event.timeZone?.identifier
   )
 }
 
 func eventDetail(_ event: EKEvent) -> CalendarEventDetail {
-  CalendarEventDetail(
+  let rules = event.recurrenceRules?.map(recurrenceRecord) ?? []
+  return CalendarEventDetail(
     id: event.eventIdentifier ?? event.calendarItemIdentifier,
     calendarId: event.calendar.calendarIdentifier,
     calendarTitle: event.calendar.title,
@@ -880,8 +947,10 @@ func eventDetail(_ event: EKEvent) -> CalendarEventDetail {
     notes: event.notes,
     alarmMinutesBefore: relativeAlarmMinutesBefore(event),
     absoluteAlarmDates: absoluteAlarmDates(event),
-    recurrence: recurrenceRule(event),
-    attendees: eventAttendees(event)
+    recurrence: rules.first,
+    attendees: eventAttendees(event),
+    recurrenceRules: rules,
+    timeZoneIdentifier: event.timeZone?.identifier
   )
 }
 
@@ -941,36 +1010,6 @@ func relativeAlarmMinutesBefore(_ event: EKEvent) -> [Int] {
 
 func absoluteAlarmDates(_ event: EKEvent) -> [Date] {
   uniqueSortedDates((event.alarms ?? []).compactMap(\.absoluteDate))
-}
-
-func recurrenceRule(_ event: EKEvent) -> CalendarRecurrenceRule? {
-  guard let rule = event.recurrenceRules?.first else {
-    return nil
-  }
-
-  let recurrenceEnd = rule.recurrenceEnd
-  let occurrenceCount = recurrenceEnd?.occurrenceCount ?? 0
-  return CalendarRecurrenceRule(
-    frequency: recurrenceFrequency(rule.frequency),
-    interval: rule.interval,
-    occurrenceCount: occurrenceCount > 0 ? occurrenceCount : nil,
-    until: recurrenceEnd?.endDate
-  )
-}
-
-func recurrenceFrequency(_ frequency: EKRecurrenceFrequency) -> String {
-  switch frequency {
-  case .daily:
-    return "daily"
-  case .weekly:
-    return "weekly"
-  case .monthly:
-    return "monthly"
-  case .yearly:
-    return "yearly"
-  @unknown default:
-    return "unknown"
-  }
 }
 
 func eventAttendees(_ event: EKEvent) -> [CalendarAttendeeRecord] {
@@ -1043,7 +1082,12 @@ func participantType(_ type: EKParticipantType) -> String {
   }
 }
 
-func renderICalendar(_ events: [CalendarEventSummary]) -> String {
+func renderICalendar(_ events: [CalendarEventSummary]) throws -> String {
+  if let event = events.first(where: { $0.recurrence != nil || !($0.recurrenceRules ?? []).isEmpty || $0.isDetached == true }) {
+    throw CLIError(code: .unsupportedOperation,
+      message: "Recurring event export requires complete series and exception data, which is unavailable.",
+      details: ["event_id": event.id, "calendar_id": event.calendarId])
+  }
   var lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
@@ -1058,8 +1102,18 @@ func renderICalendar(_ events: [CalendarEventSummary]) -> String {
     lines.append("UID:\(iCalendarText(event.id))")
     lines.append("DTSTAMP:\(stamp)")
     if event.isAllDay {
-      lines.append("DTSTART;VALUE=DATE:\(iCalendarDate(event.start))")
-      lines.append("DTEND;VALUE=DATE:\(iCalendarDate(event.end))")
+      let timeZone: TimeZone
+      if let identifier = event.timeZoneIdentifier {
+        guard let resolved = TimeZone(identifier: identifier) else {
+          throw CLIError(code: .unsupportedOperation, message: "The all-day event's time zone is unavailable.",
+            details: ["event_id": event.id, "time_zone": identifier])
+        }
+        timeZone = resolved
+      } else {
+        timeZone = .current
+      }
+      lines.append("DTSTART;VALUE=DATE:\(iCalendarDate(event.start, timeZone: timeZone))")
+      lines.append("DTEND;VALUE=DATE:\(iCalendarDate(event.end, timeZone: timeZone))")
     } else {
       lines.append("DTSTART:\(iCalendarDateTime(event.start))")
       lines.append("DTEND:\(iCalendarDateTime(event.end))")
@@ -1069,9 +1123,6 @@ func renderICalendar(_ events: [CalendarEventSummary]) -> String {
     lines.append("X-APPLE-CLI-CALENDAR-TITLE:\(iCalendarText(event.calendarTitle))")
     if let location = event.location, !location.isEmpty {
       lines.append("LOCATION:\(iCalendarText(location))")
-    }
-    if let recurrence = event.recurrence {
-      lines.append("RRULE:\(iCalendarRecurrence(recurrence))")
     }
     for minutes in event.alarmMinutesBefore.sorted() {
       lines.append("BEGIN:VALARM")
@@ -1103,11 +1154,11 @@ func iCalendarDateTime(_ date: Date) -> String {
   return formatter.string(from: date)
 }
 
-func iCalendarDate(_ date: Date) -> String {
+func iCalendarDate(_ date: Date, timeZone: TimeZone) -> String {
   let formatter = DateFormatter()
   formatter.calendar = Calendar(identifier: .gregorian)
   formatter.locale = Locale(identifier: "en_US_POSIX")
-  formatter.timeZone = TimeZone(secondsFromGMT: 0)
+  formatter.timeZone = timeZone
   formatter.dateFormat = "yyyyMMdd"
   return formatter.string(from: date)
 }
@@ -1121,42 +1172,33 @@ func iCalendarText(_ value: String) -> String {
     .replacingOccurrences(of: ",", with: "\\,")
 }
 
-func iCalendarRecurrence(_ recurrence: CalendarRecurrenceRule) -> String {
-  var parts = [
-    "FREQ=\(recurrence.frequency.uppercased())",
-    "INTERVAL=\(recurrence.interval)",
-  ]
-  if let occurrenceCount = recurrence.occurrenceCount {
-    parts.append("COUNT=\(occurrenceCount)")
-  }
-  if let until = recurrence.until {
-    parts.append("UNTIL=\(iCalendarDateTime(until))")
-  }
-  return parts.joined(separator: ";")
-}
-
 func foldICalendarLine(_ line: String) -> String {
-  guard line.count > 75 else {
+  guard line.utf8.count > 75 else {
     return line
   }
 
-  var chunks: [String] = []
-  var remainder = line
-  while remainder.count > 75 {
-    let index = remainder.index(remainder.startIndex, offsetBy: 75)
-    chunks.append(String(remainder[..<index]))
-    remainder = String(remainder[index...])
+  var folded = ""
+  var byteCount = 0
+  for scalar in line.unicodeScalars {
+    let scalarBytes = String(scalar).utf8.count
+    if byteCount + scalarBytes > 75 {
+      folded += "\r\n "
+      byteCount = 1
+    }
+    folded.unicodeScalars.append(scalar)
+    byteCount += scalarBytes
   }
-  chunks.append(remainder)
-  return chunks.enumerated().map { index, chunk in
-    index == 0 ? chunk : " \(chunk)"
-  }.joined(separator: "\r\n")
+  return folded
 }
 
 func calendarsHumanOutput(_ calendars: [CalendarRecord]) -> String {
   calendars
-    .map { "\($0.id)\t\($0.title)\t\($0.sourceTitle)" }
+    .map { "\($0.id)\t\($0.title)\t\($0.sourceTitle ?? "unavailable")" }
     .joined(separator: "\n")
+}
+
+func calendarSourcesHumanOutput(_ sources: [CalendarSourceRecord]) -> String {
+  sources.map { "\($0.id)\t\($0.title)\t\($0.type)" }.joined(separator: "\n")
 }
 
 func eventsHumanOutput(_ events: [CalendarEventSummary]) -> String {

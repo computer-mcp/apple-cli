@@ -1013,7 +1013,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: operation,
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_attachment_metadata_search+privacy_hash+bounded_scan",
       targetIDSHA256: sha256Hex(targetFields),
       checks: checks
@@ -1144,7 +1144,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: operation,
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_attachment_content_composite_readback+privacy_hash+bounded_scan",
       targetIDSHA256: sha256Hex(targetFields),
       checks: checks

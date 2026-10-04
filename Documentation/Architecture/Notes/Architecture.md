@@ -1288,7 +1288,63 @@ privacy-safe color/font-hash counts, checklist indentation levels,
 checklist/table/math/link/attachment counts, and rich-state flags without
 printing note bodies, titles, raw paragraph UUIDs, paragraph titles, raw
 attributed content, raw paragraph style data, raw colors, raw font objects, or
-private color/font objects. `body surfaces` is the promoted special-surface
+private color/font objects. Structure counts, collections, and native rich-state
+flags preserve unavailable readback as optional values. Known empty data reports
+zero counts and empty collections; independent plain-text, link, attachment,
+and state metadata remains available when successfully read. Missing table,
+math-result, or outline readback cannot prove an empty selector list. Required
+verification checks with unavailable evidence prevent a mutation from being
+reported as verified. Inline verification binds the complete attributed body's
+string hash and whole-body UTF-16 positions to an independent paragraph/text
+occurrence readback. Format/font/color evidence must cover the requested range
+continuously; attribute-run splits do not change the selection's identity.
+Inline and selected-text link selectors resolve actual UTF-16 text paragraphs,
+including ordinary paragraphs without native style UUIDs. Their ordinals include
+the title. A matching native anchor retains its hash; other paragraph evidence
+uses a note-and-text snapshot hash. Reader-owned selection readback provides the
+paragraph's range as well as the selected occurrence, and the verifier requires
+containment in that range. Paragraph links and structural operations continue
+to use persistent native anchors.
+Structural writers resolve complete physical paragraphs and merge attribute
+fragments with the same paragraph identity. Existing checklist and ordinary-list
+item ordinals count items in their own family; conversion ordinals count native
+paragraph anchors. A hash shared by multiple physical paragraphs is ambiguous
+for single-item edits and reordering. Checklist creation and conversion use
+native checklist styles and preserve paragraph identity and indentation during
+conversion.
+Inline mutations convert between native model attributes and presentation
+attributes through `ICTTTextController`. Each operation merges only the model
+keys it owns, preserving paragraph identities, timestamps, attachments, and
+unrelated formats, then persists note data before the context save. Inline
+readback uses the same native conversion on an independently read snapshot.
+Unavailable conversion omits inline evidence while preserving separately read
+structure and content metadata.
+The CLI title is the complete title paragraph. When Notes metadata contains an
+ellipsized display title, the reader recovers the complete paragraph only when
+the native range, truncation flag, and metadata fragment agree. Protected or
+unavailable content retains its metadata title. Native title ranges can describe
+a shortened display fragment; writes extend that range only within the matching
+complete title paragraph. Plain body readback excludes the proven title and its
+single separator even when the native title-less getter returns the full text.
+Title-only updates replace only title characters,
+preserving its terminator and the attributed body. The title must be one
+non-empty paragraph. Title regeneration, note data persistence, and context
+save precede readback; repeating the same title performs no save and reports
+`changed=false`. Plain body updates replace the content after the native title
+terminator and preserve the header attributes and native paragraph identity.
+An update supplying title and body validates both fields before editing, then
+saves them in one editing session. Plain body replacement clears the old body
+formatting. Create, update, and append preserve the supplied body text,
+including leading and trailing whitespace; an empty update clears the body.
+Create and update titles require one non-empty paragraph.
+`richTextSHA256` hashes the attributed string's text, excluding formatting
+attributes. Heading, list, checklist, checklist completion, block-quote, and
+style counts summarize physical UTF-16 paragraphs. Inline formatting fragments
+and equivalent attribute aliases do not create additional paragraphs. Missing
+or contradictory style flags make the affected counters unavailable; a missing
+checklist completion flag does not imply an open item. `paragraphStyleRunCount`
+counts attributed-text spans containing recognized paragraph style evidence.
+`body surfaces` is the promoted special-surface
 accounting slice: it reports table, math-result, collapsible-section, and
 collapsed-section counts plus supported/gated read and mutation families,
 verifies the accounting through private body structure readback, reports

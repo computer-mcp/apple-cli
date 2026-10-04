@@ -353,6 +353,12 @@ struct NotesImplementation: NotesReading, NotesFolderPurgeReading,
     try reader.readBodyStructure(noteID: id)
   }
 
+  func readInlineSelection(noteID: String, paragraphIDSHA256: String?, ordinal: Int?,
+    text: String, occurrence: Int?) throws -> NotesBodyInlineSelectionReadback {
+    try reader.readInlineSelection(noteID: noteID, paragraphIDSHA256: paragraphIDSHA256,
+      ordinal: ordinal, text: text, occurrence: occurrence)
+  }
+
   func listTables(noteID id: String) throws -> [NotesBodyTableRecord] {
     try reader.listTables(noteID: id)
   }

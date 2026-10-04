@@ -33,7 +33,7 @@ enum ReminderVisibleURLWriter {
     let store = resolved.store
     let reminder = resolved.reminder
 
-    guard let saveRequest = REMSaveRequest(store: store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -68,7 +68,7 @@ enum ReminderVisibleURLWriter {
     }
 
     var saveError: AnyObject?
-    guard saveRequest.saveSynchronouslyWithError(&saveError) else {
+    guard try reminderKitSaveSynchronously(saveRequest, error: &saveError) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -86,7 +86,7 @@ enum ReminderVisibleURLWriter {
     reminderID: String,
     operation: String
   ) throws -> (store: REMStore, reminder: Any) {
-    guard let store = REMStore() else {
+    guard let store = try reminderKitNewStore() else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,

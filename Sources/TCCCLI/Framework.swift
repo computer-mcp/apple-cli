@@ -124,11 +124,13 @@ public struct TCCPrivateFrameworkBackend: TCCFrameworkManaging {
 
     return TCCOperationResult(
       operation: operation,
-      changed: true,
+      changed: nil,
       service: service.rawName,
       client: bundleIdentifier,
       affectedRows: 0,
-      backend: "TCC.framework"
+      backend: "TCC.framework",
+      attempted: true,
+      verification: .unverified
     )
   }
 

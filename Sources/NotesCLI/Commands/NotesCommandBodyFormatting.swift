@@ -16,14 +16,14 @@ extension NotesCommand {
           "note_id: \(structure.noteID)",
           "plain_text_bytes: \(structure.plainTextByteCount.map(String.init) ?? "")",
           "paragraphs: \(structure.paragraphCount.map(String.init) ?? "")",
-          "checklist_items: \(structure.checklistItemCount)",
-          "tables: \(structure.tableCount)",
-          "collapsible_sections: \(structure.collapsibleSectionCount)",
-          "collapsed_sections: \(structure.collapsedSectionCount)",
-          "math_attachments: \(structure.mathAttachmentCount)",
-          "inline_attachments: \(structure.inlineAttachmentCount)",
-          "inline_format_runs: \(structure.inlineFormatRunCount)",
-          "highlight_runs: \(structure.highlightRunCount)",
+          "checklist_items: \(structure.checklistItemCount.map(String.init) ?? "unknown")",
+          "tables: \(structure.tableCount.map(String.init) ?? "unknown")",
+          "collapsible_sections: \(structure.collapsibleSectionCount.map(String.init) ?? "unknown")",
+          "collapsed_sections: \(structure.collapsedSectionCount.map(String.init) ?? "unknown")",
+          "math_attachments: \(structure.mathAttachmentCount.map(String.init) ?? "unknown")",
+          "inline_attachments: \(structure.inlineAttachmentCount.map(String.init) ?? "unknown")",
+          "inline_format_runs: \(structure.inlineFormatRunCount.map(String.init) ?? "unknown")",
+          "highlight_runs: \(structure.highlightRunCount.map(String.init) ?? "unknown")",
         ].joined(separator: "\n"),
         options: options
       )
@@ -48,10 +48,10 @@ extension NotesCommand {
         ),
         human: [
           "note_id: \(structure.noteID)",
-          "tables: \(summary.tableCount)",
-          "collapsible_sections: \(summary.collapsibleSectionCount)",
-          "collapsed_sections: \(summary.collapsedSectionCount)",
-          "math_attachments: \(summary.mathAttachmentCount)",
+          "tables: \(summary.tableCount.map(String.init) ?? "unknown")",
+          "collapsible_sections: \(summary.collapsibleSectionCount.map(String.init) ?? "unknown")",
+          "collapsed_sections: \(summary.collapsedSectionCount.map(String.init) ?? "unknown")",
+          "math_attachments: \(summary.mathAttachmentCount.map(String.init) ?? "unknown")",
           "gated_mutations: \(summary.gatedMutationFamilies.joined(separator: ","))",
         ].joined(separator: "\n"),
         options: options
@@ -2762,13 +2762,17 @@ extension NotesCommand {
   }
 
   private func bodySurfaceSummary(_ structure: NotesBodyStructureRecord) -> NotesBodySurfaceSummary {
-    let supportedReadFamilies = structure.isPasswordProtected
-      ? []
-      : ["collapsible_section_count", "collapsible_section_state", "math_surface_count", "table_count", "table_selector_list"]
-    var gatedReadFamilies: [String] = []
-    if structure.isPasswordProtected {
-      gatedReadFamilies.append("password_protected_body_surface_counts")
-    }
+    let readFamilies: [(String, Bool)] = [
+      ("collapsible_section_count", structure.collapsibleSectionCount != nil),
+      ("collapsible_section_state", structure.collapsibleSectionCount != nil && structure.collapsedSectionCount != nil),
+      ("math_surface_count", structure.mathAttachmentCount != nil),
+      ("table_count", structure.tableCount != nil),
+      ("table_selector_list", structure.tableCount != nil),
+    ]
+    let supportedReadFamilies = structure.isPasswordProtected ? [] : readFamilies.filter { $0.1 }.map { $0.0 }
+    let gatedReadFamilies = structure.isPasswordProtected
+      ? ["password_protected_body_surface_counts"]
+      : readFamilies.filter { !$0.1 }.map { $0.0 }
     return NotesBodySurfaceSummary(
       tableCount: structure.tableCount,
       collapsibleSectionCount: structure.collapsibleSectionCount,
@@ -2799,11 +2803,13 @@ extension NotesCommand {
   }
 
   private func bodySurfaceFamilies(_ structure: NotesBodyStructureRecord) -> [NotesBodySurfaceFamilyRecord] {
-    let countedStatus = structure.isPasswordProtected ? "unavailable_password_protected" : "counted"
+    func readbackStatus(_ count: Int?) -> String {
+      structure.isPasswordProtected ? "unavailable_password_protected" : (count == nil ? "unavailable" : "counted")
+    }
     return [
       NotesBodySurfaceFamilyRecord(
           family: "table",
-          readbackStatus: countedStatus,
+          readbackStatus: readbackStatus(structure.tableCount),
           mutationStatus: structure.isPasswordProtected
             ? "unavailable_password_protected"
             : "create_update_delete_copy_move_convert_to_text_convert_from_text_structure_supported",
@@ -2823,7 +2829,7 @@ extension NotesCommand {
       ),
       NotesBodySurfaceFamilyRecord(
         family: "math_result",
-        readbackStatus: countedStatus,
+        readbackStatus: readbackStatus(structure.mathAttachmentCount),
         mutationStatus: structure.isPasswordProtected
           ? "unavailable_password_protected"
           : "insert_update_supported",
@@ -2838,7 +2844,7 @@ extension NotesCommand {
       ),
       NotesBodySurfaceFamilyRecord(
         family: "collapsible_section",
-        readbackStatus: countedStatus,
+        readbackStatus: readbackStatus(structure.collapsibleSectionCount),
         mutationStatus: structure.isPasswordProtected
           ? "unavailable_password_protected"
           : "state_and_create_update_supported",
@@ -2881,23 +2887,27 @@ extension NotesCommand {
       verificationBoolCheck(
         name: "table_surface_accounted",
         expected: true,
-        actual: summary.tableCount == structure.tableCount
-          && (structure.isPasswordProtected || tableSurface?.count == structure.tableCount)
+        actual: structure.tableCount.map {
+          summary.tableCount == $0 && !structure.isPasswordProtected && tableSurface?.count == $0
+        }
       ),
       verificationBoolCheck(
         name: "math_surface_accounted",
         expected: true,
-        actual: summary.mathAttachmentCount == structure.mathAttachmentCount
-          && summary.isMathNote == structure.isMathNote
-          && (structure.isPasswordProtected || mathSurface?.count == structure.mathAttachmentCount)
+        actual: structure.mathAttachmentCount.map {
+          summary.mathAttachmentCount == $0 && summary.isMathNote == structure.isMathNote
+            && !structure.isPasswordProtected && mathSurface?.count == $0
+        }
       ),
       verificationBoolCheck(
         name: "collapsible_section_surface_accounted",
         expected: true,
-        actual: summary.collapsibleSectionCount == structure.collapsibleSectionCount
-          && summary.collapsedSectionCount == structure.collapsedSectionCount
-          && summary.collapsedSectionCount <= summary.collapsibleSectionCount
-          && (structure.isPasswordProtected || collapsibleSurface?.count == structure.collapsibleSectionCount)
+        actual: structure.collapsibleSectionCount.flatMap { count in
+          structure.collapsedSectionCount.map { collapsed in
+            summary.collapsibleSectionCount == count && summary.collapsedSectionCount == collapsed
+              && collapsed <= count && !structure.isPasswordProtected && collapsibleSurface?.count == count
+          }
+        }
       ),
     ]
     for mutation in expectedSupportedMutations {
@@ -2920,11 +2930,11 @@ extension NotesCommand {
     }
     let warnings = structure.isPasswordProtected
       ? ["password_protected_body_surface_counts_unavailable"]
-      : []
+      : (checks.contains { $0.status == "unavailable" } ? ["body_surface_counts_unavailable"] : [])
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.body.surfaces",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_body_structure_surface_readback",
       targetIDSHA256: sha256Hex(structure.noteID),
       checks: checks,
@@ -3566,7 +3576,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.body.format.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "capability_accounting+privacy_boundary+no_backend_calls",
       targetIDSHA256: sha256Hex("notes.body.format.audit"),
       checks: checks
@@ -3582,12 +3592,12 @@ extension NotesCommand {
       verificationBoolCheck(
         name: "collapsible_section_count",
         expected: true,
-        actual: sections.count == structure.collapsibleSectionCount
+        actual: structure.collapsibleSectionCount.map { sections.count == $0 }
       ),
       verificationBoolCheck(
         name: "collapsed_section_count",
         expected: true,
-        actual: collapsedCount == structure.collapsedSectionCount
+        actual: structure.collapsedSectionCount.map { collapsedCount == $0 }
       ),
       verificationBoolCheck(
         name: "section_ordinals_are_stable",
@@ -3603,7 +3613,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.body.collapsible.list",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_outline_controller_section_readback",
       targetIDSHA256: sha256Hex(structure.noteID),
       checks: checks,
@@ -3645,13 +3655,19 @@ extension NotesCommand {
     guard result.verification.verified else {
       throw CLIError(
         code: .internalError,
-        message: "Notes body checklist mutation verification failed.",
+        message: "Notes body mutation could not be verified. Read the note before retrying.",
         details: [
           "operation": result.operation,
           "failed_checks": result.verification.checks
             .filter { $0.status == "failed" }
             .map(\.name)
             .joined(separator: ","),
+          "unavailable_checks": result.verification.checks
+            .filter { $0.status == "unavailable" }
+            .map(\.name)
+            .joined(separator: ","),
+          "mutation_may_have_occurred": "true",
+          "retry_guidance": "inspect_note_before_retrying",
           "target_id_sha256": result.verification.targetIDSHA256,
         ]
       )

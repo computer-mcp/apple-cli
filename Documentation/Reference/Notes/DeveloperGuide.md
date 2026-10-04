@@ -39,6 +39,11 @@ Scripts/notes-private-framework-normalize-full-dump \
   --sources-root Sources
 ```
 
+The command also accepts `--input-manifest` for digest-checked multi-version
+inputs. Its shared merger validates declarations and module imports before
+publishing the complete output group. See [Framework Header Generation](../FrameworkGeneration.md)
+for input metadata, conflict reports, observed availability, and recovery.
+
 The generated surfaces live under:
 
 - `Sources/NotesSupport/include/`
@@ -97,6 +102,32 @@ installed framework's model. The probe reads model metadata without opening a
 context or persistent store; required deferred accessors retain a readiness
 warning until operation-context verification. See
 [Apple's managed-object documentation](https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/CoreData/LifeofaManagedObject.html).
+
+The reader and writer share context bootstrap requirements. The shared-context,
+start, and initializer signatures are checked immediately before their typed
+calls; unused fallback methods do not gate an existing shared context. Writer
+bootstrap and context-save helpers check the context and managed-context save
+signatures, and saves recheck the actual receiver. The common note-save helper
+also checks the NotesUI `ICNote.save` void method before calling it.
+
+A single-note `read` performs its fetch, date-model checks, accessor signature
+checks, and value projection on the owning managed-object context's queue.
+Date attributes must match the actual entity model. An object declaration or
+an installed model alone does not establish that an accessor works on that
+object. These requirements cover the listed entry points; other capability
+families retain their own implementation and validation requirements.
+
+Explicit host read validation runs separately from the default fixture suite:
+
+```bash
+APPLE_CLI_RUN_NOTES_INTEGRATION_TESTS=1 swift test --filter NotesReaderTests
+```
+
+This suite needs an existing unprotected note with date metadata. It exercises
+real model-backed date and plain-text reads and inspects save signatures
+without saving. Write preservation requires a controlled mutation fixture and
+save/reopen verification. Runtime checks run after process loading; the
+[Release Guide](../ReleaseGuide.md) describes startup dependencies.
 
 Current `doctor` includes `notes_store`, a read-only check for the Notes group
 container, `NoteStore.sqlite`, SQLite schema counts, entity row counts, WAL/SHM
@@ -2754,6 +2785,16 @@ counts, and rich-state flags. It must not print note body text, note title,
 raw attributed content, raw paragraph style data, raw colors, raw font objects,
 private color/font objects, table cell text, or checklist item text.
 
+Structure counts, collections, and rich-state flags preserve unknown readback
+as optional values. Missing evidence omits the corresponding fields from JSON;
+a successfully read empty body produces zero counts and empty collections.
+Plain-text, link, attachment, and native state metadata are independently
+retained when successfully read. Outline counts require an available controller
+for nonempty paragraphs. Missing table/math/outline readback reports backend
+unavailability rather than an empty selector list. Surface accounting and
+mutation verification require available evidence; Smart Folder checklist,
+mention, and math reasons retain unknown evidence instead of proving absence.
+
 Rich body special-surface accounting, collapsible-section state mutation, and
 collapsible-section create/update through paragraph style are promoted for
 table/math/collapsible accounting and collapsible state/content-boundary
@@ -3078,10 +3119,18 @@ attributed content. Inline format/color/highlight/font writes use
 text range inside a paragraph selected by paragraph hash or ordinal. The
 command layer hashes selected text, color input, and font-family evidence for
 dry-run/result output; point size is reported as a normalized number. The
-verifier checks selected-text hash/count, target inline run readback,
-font-hash readback for font mutations, changed/no-op reporting,
-paragraph-anchor order preservation, body byte-count/hash preservation, and note
-identity/title/folder/account preservation.
+verifier independently reselects the paragraph and literal text occurrence from
+attributed readback, then compares text hash/count, whole-body UTF-16 position,
+occurrence, and rich-string snapshot identity with writer evidence. Format,
+font, and color readback uses continuous interval coverage across attribute-run
+splits. Partial coverage requires a change for either enabling or disabling;
+zero or partial coverage cannot verify enabling the requested format. The
+verifier also checks changed/no-op reporting, paragraph-anchor order,
+body byte-count/hash preservation, and note identity/title/folder/account.
+`richTextSHA256` hashes the attributed body's complete string, excluding its
+formatting attributes; run and paragraph `utf16Location`/`utf16Length` values
+refer to that whole string. Missing position, snapshot, or independent selection
+evidence prevents verified success.
 
 Richer table-format operations beyond supported import/copy/convert-to-text and
 row/column insert/delete/move/copy/clear/format, broader rich formatting surfaces, and
@@ -3504,6 +3553,12 @@ evidence where that field requires it. Preserve known rich Notes state unless
 the user explicitly asks to change it.
 
 ## Validation
+
+The opt-in `notesSaveFormatAndColdReadback` workflow creates a marked note in
+a configured, dedicated test folder and records cold reads, format checks,
+HTML export, and exact-ID cleanup. See [Native Fixture Validation](../NativeFixtureValidation.md)
+for the manifest, mutation switch, evidence, and recovery procedure. Its
+default skip provides no native write evidence.
 
 Use package-local checks for Notes changes:
 

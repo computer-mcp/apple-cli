@@ -425,10 +425,15 @@ struct TCCCommandTests {
     }
 
     _ = try #require(try command.run(options: try CLIOptionsFixture.parse(args + ["--dry-run"])))
-    _ = try #require(
+    let result = try #require(
       try command.run(options: try CLIOptionsFixture.parse(args)))
+    let object = try tccJSONObject(result.stdout ?? "")
+    let data = try #require(object["data"] as? [String: Any])
 
     #expect(framework.calls == ["add:kTCCServiceReminders:com.example.App"])
+    #expect(data["attempted"] as? Bool == true)
+    #expect(data["verification"] as? String == "unverified")
+    #expect(data["changed"] == nil)
   }
 }
 
@@ -471,10 +476,12 @@ private final class FakeTCCFramework: TCCFrameworkManaging, @unchecked Sendable 
     calls.append("add:\(service.rawName):\(bundleIdentifier)")
     return TCCOperationResult(
       operation: "tcc.framework.add",
-      changed: true,
+      changed: nil,
       service: service.rawName,
       client: bundleIdentifier,
-      backend: "TCC.framework"
+      backend: "TCC.framework",
+      attempted: true,
+      verification: .unverified
     )
   }
 
@@ -482,10 +489,12 @@ private final class FakeTCCFramework: TCCFrameworkManaging, @unchecked Sendable 
     calls.append("reset:\(service.rawName):\(bundleIdentifier)")
     return TCCOperationResult(
       operation: "tcc.framework.reset",
-      changed: true,
+      changed: nil,
       service: service.rawName,
       client: bundleIdentifier,
-      backend: "TCC.framework"
+      backend: "TCC.framework",
+      attempted: true,
+      verification: .unverified
     )
   }
 }

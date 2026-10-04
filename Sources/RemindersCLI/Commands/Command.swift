@@ -19,6 +19,8 @@ public struct RemindersCommand: Sendable {
       return try runRichMetadataCommand(options)
     case "templates":
       return try runTemplateCommand(options)
+    case "notes":
+      return try runNotesCommand(options)
     case "reminders":
       return try runReminderItemCommand(options)
     case "doctor":

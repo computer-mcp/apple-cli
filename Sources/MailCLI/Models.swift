@@ -224,6 +224,7 @@ public struct MailSendRecord: Codable, Equatable, Sendable {
   public var cc: [String]
   public var bcc: [String]
   public var subject: String
+  public var submitted: Bool
   public var bodyIncluded: Bool
 
   public init(
@@ -231,12 +232,14 @@ public struct MailSendRecord: Codable, Equatable, Sendable {
     cc: [String] = [],
     bcc: [String] = [],
     subject: String,
+    submitted: Bool,
     bodyIncluded: Bool = false
   ) {
     self.to = to
     self.cc = cc
     self.bcc = bcc
     self.subject = subject
+    self.submitted = submitted
     self.bodyIncluded = bodyIncluded
   }
 }

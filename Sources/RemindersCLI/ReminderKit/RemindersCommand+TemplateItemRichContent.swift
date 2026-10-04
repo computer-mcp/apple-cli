@@ -178,8 +178,25 @@ extension RemindersCommand {
       )
     }
 
+    let resolved = try coreFetchTemplate(store: store,
+      selector: coreObjectIDString(child.listID), operation: operation)
+    guard coreObjectIDsMatch(child.listID, resolved.template.remObjectID),
+      coreObjectIDsMatch(child.accountID, resolved.account.remObjectID) else {
+      throw coreReminderKitError(operation: operation,
+        message: "ReminderKit template subtask membership could not be resolved.",
+        details: ["item_id": id])
+    }
+    let representation = try coreTemplateListRepresentation(
+      store: store, template: resolved.template, operation: operation)
+
     let saveRequest = try coreReminderKitSaveRequest(store: store, operation: operation)
-    guard let childChange = saveRequest.updateReminder(child) as? REMReminderChangeItem else {
+    for selector in ["updateReminder:", "updateList:"] {
+      try ReminderKitRuntimeMethod(owner: "REMSaveRequest", selector: selector,
+        returnType: "@", argumentTypes: ["@"]
+      ).require(operation: operation, receiver: saveRequest)
+    }
+    guard let childChange = saveRequest.updateReminder(child) as? REMReminderChangeItem,
+      let listChange = saveRequest.updateList(representation) as? REMListChangeItem else {
       throw coreReminderKitError(
         operation: operation,
         message: "ReminderKit template subtask change item could not be updated.",
@@ -187,13 +204,23 @@ extension RemindersCommand {
       )
     }
 
-    childChange.removeFromParentReminder()
+    try ReminderKitRuntimeMethod(owner: "REMListChangeItem", selector: "addReminderChangeItem:",
+      returnType: "v", argumentTypes: ["@"]
+    ).require(operation: operation, receiver: listChange)
+    listChange.addReminderChangeItem(childChange)
     try coreSaveReminderKit(saveRequest, operation: operation)
-    return try coreReminderTemplateItemRecord(
+    let promoted = try coreReminderTemplateItemRecord(
       store: store,
       objectID: child.remObjectID,
       operation: operation
     )
+    guard promoted.parentReminderId == nil,
+      promoted.templateId == coreObjectIDString(resolved.template.remObjectID) else {
+      throw coreReminderKitError(operation: operation,
+        message: "ReminderKit template subtask promotion could not be verified.",
+        details: ["item_id": id])
+    }
+    return promoted
   }
 }
 

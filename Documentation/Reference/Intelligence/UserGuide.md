@@ -23,7 +23,7 @@ version or implementation mechanism uses the same route.
 | --- | --- | --- |
 | `--patch-scope answer` | Sets known `os_eligibility_answer_t` cache values to the eligible answer. | Modern local-cache path. This is the smallest patch and is useful when the target cache files exist. |
 | `--patch-scope comprehensive` | Applies answer values plus known GREYMATTER/CALCIUM status input values. | Modern local-cache path and the default enablement scope. |
-| `--eligibility-country CC` | Rewrites uppercase alpha-2 country-code strings in `countryCodeCache.plist`. | Optional country-cache path for releases where `countryd` contributes to location-gated behavior. |
+| `--eligibility-country CC` | Changes country fields on the active combined estimate in a supported country archive. | Optional country-cache path for releases where `countryd` contributes to location-gated behavior. |
 | `recompute` | Performs a bounded `lldb` attach to `eligibilityd` and recomputes. | Optional refresh path when plist/cache values are present but the daemon has not picked them up. |
 | `service install` | Installs this CLI's LaunchDaemon to run the Swift CLI recompute command. | Optional persistence for recompute only; not part of default enablement. |
 | macOS beta-only region spoof or feature-flag experiments | Not implemented in the production CLI. | Out of current scope until there is a source-owned, testable design. |
@@ -113,9 +113,21 @@ debug attach.
 Changing the eligibility country cache is optional. Use it only when you need
 to force the cached eligibility country, usually to `US`, for location-gated
 features such as ChatGPT integration, Apple News, or international Maps.
-The command rewrites uppercase two-letter country-code strings in
-`countryCodeCache.plist`; `countryd` remains an internal touched subsystem, not
-a user-facing option.
+The command changes the active combined estimate in `countryCodeCache.plist`.
+Historical estimates, local observations, timestamps, priorities and unrelated
+values are preserved, including shared references. It accepts archive version
+`100000` with cached-data version `5`; missing or unsupported country archives
+are refused before any eligibility cache is changed, even with `--create-missing`.
+The country action reports changed estimates and verified archive readback.
+This confirms cache contents; app access, service checks and model downloads
+still require separate verification.
+
+Enablement checks for concurrent cache changes. If a write or readback fails,
+it restores only bytes still attributable to this operation. An unconfirmed
+restore preserves the current file: inspect the action receipt and backup
+before using manual rollback. Backup creation alone does not count as a cache
+change. Manual rollback validates every backup digest before unlocking or
+restoring any file, then uses atomic writes and exact readback checks.
 
 If you use iPhone Mirroring, pair the iPhone with the Mac before changing the
 eligibility country.

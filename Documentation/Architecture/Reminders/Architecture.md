@@ -35,6 +35,31 @@ The Reminders capability baseline is defined in this order:
 5. The read-only Reminders `SQLiteReader` provides enrichment, diagnostics, and
    verifier evidence.
 
+Reminder and list existence and identity come from ReminderKit. SQLite
+enrichment matches native identifiers and fills missing metadata; retained
+store rows belong to diagnostics.
+Saved template item listing uses a bounded read-only index to discover IDs
+under the selected native template and account. Every returned item is fetched
+through ReminderKit and checked for saved-item entity, template, and account
+membership. An unavailable or ambiguous index fails the read.
+
+Custom Smart List storage supplies the list identity, account identity, type,
+and filter data. Creation and conversion retain the new change item's ID.
+Rule verification reloads that exact native identity and compares its account
+and requested JSON rules. Rule updates preserve the list's other fields and
+return without saving when the rules already match. Deletion verifies native
+absence. Unconfirmed post-save verification reports possible mutation and
+inspection guidance.
+
+Smart List membership reads use ReminderKit's custom Smart List data-view
+invocation with the selected native Smart List and account storages. The
+native view evaluates its saved rules; the CLI decodes its property-list
+result, checks the requested list identity, and fetches the full reminder
+objects by their native IDs. Contextual subtasks are flattened and deduplicated
+by identity. Output retains physical list and parent relationships. Completion,
+date, and search filters run before the output limit. Unavailable invocation
+methods or unknown result shapes fail the read.
+
 EventKit and the Reminders.app SDEF remain useful reference evidence for Apple
 model boundaries. Production Reminders reads and writes use ReminderKit.
 
@@ -54,7 +79,7 @@ capability accounting lives in `CapabilityList.md`.
   writes through `ReminderKit` / `ReminderKitInternal` calls. Files are split
   by product capability: reminder core, list metadata, list groups, Smart
   Lists, repeat rules, visible URL, tags, sections, subtasks, attachments,
-  assignments, urgent state, Messaging-person triggers, field verification, and
+  assignments, rich notes, urgent state, Messaging-person triggers, field verification, and
   preservation verification. Smart List writing keeps operation entry points,
   change-item configuration, resolution, conversion, store/save helpers,
   matching, preflight checks, and criteria encoding in separate target-local
@@ -109,6 +134,8 @@ Command names remain semantic:
 - Use `apple reminders create`, `update`, `complete`, `uncomplete`, bulk
   completion, `delete`, and `cleanup-completed` for reminder mutation.
 - Use `apple reminders list`, `search`, and `read` for normal reminder reads.
+- Use `apple reminders notes read`, `notes format`, and `notes list-style`
+  for attributed notes and selective formatting changes.
 - Use `apple reminders lists list`, `lists create`, `lists delete`,
   `lists update`, `lists reorder`, `lists groups ...`, and `lists smart ...` for
   list organization intent.
@@ -120,7 +147,7 @@ Command names remain semantic:
   `templates` is the collection entry, matching Reminders.app's View Templates
   flow; `--template` selects the one template to mutate in the stateless CLI.
   Template sections support direct list/add/rename/delete/reorder. Template
-  items support direct add/update/delete on saved reminders, including title,
+  items support direct list/read/add/update/delete on saved reminders, including title,
   notes, visible URL, due date, priority, repeat, location, absolute alarm,
   flag, tags, section membership, file/image attachments, and one-level
   subtasks. Current-user or execution-context fields such as urgent, early
@@ -134,6 +161,28 @@ Command names remain semantic:
   for ReminderKit readiness, read-only state explanation, and verifier diagnostics.
 
 ## Preservation Invariant
+
+Notes formatting reads native attributed text and selects literal text in
+UTF-16 ranges. Repeated text requires an explicit one-based occurrence;
+omitting text selects all notes. Inline changes preserve other attributes and
+unselected content. List styles apply to complete selected paragraphs:
+bulleted, dashed, and numbered styles preserve existing paragraph metadata,
+while plain clears the selected paragraph's list layout. Changes save once
+through the native reminder change item and require a fresh attributed-text
+readback plus unchanged reminder fields, except the modification timestamp.
+An identical request does not save. Unconfirmed saves report possible mutation
+and require inspecting notes before retrying.
+
+Subtask verification binds the child, parent, and list by identity. A successful
+fresh ReminderKit lookup and readable store relationship evidence are required;
+parent titles do not identify the relationship. Moving to the current parent
+preserves the reminder and reports `changed: false`.
+
+Promotion adds the existing reminder change item to its original list's
+top-level membership in the same save request. Saved template items use their
+template's list representation for this membership change. Verification
+requires that the child still exists in its list or template and has no parent
+relationship.
 
 Commands that move, recreate, merge, extract, or reorganize reminders preserve
 known rich reminder state. This includes visible URLs, assignments, attachments,

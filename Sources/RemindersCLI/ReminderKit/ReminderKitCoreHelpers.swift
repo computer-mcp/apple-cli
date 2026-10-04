@@ -5,7 +5,7 @@ import Utility
 let reminderKitEarlyReminderMinuteUnit: Int64 = 64
 
 func coreReminderKitStore(operation: String) throws -> REMStore {
-  guard let store = REMStore() else {
+  guard let store = try reminderKitNewStore() else {
     throw coreReminderKitError(
       operation: operation,
       message: "ReminderKit store could not be created."
@@ -16,7 +16,7 @@ func coreReminderKitStore(operation: String) throws -> REMStore {
 
 func coreReminderKitSaveRequest(store: REMStore, operation: String) throws -> REMSaveRequest
 {
-  guard let saveRequest = REMSaveRequest(store: store) else {
+  guard let saveRequest = try reminderKitNewSaveRequest(store: store) else {
     throw coreReminderKitError(
       operation: operation,
       message: "ReminderKit save request could not be created."
@@ -27,7 +27,7 @@ func coreReminderKitSaveRequest(store: REMStore, operation: String) throws -> RE
 
 func coreSaveReminderKit(_ saveRequest: REMSaveRequest, operation: String) throws {
   var error: AnyObject?
-  guard saveRequest.saveSynchronouslyWithError(&error) else {
+  guard try reminderKitSaveSynchronously(saveRequest, error: &error) else {
     throw coreReminderKitError(
       operation: operation,
       message: "ReminderKit save failed.",
@@ -38,6 +38,7 @@ func coreSaveReminderKit(_ saveRequest: REMSaveRequest, operation: String) throw
 
 func reminderKitFetchLists(store: REMStore, operation: String) throws -> [REMList] {
   var accountError: AnyObject?
+  try ReminderKitNativeMethods.fetchAccounts.require(operation: operation, receiver: store)
   let accounts = store.fetchAccountsWithError(&accountError) as? [REMAccount] ?? []
   var lists: [REMList] = []
   var listErrors: [String] = []
@@ -133,6 +134,7 @@ func coreResolveList(store: REMStore, selector: String?, operation: String) thro
     return try coreResolveLists(store: store, selector: selector).first!
   }
   var error: AnyObject?
+  try ReminderKitNativeMethods.fetchDefaultList.require(operation: operation, receiver: store)
   if let list = store.fetchDefaultListWithError(&error) as? REMList {
     return list
   }
@@ -151,9 +153,13 @@ func coreResolveAccount(store: REMStore, sourceID: String, operation: String) th
   -> REMAccount
 {
   var error: AnyObject?
+  try ReminderKitNativeMethods.fetchAccounts.require(operation: operation, receiver: store)
   let accounts = store.fetchAccountsWithError(&error) as? [REMAccount] ?? []
-  if sourceID.isEmpty, let account = store.fetchDefaultAccountWithError(&error) as? REMAccount {
-    return account
+  if sourceID.isEmpty {
+    try ReminderKitNativeMethods.fetchDefaultAccount.require(operation: operation, receiver: store)
+    if let account = store.fetchDefaultAccountWithError(&error) as? REMAccount {
+      return account
+    }
   }
   let matches = accounts.filter {
     coreObjectIDString($0.remObjectID) == sourceID
@@ -172,24 +178,56 @@ func coreResolveAccount(store: REMStore, sourceID: String, operation: String) th
   )
 }
 
+func coreObjectIDsMatch(_ lhs: REMObjectID?, _ rhs: REMObjectID?) -> Bool {
+  guard let lhs, let rhs, let lhsUUID = lhs.uuid, let rhsUUID = rhs.uuid,
+    let entity = lhs.entityName, entity == rhs.entityName else {
+    return false
+  }
+  return lhsUUID == rhsUUID
+}
+
 func coreFetchReminder(store: REMStore, id: String, operation: String) throws
   -> REMReminder?
 {
   var error: AnyObject?
-  if let reminder = store.fetchReminder(
+  try ReminderKitRuntimeMethod(owner: "REMStore",
+    selector: "fetchReminderWithDACalendarItemUniqueIdentifier:inList:error:",
+    returnType: "@", argumentTypes: ["@", "@", "^@"]
+  ).require(operation: operation, receiver: store)
+  let fetched = store.fetchReminder(
     withDACalendarItemUniqueIdentifier: id,
     inList: nil,
     error: &error
-  ) as? REMReminder {
+  )
+  try coreValidateReminderFetchError(resultExists: fetched != nil, error: error, operation: operation)
+  if let reminder = fetched as? REMReminder {
     return reminder
   }
-  if let objectID = coreREMObjectID(entity: "REMCDReminder", identifier: id),
-    let reminder = store.fetchReminder(withObjectID: objectID, fetchOptions: nil, error: &error)
-      as? REMReminder
-  {
-    return reminder
+  if let objectID = try coreREMObjectID(entity: "REMCDReminder", identifier: id) {
+    try ReminderKitRuntimeMethod(owner: "REMStore",
+      selector: "fetchReminderWithObjectID:fetchOptions:error:",
+      returnType: "@", argumentTypes: ["@", "@", "^@"]
+    ).require(operation: operation, receiver: store)
+    try ReminderKitRuntimeMethod(owner: "REMReminderFetchOptions", selector: "defaultFetchOptions",
+      scope: .classMethod, returnType: "@"
+    ).require(operation: operation)
+    guard let options = REMReminderFetchOptions.defaultFetchOptions() as? REMReminderFetchOptions else {
+      throw coreReminderKitError(operation: operation, message: "ReminderKit fetch options could not be created.")
+    }
+    error = nil
+    let fetched = store.fetchReminder(withObjectID: objectID, fetchOptions: options, error: &error)
+    try coreValidateReminderFetchError(resultExists: fetched != nil, error: error, operation: operation)
+    return fetched as? REMReminder
   }
   return nil
+}
+
+func coreValidateReminderFetchError(resultExists: Bool, error: AnyObject?, operation: String) throws {
+  guard let error else { return }
+  if let error = error as? NSError, !resultExists,
+    error.domain == "com.apple.reminderkit", error.code == -3000 { return }
+  throw coreReminderKitError(operation: operation, message: "ReminderKit reminder could not be read.",
+    details: ["fetch_error": reminderKitErrorSummary(error)])
 }
 
 func coreApplyDraft(_ draft: ReminderCreateDraft, to change: REMReminderChangeItem) throws {
@@ -415,6 +453,15 @@ func coreReminderSummary(_ reminder: REMReminder, listTitles: [String: String])
   )
 }
 
+func coreReminderCompletionDate(
+  current: Date?,
+  completed: Bool,
+  completedAt: Date?,
+  now: @autoclosure () -> Date = Date()
+) -> Date? {
+  completed ? (completedAt ?? current ?? now()) : nil
+}
+
 func coreReminderIsCompleted(_ reminder: REMReminder) -> Bool {
   reminder.completionDate != nil
 }
@@ -618,14 +665,22 @@ func coreEarlyReminderMinutesBefore(_ reminder: REMReminder) -> [Int] {
     })
 }
 
-func coreREMObjectID(entity: String, identifier: String) -> REMObjectID? {
+func coreREMObjectID(entity: String, identifier: String) throws -> REMObjectID? {
   let urlString =
     identifier.hasPrefix("x-apple-reminderkit://")
     ? identifier
     : "x-apple-reminderkit://\(entity)/\(identifier)"
-  guard let url = URL(string: urlString) else {
+  guard let url = URL(string: urlString), url.scheme == "x-apple-reminderkit",
+    url.host == entity, url.user == nil, url.password == nil, url.port == nil,
+    url.query == nil, url.fragment == nil, url.pathComponents.count == 2,
+    UUID(uuidString: url.lastPathComponent) != nil
+  else {
     return nil
   }
+  try ReminderKitRuntimeMethod(
+    owner: "REMObjectID", selector: "objectIDWithURL:", scope: .classMethod,
+    returnType: "@", argumentTypes: ["@"]
+  ).require(operation: "object-id")
   return REMObjectID.objectID(withURL: url) as? REMObjectID
 }
 

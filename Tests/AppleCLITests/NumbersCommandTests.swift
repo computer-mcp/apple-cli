@@ -1045,6 +1045,99 @@ struct NumbersCommandTests {
     #expect(backend.writtenCells.count == 1)
   }
 
+  @Test func numbersCellWriteReplacesFormulaWithMatchingDisplayValue() throws {
+    let backend = FakeNumbersBackend()
+    backend.tableRows[1].values[1] = "125"
+    backend.cellValueType = .number
+    backend.cellRawValue = "125"
+    backend.cellFormula = "=120+5"
+    let result = try #require(try NumbersCommand(backend: backend, contentBackend: backend).run(
+      options: numbersCellWriteOptions("125")))
+    let data = try #require(try jsonObject(result.stdout ?? "")["data"] as? [String: Any])
+
+    #expect(backend.writtenCells.count == 1)
+    #expect(backend.cellValueType == .text)
+    #expect(backend.cellFormula == "")
+    #expect(data["changed"] as? Bool == true)
+    #expect(data["verified"] as? Bool == true)
+  }
+
+  @Test func numbersCellWriteSkipsOnlyMatchingLiteralText() throws {
+    let valueTypes: [NumbersCellValueType?] = [.text, .number, .boolean, .date, nil]
+    for valueType in valueTypes {
+      let backend = FakeNumbersBackend()
+      let value = valueType == .boolean ? "false"
+        : valueType == .date ? "2021-01-02T03:04:05Z" : "125"
+      backend.tableRows[1].values[1] = value
+      backend.cellValueType = valueType
+      backend.cellRawValue = value
+      let result = try #require(try NumbersCommand(backend: backend, contentBackend: backend).run(
+        options: numbersCellWriteOptions(value)))
+      let data = try #require(try jsonObject(result.stdout ?? "")["data"] as? [String: Any])
+
+      #expect(backend.writtenCells.count == (valueType == .text ? 0 : 1))
+      #expect(data["changed"] as? Bool == (valueType != .text))
+      #expect(data["verified"] as? Bool == true)
+    }
+  }
+
+  @Test func numbersCellWriteDoesNotTrustFormattedTextAsActualText() throws {
+    let backend = FakeNumbersBackend()
+    backend.tableRows[1].values[1] = "125"
+    backend.cellValueType = .text
+    backend.cellRawValue = "0125"
+    _ = try #require(try NumbersCommand(backend: backend, contentBackend: backend).run(
+      options: numbersCellWriteOptions("125")))
+
+    #expect(backend.writtenCells.count == 1)
+    #expect(backend.cellRawValue == "125")
+  }
+
+  @Test func numbersCellWriteFailsIfPersistenceOrReadbackIsUnproven() throws {
+    for scenario in ["not-persisted", "formula-retained", "missing-readback", "unknown-metadata"] {
+      let backend = FakeNumbersBackend()
+      switch scenario {
+      case "not-persisted": backend.persistsCellWrites = false
+      case "formula-retained":
+        backend.cellFormula = "=100+20"
+        backend.keepsFormulaAfterWrite = true
+      case "missing-readback": backend.readbackIsMissing = true
+      default: backend.providesCellMetadata = false
+      }
+      do {
+        _ = try NumbersCommand(backend: backend, contentBackend: backend).run(
+          options: numbersCellWriteOptions("125"))
+        Issue.record("Unproven Numbers writes must fail: \(scenario).")
+      } catch let error as CLIError {
+        #expect(error.code == .backendUnavailable)
+        #expect(error.details["mutation_may_have_occurred"] == "true")
+        #expect(error.details["verification"] == "unconfirmed")
+        #expect(backend.writtenCells.count == 1)
+      }
+    }
+  }
+
+  @Test func numbersCellWriteDoesNotRetryAnUnknownOutcome() throws {
+    for code in [CLIErrorCode.timeout, .backendUnavailable, .permissionDenied, .unsafeMutationRefused] {
+      let backend = FakeNumbersBackend()
+      backend.cellWriteError = CLIError(code: code, message: "Fixture failure.")
+      do {
+        _ = try NumbersCommand(backend: backend, contentBackend: backend).run(
+          options: numbersCellWriteOptions("125"))
+        Issue.record("A failed cell write must propagate its outcome.")
+      } catch let error as CLIError {
+        #expect(error.code == code)
+        #expect(backend.writtenCells.count == 1)
+        if code == .timeout || code == .backendUnavailable {
+          #expect(error.details["mutation_may_have_occurred"] == "true")
+          #expect(error.details["retry_guidance"] == "inspect_document_before_retrying")
+        } else {
+          #expect(error.details["mutation_may_have_occurred"] == nil)
+        }
+      }
+    }
+  }
+
   @Test func numbersTableSetCellRejectsFormulaAndOutOfBoundsCell() throws {
     let backend = FakeNumbersBackend()
     let command = NumbersCommand(backend: backend, contentBackend: backend)
@@ -1161,6 +1254,14 @@ private final class FakeNumbersBackend: NumbersReading, NumbersExporting, Number
   var readTables: [(String, String, String, Int)] = []
   var readCells: [(String, String, String, Int, Int)] = []
   var writtenCells: [(String, String, String, Int, Int, String)] = []
+  var cellValueType: NumbersCellValueType? = .text
+  var cellRawValue: String?
+  var cellFormula: String? = ""
+  var providesCellMetadata = true
+  var cellWriteError: CLIError?
+  var persistsCellWrites = true
+  var keepsFormulaAfterWrite = false
+  var readbackIsMissing = false
   var tableRows = [
     NumbersTableRow(index: 1, values: ["Category", "Amount"]),
     NumbersTableRow(index: 2, values: ["Travel", "120"]),
@@ -1236,6 +1337,7 @@ private final class FakeNumbersBackend: NumbersReading, NumbersExporting, Number
     -> NumbersCellRecord?
   {
     readCells.append((path, sheet, table, row, column))
+    if readbackIsMissing && !writtenCells.isEmpty { return nil }
     guard
       path == "/tmp/Budget.numbers",
       sheet == "Summary",
@@ -1253,7 +1355,10 @@ private final class FakeNumbersBackend: NumbersReading, NumbersExporting, Number
       column: column,
       rowCount: tableRows.count,
       columnCount: 2,
-      value: tableRows[row - 1].values[column - 1]
+      value: tableRows[row - 1].values[column - 1],
+      rawValue: providesCellMetadata ? (cellRawValue ?? tableRows[row - 1].values[column - 1]) : nil,
+      valueType: providesCellMetadata ? cellValueType : nil,
+      formula: providesCellMetadata ? cellFormula : nil
     )
   }
 
@@ -1277,6 +1382,7 @@ private final class FakeNumbersBackend: NumbersReading, NumbersExporting, Number
     throws
   {
     writtenCells.append((path, sheet, table, row, column, value))
+    if let cellWriteError { throw cellWriteError }
     guard
       path == "/tmp/Budget.numbers",
       sheet == "Summary",
@@ -1286,7 +1392,12 @@ private final class FakeNumbersBackend: NumbersReading, NumbersExporting, Number
     else {
       throw CLIError(code: .notFound, message: "Numbers cell was not found.")
     }
-    tableRows[row - 1].values[column - 1] = value
+    if persistsCellWrites {
+      tableRows[row - 1].values[column - 1] = value
+      cellRawValue = value
+      cellValueType = .text
+      if !keepsFormulaAfterWrite { cellFormula = "" }
+    }
   }
 
   func setRangeText(
@@ -1354,6 +1465,13 @@ private func jsonObject(_ json: String) throws -> [String: Any] {
     throw NumbersCommandTestError.notObject
   }
   return object
+}
+
+private func numbersCellWriteOptions(_ value: String) throws -> CLIOptions {
+  try CLIOptionsFixture.parse([
+    "tables", "set-cell", "--path", "/tmp/Budget.numbers", "--sheet", "Summary", "--table", "Budget",
+    "--row", "2", "--column", "2", "--value", value, "--allow-persistent-action", "--json",
+  ])
 }
 
 private enum NumbersCommandTestError: Error {

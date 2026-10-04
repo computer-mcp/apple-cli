@@ -14,6 +14,13 @@ change between system versions. Inspect the packaged provenance for the exact
 tested OS, architecture, toolchain and SDK. Intel and older macOS versions
 require separate build and runtime evidence.
 
+The `apple` executable currently loads all six Notes frameworks, `ReminderKit`
+and `ReminderKitInternal` as required libraries at startup. A missing framework
+can prevent every command, including `doctor`, from starting. The MCP service
+forwards commands to this executable, so forwarding also requires its startup
+dependencies. Selector checks run after the system loader and do not establish
+framework loadability on another OS.
+
 Successful help, version and MCP forwarding checks establish executable
 startup and the CLI contract. They do not establish every app capability, account,
 permission or private selector. Run the relevant target's `doctor` and read its
@@ -76,6 +83,11 @@ APPLE_CLI_RUN_NOTES_INTEGRATION_TESTS=1 xcrun swift test --filter NotesReaderTes
 This integration suite reads local Notes data and may need the host's existing
 permissions and account configuration. It does not replace default tests or
 authorize a mutation.
+
+Notes and Reminders also have separate, opt-in mutation workflows requiring a
+dedicated native fixture manifest. See [Native Fixture Validation](NativeFixtureValidation.md)
+for scope, evidence, and recovery. Default skips and successful host reads do
+not establish native mutation or multi-OS support.
 
 ## GitHub Release Publication
 

@@ -43,7 +43,7 @@ enum ReminderListMetadataWriter {
     }
 
     let resolved = try fetchList(listID: listID, operation: "update")
-    guard let saveRequest = REMSaveRequest(store: resolved.store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: resolved.store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: "update",
@@ -222,7 +222,7 @@ enum ReminderListMetadataWriter {
       )
     }
 
-    guard let saveRequest = REMSaveRequest(store: target.store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: target.store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: "reorder",
@@ -272,7 +272,7 @@ enum ReminderListMetadataWriter {
     details additionalDetails: [String: String]
   ) throws {
     var saveError: AnyObject?
-    guard saveRequest.saveSynchronouslyWithError(&saveError) else {
+    guard try reminderKitSaveSynchronously(saveRequest, error: &saveError) else {
       var details = additionalDetails
       details["save_error"] = reminderKitErrorSummary(saveError)
       throw reminderKitOperationFailed(
@@ -288,7 +288,7 @@ enum ReminderListMetadataWriter {
     listID: String,
     operation: String
   ) throws -> (store: REMStore, list: REMList) {
-    guard let store = REMStore() else {
+    guard let store = try reminderKitNewStore() else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,

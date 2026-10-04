@@ -55,7 +55,4 @@ public enum CLIPermissionWording {
     "\(resource) is not readable."
   }
 
-  public static func notificationAccessNotProbeable() -> String {
-    "Notification access cannot be safely checked from an unbundled SwiftPM CLI process."
-  }
 }

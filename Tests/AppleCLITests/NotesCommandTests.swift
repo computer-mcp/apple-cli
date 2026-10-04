@@ -3716,6 +3716,192 @@ struct NotesCommandTests {
     #expect(output.contains("#ffcc00") == false)
   }
 
+  @Test func notesBodyStructureDistinguishesUnavailableAndKnownEmptyInlineFormats() throws {
+    let implementation = TestNotesImplementation()
+    let command = NotesCommand(implementation: implementation)
+    let options = try CLIOptionsFixture.parse(["body", "structure", "--id", "note-2", "--json"])
+    let known = try #require(try command.run(options: options))
+    let knownData = try #require(try jsonObject(known.stdout ?? "")["data"] as? [String: Any])
+    let knownStructure = try #require(knownData["structure"] as? [String: Any])
+    #expect(knownStructure["boldRunCount"] as? Int == 0)
+    #expect(knownStructure["inlineFormatRuns"] as? [[String: Any]] != nil)
+
+    implementation.bodyFormatReadbackAvailable = false
+    let unknown = try #require(try command.run(options: options))
+    let unknownData = try #require(try jsonObject(unknown.stdout ?? "")["data"] as? [String: Any])
+    let unknownStructure = try #require(unknownData["structure"] as? [String: Any])
+    #expect(unknownStructure["boldRunCount"] == nil)
+    #expect(unknownStructure["inlineFormatRuns"] == nil)
+    #expect(unknownStructure["plainTextSHA256"] as? String == "archive-body-hash")
+  }
+
+  @Test func notesBodySurfacesRequiresKnownCountsIncludingKnownZero() throws {
+    let implementation = TestNotesImplementation()
+    let command = NotesCommand(implementation: implementation)
+    let options = try CLIOptionsFixture.parse(["body", "surfaces", "--id", "note-2", "--json"])
+    let known = try #require(try command.run(options: options))
+    let knownData = try #require(try jsonObject(known.stdout ?? "")["data"] as? [String: Any])
+    #expect((knownData["verification"] as? [String: Any])?["verified"] as? Bool == true)
+    #expect((knownData["summary"] as? [String: Any])?["tableCount"] as? Int == 0)
+
+    implementation.bodyAttributeReadbackAvailable = false
+    let unavailable = try #require(try command.run(options: options))
+    let data = try #require(try jsonObject(unavailable.stdout ?? "")["data"] as? [String: Any])
+    let summary = try #require(data["summary"] as? [String: Any])
+    let surfaces = try #require(data["surfaces"] as? [[String: Any]])
+    let verification = try #require(data["verification"] as? [String: Any])
+    #expect(summary["tableCount"] == nil)
+    #expect(summary["mathAttachmentCount"] == nil)
+    #expect(summary["collapsibleSectionCount"] == nil)
+    #expect(summary["supportedReadFamilies"] as? [String] == [])
+    #expect(surfaces.allSatisfy { $0["readbackStatus"] as? String == "unavailable" && $0["count"] == nil })
+    #expect(verification["verified"] as? Bool == false)
+    let checks = try #require(verification["checks"] as? [[String: Any]])
+    #expect(checks.filter { $0["status"] as? String == "unavailable" }.count == 3)
+
+    let structureResult = try #require(try command.run(options: try CLIOptionsFixture.parse([
+      "body", "structure", "--id", "note-2", "--json",
+    ])))
+    let structureData = try #require(try jsonObject(structureResult.stdout ?? "")["data"] as? [String: Any])
+    let structure = try #require(structureData["structure"] as? [String: Any])
+    #expect(structure["tableCount"] == nil)
+    #expect(structure["paragraphAnchors"] == nil)
+    #expect(structure["plainTextSHA256"] as? String == "archive-body-hash")
+    #expect(structure["linkCount"] as? Int == 2)
+    #expect(structure["attachmentCount"] as? Int == 0)
+    #expect(structure["hasChecklist"] as? Bool == false)
+  }
+
+  @Test func notesChecklistMutationCannotVerifyUnknownBeforeAndAfterCounts() throws {
+    let implementation = TestNotesImplementation()
+    implementation.bodyAttributeReadbackAvailable = false
+    let command = NotesCommand(implementation: implementation)
+    do {
+      _ = try command.run(options: try CLIOptionsFixture.parse([
+        "body", "checklist", "add", "--id", "note-2", "--text", "Test item", "--json",
+      ]))
+      Issue.record("Missing checklist readback cannot verify a mutation.")
+    } catch let error as CLIError {
+      #expect(error.details["mutation_may_have_occurred"] == "true")
+      #expect(error.details["unavailable_checks"]?.contains("checklist_item_count") == true)
+    }
+  }
+
+  @Test func notesSmartFolderReasoningKeepsUnknownChecklistAndMentionEvidence() throws {
+    for criteria in ["incomplete-checklists", "no-checklists", "mentions"] {
+      let implementation = TestNotesImplementation()
+      let command = NotesCommand(implementation: implementation)
+      let folder: String
+      if criteria == "mentions" {
+        folder = "Mentions"
+      } else {
+        folder = "Readback Fixture"
+        _ = try command.run(options: try CLIOptionsFixture.parse([
+          "smart-folders", "create-criteria", "--name", folder, "--account", "iCloud",
+          "--criteria", criteria, "--json",
+        ]))
+      }
+      implementation.bodyAttributeReadbackAvailable = false
+      let result = try #require(try command.run(options: try CLIOptionsFixture.parse([
+        "smart-folders", "reasoning", "--folder", folder, "--account", "iCloud", "--json",
+      ])))
+      let data = try #require(try jsonObject(result.stdout ?? "")["data"] as? [String: Any])
+      let matches = try #require(data["matches"] as? [[String: Any]])
+      #expect(!matches.isEmpty)
+      for match in matches {
+        let reason = try #require((match["filterReasons"] as? [[String: Any]])?.first)
+        #expect(reason["reasoningStatus"] as? String == "body_readback_unavailable")
+        #expect(reason["actualCount"] == nil)
+        #expect(reason["actualBool"] == nil)
+        #expect((reason["gatedReasoningFamilies"] as? [String])?.isEmpty == false)
+      }
+    }
+  }
+
+  @Test func notesInlineMutationRequiresAvailableFormatReadback() throws {
+    for state in ["on", "off"] {
+      let implementation = TestNotesImplementation()
+      implementation.bodyFormatReadbackAvailable = false
+      let command = NotesCommand(implementation: implementation)
+      let options = try CLIOptionsFixture.parse([
+        "body", "inline", "format", "--id", "note-2", "--paragraph",
+        "archive-paragraph-anchor-hash", "--text", "Private archive body.",
+        "--format", "bold", "--state", state, "--json",
+      ])
+      do {
+        _ = try command.run(options: options)
+        Issue.record("Unavailable formatting cannot verify either enabling or disabling a format.")
+      } catch let error as CLIError {
+        #expect(error.details["unavailable_checks"]?.contains("target_format_after") == true)
+        #expect(error.details["unavailable_checks"]?.contains("changed_reported") == true)
+        #expect(error.details["mutation_may_have_occurred"] == "true")
+        #expect(implementation.bodyInlineFormatDrafts.count == 1)
+      }
+    }
+  }
+
+  @Test(arguments: [
+    ("selection-unavailable", "unavailable_checks", "selection_position_readback"),
+    ("wrong-occurrence", "failed_checks", "selection_position_readback"),
+    ("paragraph-unavailable", "unavailable_checks", "selection_paragraph_bound"),
+    ("outside-paragraph", "failed_checks", "selection_paragraph_bound"),
+  ])
+  func notesInlineVerificationRequiresIndependentBoundedReadback(
+    fixture: String, resultKey: String, expectedCheck: String
+  ) throws {
+    let implementation = TestNotesImplementation()
+    try implementation.setInlineBodyFixture("😀ab ab")
+    switch fixture {
+    case "selection-unavailable": implementation.inlineSelectionReadbackAvailable = false
+    case "wrong-occurrence": implementation.inlineEvidenceLocationOverride = 2
+    case "paragraph-unavailable": implementation.inlineParagraphReadbackAvailable = false
+    case "outside-paragraph": implementation.inlineParagraphRangeOverride = NSRange(location: 0, length: 1)
+    default: preconditionFailure("Unknown inline readback fixture.")
+    }
+    do {
+      _ = try NotesCommand(implementation: implementation).run(options: try CLIOptionsFixture.parse([
+        "body", "inline", "format", "--id", "note-2", "--ordinal", "1", "--text", "ab",
+        "--occurrence", "2", "--format", "bold", "--state", "on", "--json",
+      ]))
+      Issue.record("Missing or mismatched independent readback cannot verify formatting.")
+    } catch let error as CLIError {
+      #expect(error.details[resultKey]?.contains(expectedCheck) == true)
+      #expect(error.details["mutation_may_have_occurred"] == "true")
+    }
+  }
+
+  @Test func notesInlineRepeatedOccurrencesHaveIndependentFormatState() throws {
+    let implementation = TestNotesImplementation()
+    try implementation.setInlineBodyFixture("😀ab ab")
+    let command = NotesCommand(implementation: implementation)
+    for (occurrence, state, changed) in [(1, "on", true), (2, "off", false), (2, "on", true), (1, "off", true)] {
+      let result = try #require(try command.run(options: try CLIOptionsFixture.parse([
+        "body", "inline", "format", "--id", "note-2", "--ordinal", "1", "--text", "ab",
+        "--occurrence", String(occurrence), "--format", "bold", "--state", state, "--json",
+      ])))
+      let data = try #require(try jsonObject(result.stdout ?? "")["data"] as? [String: Any])
+      #expect(data["changed"] as? Bool == changed)
+      #expect((data["verification"] as? [String: Any])?["verified"] as? Bool == true)
+    }
+  }
+
+  @Test func notesInlineFormatRepeatedStateVerifiesAsNoOp() throws {
+    let implementation = TestNotesImplementation()
+    let command = NotesCommand(implementation: implementation)
+    for (state, expectedChanged) in [("on", true), ("on", false), ("off", true), ("off", false)] {
+      let options = try CLIOptionsFixture.parse([
+        "body", "inline", "format", "--id", "note-2", "--paragraph",
+        "archive-paragraph-anchor-hash", "--text", "Private archive body.",
+        "--format", "bold", "--state", state, "--json",
+      ])
+      let result = try #require(try command.run(options: options))
+      let data = try #require(try jsonObject(result.stdout ?? "")["data"] as? [String: Any])
+      let verification = try #require(data["verification"] as? [String: Any])
+      #expect(verification["verified"] as? Bool == true)
+      #expect(data["changed"] as? Bool == expectedChanged)
+    }
+  }
+
   @Test func notesBodySurfacesReturnsRichSurfaceAccountingOnly() throws {
     let command = NotesCommand(implementation: TestNotesImplementation())
     let options = try CLIOptionsFixture.parse([
@@ -6562,7 +6748,7 @@ struct NotesCommandTests {
   @Test func notesBodyInlineFormatColorAndHighlightDryRunExecutionVerifyRuns() throws {
     let implementation = TestNotesImplementation()
     let command = NotesCommand(implementation: implementation)
-    let selectedText = "Hidden inline text"
+    let selectedText = "Private archive body."
     let foregroundColor = "#336699"
     let highlightColor = "yellow"
 
@@ -6727,7 +6913,7 @@ struct NotesCommandTests {
   @Test func notesBodyInlineFontDryRunExecutionAndSizeRejection() throws {
     let implementation = TestNotesImplementation()
     let command = NotesCommand(implementation: implementation)
-    let selectedText = "Hidden font text"
+    let selectedText = "Private archive body."
     let family = "Helvetica"
     let pointSize = 18.0
     let fontSHA256 = testFontSHA256(family: family, size: pointSize)
@@ -16134,6 +16320,53 @@ struct NotesCommandTests {
     #expect(implementation.markdownImportDrafts.first?.source.body.contains("Changed body.") == true)
   }
 
+  @Test func notesRepeatedTitleUpdateReportsNoContentChange() throws {
+    let implementation = TestNotesImplementation()
+    let before = try #require(try implementation.readNote(id: "note-1"))
+    let result = try #require(try NotesCommand(implementation: implementation).run(
+      options: try CLIOptionsFixture.parse(["notes", "update", "--id", before.id, "--title", before.title, "--json"])))
+    let data = try #require(try jsonObject(result.stdout ?? "")["data"] as? [String: Any])
+    #expect(data["changed"] as? Bool == false)
+    #expect((data["verification"] as? [String: Any])?["verified"] as? Bool == true)
+  }
+
+  @Test(arguments: ["create", "update", "append"])
+  func notesBodyPayloadPreservesLeadingAndTrailingWhitespace(action: String) throws {
+    let implementation = TestNotesImplementation()
+    let body = "  Literal 👩🏽‍💻 e\u{301}\n\n"
+    let selector = action == "create" ? ["--folder", "Work", "--title", "Body"] : ["--id", "note-1"]
+    let options = try CLIOptionsFixture.parse(["notes", action] + selector + ["--body", body, "--json"])
+    _ = try #require(try NotesCommand(implementation: implementation).run(options: options))
+    let payload = action == "create" ? implementation.createdDrafts.last?.body
+      : (action == "append" ? implementation.updatedPatches["note-1"]?.appendBody : implementation.updatedPatches["note-1"]?.body)
+    #expect(payload?.utf8.elementsEqual(body.utf8) == true)
+  }
+
+  @Test func notesEmptyBodyUpdateClearsBodyWithoutChangingTitle() throws {
+    let implementation = TestNotesImplementation()
+    let before = try #require(try implementation.readNote(id: "note-1"))
+    _ = try #require(try NotesCommand(implementation: implementation).run(options:
+      try CLIOptionsFixture.parse(["notes", "update", "--id", before.id, "--body", "", "--json"])))
+    let after = try #require(try implementation.readNote(id: before.id))
+    #expect(after.title == before.title)
+    #expect(after.body == "")
+  }
+
+  @Test(arguments: [false, true])
+  func notesTitleUpdateRejectsExtraParagraphsBeforeDispatch(withBody: Bool) throws {
+    let implementation = TestNotesImplementation()
+    let arguments = ["notes", "update", "--id", "note-1", "--title", "Title\nBody", "--json"]
+      + (withBody ? ["--body", "Text"] : [])
+    do {
+      _ = try NotesCommand(implementation: implementation).run(
+        options: try CLIOptionsFixture.parse(arguments))
+      Issue.record("A title edit must not insert unrequested body paragraphs.")
+    } catch let error as CLIError {
+      #expect(error.code == .validationError)
+      #expect(implementation.updatedPatches.isEmpty)
+    }
+  }
+
   @Test func notesUpdateExecutionResolvesIdentityLookup() throws {
     let command = NotesCommand(implementation: TestNotesImplementation())
     let options = try CLIOptionsFixture.parse([
@@ -16549,8 +16782,9 @@ struct NotesCommandTests {
     #expect(implementation.updatedPatches["note-1"]?.appendBody == "Next line")
   }
 
-  @Test func notesDeleteDryRunAndExecutionDeletesNote() throws {
+  @Test func notesDeletePreservesRestorableContentAndVerifiesRemoval() throws {
     let implementation = TestNotesImplementation()
+    let before = try #require(try implementation.readNote(id: "note-1"))
     let command = NotesCommand(implementation: implementation)
     let dryRunOptions = try CLIOptionsFixture.parse([
       "notes", "delete", "--id", "note-1", "--dry-run", "--json",
@@ -16581,6 +16815,73 @@ struct NotesCommandTests {
         $0["name"] as? String == "exists_after" && $0["actualBool"] as? Bool == false
       } == true)
     #expect(implementation.deletedIDs == ["note-1"])
+    let restorable = try #require(try implementation.readRestorableNote(id: before.id))
+    #expect(restorable.id == before.id)
+    #expect(restorable.title == before.title)
+    #expect(restorable.accountName == before.accountName)
+    #expect(restorable.body == before.body)
+    #expect(restorable.tags == before.tags)
+  }
+
+  @Test(arguments: ["absent", "present", "unavailable"])
+  func notesPurgeVerificationDistinguishesRowAbsenceFromLookupFailure(state: String) throws {
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: home) }
+    if state != "unavailable" {
+      let directory = home.appendingPathComponent("Library/Group Containers/group.com.apple.notes")
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      let sql = """
+        create table Z_PRIMARYKEY (Z_ENT integer, Z_NAME text);
+        insert into Z_PRIMARYKEY values (1, 'ICNote');
+        create table ZICCLOUDSYNCINGOBJECT (Z_PK integer, Z_ENT integer, ZMARKEDFORDELETION integer,
+          ZISPASSWORDPROTECTED integer, ZISPINNED integer, ZFOLDER integer, ZACCOUNT7 integer,
+          ZNOTEDATA integer, ZTITLE text, ZSNIPPET text);
+        create table ZICSEARCHINDEXSTATE (ZIDENTIFIER text, ZSTATEVALUE integer);
+        """
+      let row = state == "present"
+        ? "insert into ZICCLOUDSYNCINGOBJECT values (1,1,0,0,0,2,3,4,'Fixture','Body');" : ""
+      let result = try CLISubprocess.run(.path("/usr/bin/sqlite3"),
+        arguments: [directory.appendingPathComponent("NoteStore.sqlite").path, sql + row],
+        timeoutSeconds: 5, outputLimit: 1024)
+      try #require(result.exitCode == 0)
+    }
+    let implementation = TestNotesImplementation()
+    let before = NotesNoteDetail(id: "x-coredata://fixture/ICNote/p1", title: "Fixture",
+      folderName: "Recently Deleted", accountName: "Fixture", body: "Body")
+    let verifier = NotesMutationVerifier(reader: implementation, restorableReader: implementation,
+      sqliteReader: SQLiteReader(homeDirectory: home))
+    let report = try verifier.verifyPurge(operation: "notes.purge", before: before, changed: true)
+    #expect(report.verified == (state == "absent"))
+    let check = try #require(report.checks.first { $0.name == "store_object_absent" })
+    #expect(check.status == (state == "absent" ? "passed" : state == "present" ? "failed" : "unavailable"))
+    #expect(report.storeObject?.lookupSucceeded == (state == "unavailable" ? nil : true))
+  }
+
+  @Test func notesCreateVerificationRejectsAnExtraLeadingNewline() throws {
+    let implementation = TestNotesImplementation()
+    var draft = NotesCreateDraft(folderId: "folder-1", folderName: "Notes", accountName: "iCloud",
+      title: "Fixture", body: "\nBody")
+    let created = try implementation.createNote(draft)
+    draft.body = "Body"
+    let verifier = NotesMutationVerifier(reader: implementation,
+      sqliteReader: SQLiteReader(homeDirectory: FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)))
+    let report = try verifier.verifyCreate(operation: "notes.create", draft: draft, resultNote: created)
+    #expect(!report.verified)
+    #expect(report.checks.contains { $0.name == "body" && $0.status == "failed" })
+  }
+
+  @Test func notesDeleteVerificationRejectsPermanentRemoval() throws {
+    let implementation = TestNotesImplementation()
+    let before = try #require(try implementation.readNote(id: "note-1"))
+    _ = try implementation.deleteNote(id: before.id)
+    _ = try implementation.purgeNote(id: before.id)
+    let verifier = NotesMutationVerifier(reader: implementation, restorableReader: implementation,
+      sqliteReader: SQLiteReader(homeDirectory: FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)))
+    let report = try verifier.verifyDelete(operation: "notes.delete", before: before, changed: true)
+    #expect(!report.verified)
+    #expect(report.checks.contains { $0.name == "restorable_exists_after" && $0.status == "failed" })
   }
 
   @Test func notesPurgeDryRunRequiresSafetyAndExecutionVerifiesPermanentRemoval() throws {
@@ -17611,8 +17912,28 @@ struct NotesCommandTests {
 
     #expect(executedData?["operation"] as? String == "mail.send")
     #expect(sent?["subject"] as? String == "Launch")
+    #expect(sent?["submitted"] as? Bool == true)
     #expect(sent?["bodyIncluded"] as? Bool == false)
     #expect(implementation.sentMessages.map(\.subject) == ["Launch"])
+  }
+
+  @Test func mailSendPropagatesRejectedSubmission() throws {
+    let implementation = TestMailBackend()
+    implementation.submissionAccepted = false
+    let command = MailCommand(backend: implementation)
+    let options = try CLIOptionsFixture.parse([
+      "mail", "send", "--to", "fixture@example.com", "--subject", "Fixture",
+      "--allow-external-dispatch", "--json",
+    ])
+
+    do {
+      _ = try command.run(options: options)
+      Issue.record("Rejected submission must produce an error.")
+    } catch let error as CLIError {
+      #expect(error.code == .backendUnavailable)
+      #expect(error.details["submission_status"] == "rejected")
+      #expect(implementation.sentMessages.count == 1)
+    }
   }
 
   @Test func mailSendAllowExecutionUsesCurrentBody() throws {
@@ -17893,6 +18214,12 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     )
   }
 
+  var bodyFormatReadbackAvailable = true
+  var bodyAttributeReadbackAvailable = true
+  var inlineSelectionReadbackAvailable = true
+  var inlineParagraphReadbackAvailable = true
+  var inlineParagraphRangeOverride: NSRange?
+  var inlineEvidenceLocationOverride: Int?
   var createdDrafts: [NotesCreateDraft] = []
   var markdownImportDrafts: [NotesMarkdownImportDraft] = []
   var richReplaceDrafts: [NotesRichReplaceDraft] = []
@@ -19119,10 +19446,20 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
         checklistOpenCount: 0,
         blockQuoteCount: 0,
         tableCount: 0,
+        collapsibleSectionCount: 0,
+        collapsedSectionCount: 0,
         inlineAttachmentCount: 0,
         linkCount: 2,
         attachmentCount: 0,
         mathAttachmentCount: 0,
+        inlineFormatRunCount: 0,
+        boldRunCount: 0,
+        italicRunCount: 0,
+        underlineRunCount: 0,
+        strikethroughRunCount: 0,
+        fontRunCount: 0,
+        foregroundColorRunCount: 0,
+        highlightRunCount: 0,
         hasChecklist: false,
         hasChecklistInProgress: false,
         isMathNote: false,
@@ -19130,6 +19467,11 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
           NotesBodyStyleCount(style: "body", count: 1)
         ],
         attachmentKindCounts: [],
+        inlineFormatCounts: [],
+        colorHashCounts: [],
+        inlineFormatRuns: [],
+        colorRuns: [],
+        mentionUserIDSHA256s: [],
         paragraphAnchors: [
           NotesBodyParagraphAnchorRecord(
             ordinal: 1,
@@ -19162,6 +19504,14 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
         linkCount: 2,
         attachmentCount: 0,
         mathAttachmentCount: 0,
+        inlineFormatRunCount: 0,
+        boldRunCount: 0,
+        italicRunCount: 0,
+        underlineRunCount: 0,
+        strikethroughRunCount: 0,
+        fontRunCount: 0,
+        foregroundColorRunCount: 0,
+        highlightRunCount: 0,
         hasChecklist: true,
         hasChecklistInProgress: true,
         isMathNote: false,
@@ -19172,6 +19522,11 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
           NotesBodyStyleCount(style: "body", count: 1),
         ],
         attachmentKindCounts: [],
+        inlineFormatCounts: [],
+        colorHashCounts: [],
+        inlineFormatRuns: [],
+        colorRuns: [],
+        mentionUserIDSHA256s: [],
         paragraphAnchors: [
           NotesBodyParagraphAnchorRecord(
             ordinal: 1,
@@ -19246,10 +19601,20 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
         checklistOpenCount: 0,
         blockQuoteCount: 0,
         tableCount: 0,
+        collapsibleSectionCount: 0,
+        collapsedSectionCount: 0,
         inlineAttachmentCount: 0,
         linkCount: 1,
         attachmentCount: 0,
         mathAttachmentCount: 0,
+        inlineFormatRunCount: 0,
+        boldRunCount: 0,
+        italicRunCount: 0,
+        underlineRunCount: 0,
+        strikethroughRunCount: 0,
+        fontRunCount: 0,
+        foregroundColorRunCount: 0,
+        highlightRunCount: 0,
         hasChecklist: false,
         hasChecklistInProgress: false,
         isMathNote: false,
@@ -19257,6 +19622,11 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
           NotesBodyStyleCount(style: "body", count: 1)
         ],
         attachmentKindCounts: [],
+        inlineFormatCounts: [],
+        colorHashCounts: [],
+        inlineFormatRuns: [],
+        colorRuns: [],
+        mentionUserIDSHA256s: [],
         paragraphAnchors: [
           NotesBodyParagraphAnchorRecord(
             ordinal: 1,
@@ -19732,12 +20102,12 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     bodyTableCells[noteID, default: [:]][bodyTableCellKey(tableOrdinal: nextOrdinal, row: 1, column: 2)] = "Owner"
     bodyTableCells[noteID, default: [:]][bodyTableCellKey(tableOrdinal: nextOrdinal, row: 2, column: 1)] = "Verifier"
     bodyTableCells[noteID, default: [:]][bodyTableCellKey(tableOrdinal: nextOrdinal, row: 2, column: 2)] = "Rin"
-    structure.tableCount += 1
-    structure.inlineAttachmentCount += 1
-    if let index = structure.attachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
-      structure.attachmentKindCounts[index].count += 1
+    structure.fixtureTableCount += 1
+    structure.fixtureInlineAttachmentCount += 1
+    if let index = structure.fixtureAttachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
+      structure.fixtureAttachmentKindCounts[index].count += 1
     } else {
-      structure.attachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
+      structure.fixtureAttachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
     }
     bodyStructures[noteID] = structure
     if var note = notes[noteID] {
@@ -19764,18 +20134,18 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     structure.plainTextSHA256 = testSHA256Hex(text)
     structure.richTextLength = text.utf8.count
     structure.paragraphCount = 1
-    structure.paragraphStyleRunCount = 1
-    structure.headingCount = 0
-    structure.listItemCount = 0
-    structure.checklistItemCount = 0
-    structure.checklistDoneCount = 0
-    structure.checklistOpenCount = 0
-    structure.blockQuoteCount = 0
-    structure.tableCount = 0
-    structure.inlineAttachmentCount = 0
-    structure.styleCounts = [NotesBodyStyleCount(style: "body", count: 1)]
-    structure.attachmentKindCounts = []
-    structure.paragraphAnchors = [anchor]
+    structure.fixtureParagraphStyleRunCount = 1
+    structure.fixtureHeadingCount = 0
+    structure.fixtureListItemCount = 0
+    structure.fixtureChecklistItemCount = 0
+    structure.fixtureChecklistDoneCount = 0
+    structure.fixtureChecklistOpenCount = 0
+    structure.fixtureBlockQuoteCount = 0
+    structure.fixtureTableCount = 0
+    structure.fixtureInlineAttachmentCount = 0
+    structure.fixtureStyleCounts = [NotesBodyStyleCount(style: "body", count: 1)]
+    structure.fixtureAttachmentKindCounts = []
+    structure.fixtureParagraphAnchors = [anchor]
     bodyStructures[noteID] = structure
     paragraphAnchors[noteID] = [
       NotesParagraphAnchorResolution(
@@ -23184,12 +23554,12 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
         return []
       }
       return accountNotes.filter {
-        bodyStructures[$0.id]?.attachmentKindCounts.contains { $0.kind == "mention" && $0.count > 0 } == true
+        bodyStructures[$0.id]?.fixtureAttachmentKindCounts.contains { $0.kind == "mention" && $0.count > 0 } == true
       }.map(\.id)
     case "math":
       return accountNotes.filter {
         noteStates[$0.id]?.isMathNote == true
-          || (bodyStructures[$0.id]?.mathAttachmentCount ?? 0) > 0
+          || (bodyStructures[$0.id]?.fixtureMathAttachmentCount ?? 0) > 0
       }.map(\.id)
     case "call":
       return accountNotes.filter { noteStates[$0.id]?.isCallNote == true }.map(\.id)
@@ -23230,13 +23600,13 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     case "attachment-documents":
       return accountNotes.filter { noteHasAttachment($0.id, matching: isDocumentAttachment) }.map(\.id)
     case "checklists":
-      return accountNotes.filter { (bodyStructures[$0.id]?.checklistItemCount ?? 0) > 0 }.map(\.id)
+      return accountNotes.filter { (bodyStructures[$0.id]?.fixtureChecklistItemCount ?? 0) > 0 }.map(\.id)
     case "incomplete-checklists":
-      return accountNotes.filter { (bodyStructures[$0.id]?.checklistOpenCount ?? 0) > 0 }.map(\.id)
+      return accountNotes.filter { (bodyStructures[$0.id]?.fixtureChecklistOpenCount ?? 0) > 0 }.map(\.id)
     case "completed-checklists":
-      return accountNotes.filter { (bodyStructures[$0.id]?.checklistDoneCount ?? 0) > 0 }.map(\.id)
+      return accountNotes.filter { (bodyStructures[$0.id]?.fixtureChecklistDoneCount ?? 0) > 0 }.map(\.id)
     case "no-checklists":
-      return accountNotes.filter { (bodyStructures[$0.id]?.checklistItemCount ?? 0) == 0 }.map(\.id)
+      return accountNotes.filter { (bodyStructures[$0.id]?.fixtureChecklistItemCount ?? 0) == 0 }.map(\.id)
     default:
       if let dateSelection = smartFolderDateCriteriaDescriptor(kind) {
         return accountNotes.filter {
@@ -23571,10 +23941,68 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
   }
 
   func readBodyStructure(noteID id: String) throws -> NotesBodyStructureRecord {
-    guard let structure = bodyStructures[id] else {
+    guard var structure = bodyStructures[id] else {
       throw CLIError(code: .notFound, message: "Note was not found.", details: ["id": id])
     }
+    if id == "note-2", let text = notes[id]?.body {
+      structure.richTextLength = (text as NSString).length
+      structure.richTextSHA256 = testSHA256Hex(text)
+      for index in structure.fixtureParagraphAnchors.indices {
+        structure.fixtureParagraphAnchors[index].utf16Location = 0
+        structure.fixtureParagraphAnchors[index].utf16Length = (text as NSString).length
+      }
+    }
+    if !bodyAttributeReadbackAvailable {
+      var unavailable = NotesBodyStructureRecord(noteID: id, isPasswordProtected: structure.isPasswordProtected)
+      unavailable.plainTextByteCount = structure.plainTextByteCount
+      unavailable.plainTextSHA256 = structure.plainTextSHA256
+      unavailable.paragraphCount = structure.paragraphCount
+      unavailable.linkCount = structure.linkCount
+      unavailable.attachmentCount = structure.attachmentCount
+      unavailable.hasChecklist = structure.hasChecklist
+      unavailable.hasChecklistInProgress = structure.hasChecklistInProgress
+      unavailable.isMathNote = structure.isMathNote
+      structure = unavailable
+    }
+    if !bodyFormatReadbackAvailable {
+      NotesReader().applyInlineFormatReadback(nil, to: &structure)
+    }
     return structure
+  }
+
+  func readInlineSelection(noteID: String, paragraphIDSHA256: String?, ordinal: Int?,
+    text: String, occurrence: Int?) throws -> NotesBodyInlineSelectionReadback {
+    guard inlineSelectionReadbackAvailable else {
+      throw CLIError(code: .backendUnavailable, message: "Inline selection readback is unavailable.")
+    }
+    let body: String = try #require(notes[noteID]?.body)
+    let structure = try readBodyStructure(noteID: noteID)
+    let anchor: NotesBodyParagraphAnchorRecord = try #require(structure.paragraphAnchors?.first {
+      paragraphIDSHA256 == $0.idSHA256 || (paragraphIDSHA256 == nil && ordinal == $0.ordinal)
+    })
+    let selection = try notesInlineTextSelection(in: body as NSString, text: text,
+      paragraphRange: NSRange(location: 0, length: (body as NSString).length),
+      occurrence: occurrence, operation: "fixture.inline.readback")
+    return NotesBodyInlineSelectionReadback(paragraphIDSHA256: anchor.idSHA256,
+      utf16Location: selection.range.location, utf16Length: selection.range.length,
+      textByteCount: text.utf8.count, textSHA256: testSHA256Hex(text),
+      richTextSHA256: testSHA256Hex(body), occurrence: selection.occurrence,
+      paragraphUTF16Location: inlineParagraphReadbackAvailable ? inlineParagraphRangeOverride?.location ?? 0 : nil,
+      paragraphUTF16Length: inlineParagraphReadbackAvailable ? inlineParagraphRangeOverride?.length ?? (body as NSString).length : nil)
+  }
+
+  func setInlineBodyFixture(_ text: String) throws {
+    var note = try #require(notes["note-2"])
+    note.body = text
+    notes["note-2"] = note
+    var structure = try #require(bodyStructures["note-2"])
+    structure.plainTextByteCount = text.utf8.count
+    structure.plainTextSHA256 = testSHA256Hex(text)
+    structure.richTextLength = (text as NSString).length
+    structure.richTextSHA256 = testSHA256Hex(text)
+    structure.fixtureParagraphAnchors[0].titleByteCount = text.utf8.count
+    structure.fixtureParagraphAnchors[0].titleSHA256 = testSHA256Hex(text)
+    bodyStructures["note-2"] = structure
   }
 
   func listTables(noteID id: String) throws -> [NotesBodyTableRecord] {
@@ -23719,7 +24147,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     if changed {
       sections[targetIndex].collapsed = desired
       bodyCollapsibleSections[draft.noteID] = sections
-      structure.collapsedSectionCount = sections.filter { $0.collapsed }.count
+      structure.fixtureCollapsedSectionCount = sections.filter { $0.collapsed }.count
       bodyStructures[draft.noteID] = structure
     }
 
@@ -23758,21 +24186,21 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     structure.plainTextSHA256 = testSHA256Hex(note.body ?? "")
     structure.richTextLength = (structure.richTextLength ?? 0) + addedLength
     structure.paragraphCount = (structure.paragraphCount ?? 0) + 1
-    structure.paragraphStyleRunCount += 1
-    structure.checklistItemCount += 1
+    structure.fixtureParagraphStyleRunCount += 1
+    structure.fixtureChecklistItemCount += 1
     if draft.checked {
-      structure.checklistDoneCount += 1
+      structure.fixtureChecklistDoneCount += 1
     } else {
-      structure.checklistOpenCount += 1
+      structure.fixtureChecklistOpenCount += 1
     }
     structure.hasChecklist = true
-    structure.hasChecklistInProgress = structure.checklistOpenCount > 0
-    if let index = structure.styleCounts.firstIndex(where: { $0.style == "checklist" }) {
-      structure.styleCounts[index].count += 1
+    structure.hasChecklistInProgress = structure.fixtureChecklistOpenCount > 0
+    if let index = structure.fixtureStyleCounts.firstIndex(where: { $0.style == "checklist" }) {
+      structure.fixtureStyleCounts[index].count += 1
     } else {
-      structure.styleCounts.append(NotesBodyStyleCount(style: "checklist", count: 1))
+      structure.fixtureStyleCounts.append(NotesBodyStyleCount(style: "checklist", count: 1))
     }
-    let ordinal = structure.checklistItemCount
+    let ordinal = structure.fixtureChecklistItemCount
     bodyChecklistStates[draft.noteID, default: [:]][ordinal] = draft.checked
     bodyStructures[draft.noteID] = structure
 
@@ -23800,8 +24228,8 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     note.body = [note.body ?? "", "[table]"].filter { !$0.isEmpty }.joined(separator: "\n")
     notes[draft.noteID] = note
 
-    structure.tableCount += 1
-    structure.inlineAttachmentCount += 1
+    structure.fixtureTableCount += 1
+    structure.fixtureInlineAttachmentCount += 1
     structure.plainTextSHA256 = testSHA256Hex(note.body ?? "")
     if let beforeByteCount = structure.plainTextByteCount {
       structure.plainTextByteCount = beforeByteCount + "[table]".utf8.count + 1
@@ -23809,10 +24237,10 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     if let beforeLength = structure.richTextLength {
       structure.richTextLength = beforeLength + "[table]".utf8.count + 1
     }
-    if let index = structure.attachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
-      structure.attachmentKindCounts[index].count += 1
+    if let index = structure.fixtureAttachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
+      structure.fixtureAttachmentKindCounts[index].count += 1
     } else {
-      structure.attachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
+      structure.fixtureAttachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
     }
     bodyTables[draft.noteID, default: []].append(
       NotesBodyTableRecord(
@@ -23854,15 +24282,15 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     note.body = [note.body ?? "", "[table]"].filter { !$0.isEmpty }.joined(separator: "\n")
     notes[draft.noteID] = note
 
-    structure.tableCount += 1
-    structure.inlineAttachmentCount += 1
+    structure.fixtureTableCount += 1
+    structure.fixtureInlineAttachmentCount += 1
     structure.plainTextSHA256 = testSHA256Hex(note.body ?? "")
     structure.plainTextByteCount = note.body?.utf8.count
     structure.richTextLength = note.body?.utf8.count
-    if let index = structure.attachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
-      structure.attachmentKindCounts[index].count += 1
+    if let index = structure.fixtureAttachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
+      structure.fixtureAttachmentKindCounts[index].count += 1
     } else {
-      structure.attachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
+      structure.fixtureAttachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
     }
     let targetOrdinal = (bodyTables[draft.noteID] ?? []).count + 1
     let target = NotesBodyTableRecord(
@@ -24017,17 +24445,17 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     )
     notes[draft.noteID] = note
 
-    structure.tableCount = max(0, structure.tableCount - 1)
-    structure.inlineAttachmentCount = max(0, structure.inlineAttachmentCount - 1)
+    structure.fixtureTableCount = max(0, structure.fixtureTableCount - 1)
+    structure.fixtureInlineAttachmentCount = max(0, structure.fixtureInlineAttachmentCount - 1)
     structure.plainTextByteCount = note.body?.utf8.count
     structure.plainTextSHA256 = testSHA256Hex(note.body ?? "")
     structure.richTextLength = note.body?.utf8.count
-    if let index = structure.attachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
-      let nextCount = max(0, structure.attachmentKindCounts[index].count - 1)
+    if let index = structure.fixtureAttachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
+      let nextCount = max(0, structure.fixtureAttachmentKindCounts[index].count - 1)
       if nextCount == 0 {
-        structure.attachmentKindCounts.remove(at: index)
+        structure.fixtureAttachmentKindCounts.remove(at: index)
       } else {
-        structure.attachmentKindCounts[index].count = nextCount
+        structure.fixtureAttachmentKindCounts[index].count = nextCount
       }
     }
     tables = tables.enumerated().map { index, table in
@@ -24084,7 +24512,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    guard let sourceAnchor = structure.paragraphAnchors.first(where: { $0.idSHA256 == draft.paragraphIDSHA256 }) else {
+    guard let sourceAnchor = structure.fixtureParagraphAnchors.first(where: { $0.idSHA256 == draft.paragraphIDSHA256 }) else {
       throw CLIError(
         code: .notFound,
         message: "Notes body paragraph selector did not match any paragraph anchor.",
@@ -24109,27 +24537,27 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     note.body = replacingFirstOccurrence(in: note.body ?? "", target: sourceText, replacement: "[table]")
     notes[draft.noteID] = note
 
-    structure.tableCount += 1
-    structure.inlineAttachmentCount += 1
+    structure.fixtureTableCount += 1
+    structure.fixtureInlineAttachmentCount += 1
     structure.paragraphCount = structure.paragraphCount.map { max(0, $0 - 1) }
-    structure.paragraphStyleRunCount = max(0, structure.paragraphStyleRunCount - 1)
+    structure.fixtureParagraphStyleRunCount = max(0, structure.fixtureParagraphStyleRunCount - 1)
     structure.plainTextByteCount = note.body?.utf8.count
     structure.plainTextSHA256 = testSHA256Hex(note.body ?? "")
     structure.richTextLength = note.body?.utf8.count
-    if let index = structure.styleCounts.firstIndex(where: { $0.style == sourceAnchor.style }) {
-      let count = max(0, structure.styleCounts[index].count - 1)
+    if let index = structure.fixtureStyleCounts.firstIndex(where: { $0.style == sourceAnchor.style }) {
+      let count = max(0, structure.fixtureStyleCounts[index].count - 1)
       if count == 0 {
-        structure.styleCounts.remove(at: index)
+        structure.fixtureStyleCounts.remove(at: index)
       } else {
-        structure.styleCounts[index].count = count
+        structure.fixtureStyleCounts[index].count = count
       }
     }
-    if let index = structure.attachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
-      structure.attachmentKindCounts[index].count += 1
+    if let index = structure.fixtureAttachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
+      structure.fixtureAttachmentKindCounts[index].count += 1
     } else {
-      structure.attachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
+      structure.fixtureAttachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
     }
-    structure.paragraphAnchors = structure.paragraphAnchors
+    structure.fixtureParagraphAnchors = structure.fixtureParagraphAnchors
       .filter { $0.idSHA256 != draft.paragraphIDSHA256 }
       .enumerated()
       .map { index, anchor in
@@ -24226,15 +24654,15 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     targetNote.body = [targetNote.body ?? "", "[table]"].filter { !$0.isEmpty }.joined(separator: "\n")
     notes[draft.targetNoteID] = targetNote
 
-    targetStructure.tableCount += 1
-    targetStructure.inlineAttachmentCount += 1
+    targetStructure.fixtureTableCount += 1
+    targetStructure.fixtureInlineAttachmentCount += 1
     targetStructure.plainTextByteCount = targetNote.body?.utf8.count
     targetStructure.plainTextSHA256 = testSHA256Hex(targetNote.body ?? "")
     targetStructure.richTextLength = targetNote.body?.utf8.count
-    if let index = targetStructure.attachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
-      targetStructure.attachmentKindCounts[index].count += 1
+    if let index = targetStructure.fixtureAttachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
+      targetStructure.fixtureAttachmentKindCounts[index].count += 1
     } else {
-      targetStructure.attachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
+      targetStructure.fixtureAttachmentKindCounts.append(NotesBodyAttachmentKindCount(kind: "table", count: 1))
     }
 
     var targetTables = bodyTables[draft.targetNoteID] ?? []
@@ -25020,8 +25448,8 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     )
     results.append(contentsOf: [definition, dependent])
     bodyMathResults[draft.noteID] = results
-    structure.inlineAttachmentCount += 2
-    structure.mathAttachmentCount += 2
+    structure.fixtureInlineAttachmentCount += 2
+    structure.fixtureMathAttachmentCount += 2
     structure.isMathNote = true
     bodyStructures[draft.noteID] = structure
     let insertedBody = "\(draft.variableDefinitionExpression)\n\(draft.dependentExpression)"
@@ -25171,8 +25599,8 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     )
     results.append(target)
     bodyMathResults[draft.noteID] = results
-    structure.inlineAttachmentCount += 1
-    structure.mathAttachmentCount += 1
+    structure.fixtureInlineAttachmentCount += 1
+    structure.fixtureMathAttachmentCount += 1
     structure.isMathNote = true
     bodyStructures[draft.noteID] = structure
     if note.body?.isEmpty == false {
@@ -25238,14 +25666,14 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       structure.plainTextSHA256 = testSHA256Hex(body)
     }
 
-    structure.tableCount = max(0, structure.tableCount - 1)
-    structure.inlineAttachmentCount = max(0, structure.inlineAttachmentCount - 1)
-    if let index = structure.attachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
-      let nextCount = max(0, structure.attachmentKindCounts[index].count - 1)
+    structure.fixtureTableCount = max(0, structure.fixtureTableCount - 1)
+    structure.fixtureInlineAttachmentCount = max(0, structure.fixtureInlineAttachmentCount - 1)
+    if let index = structure.fixtureAttachmentKindCounts.firstIndex(where: { $0.kind == "table" }) {
+      let nextCount = max(0, structure.fixtureAttachmentKindCounts[index].count - 1)
       if nextCount == 0 {
-        structure.attachmentKindCounts.remove(at: index)
+        structure.fixtureAttachmentKindCounts.remove(at: index)
       } else {
-        structure.attachmentKindCounts[index].count = nextCount
+        structure.fixtureAttachmentKindCounts[index].count = nextCount
       }
     }
     tables = tables.enumerated().map { index, table in
@@ -25314,16 +25742,16 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       states[ordinal] = draft.checked
       bodyChecklistStates[draft.noteID] = states
       if draft.checked {
-        structure.checklistDoneCount += 1
-        structure.checklistOpenCount -= 1
+        structure.fixtureChecklistDoneCount += 1
+        structure.fixtureChecklistOpenCount -= 1
       } else {
-        structure.checklistDoneCount -= 1
-        structure.checklistOpenCount += 1
+        structure.fixtureChecklistDoneCount -= 1
+        structure.fixtureChecklistOpenCount += 1
       }
-      structure.hasChecklistInProgress = structure.checklistOpenCount > 0
+      structure.hasChecklistInProgress = structure.fixtureChecklistOpenCount > 0
       syncChecklistAnchorStates(noteID: draft.noteID, structure: &structure)
       bodyStructures[draft.noteID] = structure
-      reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+      reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
     }
 
     return NotesBodyChecklistSetWriteResult(changed: changed, note: note, structure: structure)
@@ -25347,7 +25775,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    guard structure.checklistItemCount > 0 else {
+    guard structure.fixtureChecklistItemCount > 0 else {
       throw CLIError(
         code: .notFound,
         message: "No checklist items were found on the target note.",
@@ -25359,16 +25787,16 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     var states = bodyChecklistStates[draft.noteID] ?? [:]
     let changed = states.values.contains { $0 != draft.checked }
     if changed {
-      for ordinal in 1...structure.checklistItemCount {
+      for ordinal in 1...structure.fixtureChecklistItemCount {
         states[ordinal] = draft.checked
       }
       bodyChecklistStates[draft.noteID] = states
-      structure.checklistDoneCount = draft.checked ? structure.checklistItemCount : 0
-      structure.checklistOpenCount = draft.checked ? 0 : structure.checklistItemCount
-      structure.hasChecklistInProgress = structure.checklistOpenCount > 0
+      structure.fixtureChecklistDoneCount = draft.checked ? structure.fixtureChecklistItemCount : 0
+      structure.fixtureChecklistOpenCount = draft.checked ? 0 : structure.fixtureChecklistItemCount
+      structure.hasChecklistInProgress = structure.fixtureChecklistOpenCount > 0
       syncChecklistAnchorStates(noteID: draft.noteID, structure: &structure)
       bodyStructures[draft.noteID] = structure
-      reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+      reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
     }
 
     return NotesBodyChecklistSetAllWriteResult(changed: changed, note: note, structure: structure)
@@ -25390,7 +25818,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    let checklistAnchors = structure.paragraphAnchors.filter { $0.isChecklist }
+    let checklistAnchors = structure.fixtureParagraphAnchors.filter { $0.isChecklist }
     guard !checklistAnchors.isEmpty else {
       throw CLIError(
         code: .notFound,
@@ -25407,7 +25835,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     }
 
     var remainingChecklistAnchors = sortedChecklistAnchors
-    structure.paragraphAnchors = structure.paragraphAnchors.map { anchor in
+    structure.fixtureParagraphAnchors = structure.fixtureParagraphAnchors.map { anchor in
       guard anchor.isChecklist else {
         return anchor
       }
@@ -25426,7 +25854,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     bodyChecklistParagraphOrdinals[draft.noteID] = newOrdinalMap
     bodyChecklistStates[draft.noteID] = newStates
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyChecklistSortWriteResult(changed: true, note: note, structure: structure)
   }
@@ -25456,7 +25884,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
         details: ["id": draft.noteID]
       )
     }
-    guard !structure.paragraphAnchors[anchorIndex].isChecklist else {
+    guard !structure.fixtureParagraphAnchors[anchorIndex].isChecklist else {
       throw CLIError(
         code: .validationError,
         message: "Selected paragraph is already a checklist item; use `body checklist set` to change its state.",
@@ -25465,43 +25893,43 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     }
 
     bodyChecklistConvertDrafts.append(draft)
-    let oldStyle = structure.paragraphAnchors[anchorIndex].style
-    structure.paragraphAnchors[anchorIndex].style = "checklist"
-    structure.paragraphAnchors[anchorIndex].isHeader = false
-    structure.paragraphAnchors[anchorIndex].isList = true
-    structure.paragraphAnchors[anchorIndex].isChecklist = true
-    structure.paragraphAnchors[anchorIndex].isBlockQuote = false
-    structure.paragraphAnchors[anchorIndex].indentationLevel = 0
-    structure.paragraphAnchors[anchorIndex].canIndent = true
-    structure.paragraphAnchors[anchorIndex].checklistDone = draft.checked
-    structure.listItemCount += 1
-    structure.checklistItemCount += 1
+    let oldStyle = structure.fixtureParagraphAnchors[anchorIndex].style
+    structure.fixtureParagraphAnchors[anchorIndex].style = "checklist"
+    structure.fixtureParagraphAnchors[anchorIndex].isHeader = false
+    structure.fixtureParagraphAnchors[anchorIndex].isList = true
+    structure.fixtureParagraphAnchors[anchorIndex].isChecklist = true
+    structure.fixtureParagraphAnchors[anchorIndex].isBlockQuote = false
+    structure.fixtureParagraphAnchors[anchorIndex].indentationLevel = 0
+    structure.fixtureParagraphAnchors[anchorIndex].canIndent = true
+    structure.fixtureParagraphAnchors[anchorIndex].checklistDone = draft.checked
+    structure.fixtureListItemCount += 1
+    structure.fixtureChecklistItemCount += 1
     if draft.checked {
-      structure.checklistDoneCount += 1
+      structure.fixtureChecklistDoneCount += 1
     } else {
-      structure.checklistOpenCount += 1
+      structure.fixtureChecklistOpenCount += 1
     }
     structure.hasChecklist = true
-    structure.hasChecklistInProgress = structure.checklistOpenCount > 0
-    if let index = structure.styleCounts.firstIndex(where: { $0.style == oldStyle }) {
-      structure.styleCounts[index].count -= 1
-      if structure.styleCounts[index].count <= 0 {
-        structure.styleCounts.remove(at: index)
+    structure.hasChecklistInProgress = structure.fixtureChecklistOpenCount > 0
+    if let index = structure.fixtureStyleCounts.firstIndex(where: { $0.style == oldStyle }) {
+      structure.fixtureStyleCounts[index].count -= 1
+      if structure.fixtureStyleCounts[index].count <= 0 {
+        structure.fixtureStyleCounts.remove(at: index)
       }
     }
-    if let index = structure.styleCounts.firstIndex(where: { $0.style == "checklist" }) {
-      structure.styleCounts[index].count += 1
+    if let index = structure.fixtureStyleCounts.firstIndex(where: { $0.style == "checklist" }) {
+      structure.fixtureStyleCounts[index].count += 1
     } else {
-      structure.styleCounts.append(NotesBodyStyleCount(style: "checklist", count: 1))
+      structure.fixtureStyleCounts.append(NotesBodyStyleCount(style: "checklist", count: 1))
     }
 
-    let checklistOrdinal = structure.checklistItemCount
+    let checklistOrdinal = structure.fixtureChecklistItemCount
     bodyChecklistStates[draft.noteID, default: [:]][checklistOrdinal] = draft.checked
-    bodyChecklistParagraphOrdinals[draft.noteID, default: [:]][structure.paragraphAnchors[anchorIndex].idSHA256] =
+    bodyChecklistParagraphOrdinals[draft.noteID, default: [:]][structure.fixtureParagraphAnchors[anchorIndex].idSHA256] =
       checklistOrdinal
     syncChecklistAnchorStates(noteID: draft.noteID, structure: &structure)
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyChecklistConvertWriteResult(changed: true, note: note, structure: structure)
   }
@@ -25525,7 +25953,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
 
-    let orderedAnchors = structure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+    let orderedAnchors = structure.fixtureParagraphAnchors.sorted { $0.ordinal < $1.ordinal }
     guard draft.fromOrdinal > 0, draft.fromOrdinal <= draft.toOrdinal,
       draft.toOrdinal <= orderedAnchors.count
     else {
@@ -25549,44 +25977,44 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     let selectedCount = selectedAnchors.count
     let addedListItems = selectedAnchors.filter { !$0.isList }.count
     for anchor in selectedAnchors {
-      if let styleIndex = structure.styleCounts.firstIndex(where: { $0.style == anchor.style }) {
-        structure.styleCounts[styleIndex].count -= 1
-        if structure.styleCounts[styleIndex].count <= 0 {
-          structure.styleCounts.remove(at: styleIndex)
+      if let styleIndex = structure.fixtureStyleCounts.firstIndex(where: { $0.style == anchor.style }) {
+        structure.fixtureStyleCounts[styleIndex].count -= 1
+        if structure.fixtureStyleCounts[styleIndex].count <= 0 {
+          structure.fixtureStyleCounts.remove(at: styleIndex)
         }
       }
     }
-    if let styleIndex = structure.styleCounts.firstIndex(where: { $0.style == "checklist" }) {
-      structure.styleCounts[styleIndex].count += selectedCount
+    if let styleIndex = structure.fixtureStyleCounts.firstIndex(where: { $0.style == "checklist" }) {
+      structure.fixtureStyleCounts[styleIndex].count += selectedCount
     } else {
-      structure.styleCounts.append(NotesBodyStyleCount(style: "checklist", count: selectedCount))
+      structure.fixtureStyleCounts.append(NotesBodyStyleCount(style: "checklist", count: selectedCount))
     }
 
-    for index in structure.paragraphAnchors.indices where selectedAnchorIDs.contains(structure.paragraphAnchors[index].idSHA256) {
-      structure.paragraphAnchors[index].style = "checklist"
-      structure.paragraphAnchors[index].isHeader = false
-      structure.paragraphAnchors[index].isList = true
-      structure.paragraphAnchors[index].isChecklist = true
-      structure.paragraphAnchors[index].isBlockQuote = false
-      structure.paragraphAnchors[index].indentationLevel = 0
-      structure.paragraphAnchors[index].canIndent = true
-      structure.paragraphAnchors[index].checklistDone = draft.checked
+    for index in structure.fixtureParagraphAnchors.indices where selectedAnchorIDs.contains(structure.fixtureParagraphAnchors[index].idSHA256) {
+      structure.fixtureParagraphAnchors[index].style = "checklist"
+      structure.fixtureParagraphAnchors[index].isHeader = false
+      structure.fixtureParagraphAnchors[index].isList = true
+      structure.fixtureParagraphAnchors[index].isChecklist = true
+      structure.fixtureParagraphAnchors[index].isBlockQuote = false
+      structure.fixtureParagraphAnchors[index].indentationLevel = 0
+      structure.fixtureParagraphAnchors[index].canIndent = true
+      structure.fixtureParagraphAnchors[index].checklistDone = draft.checked
     }
 
-    structure.listItemCount += addedListItems
-    structure.checklistItemCount += selectedCount
+    structure.fixtureListItemCount += addedListItems
+    structure.fixtureChecklistItemCount += selectedCount
     if draft.checked {
-      structure.checklistDoneCount += selectedCount
+      structure.fixtureChecklistDoneCount += selectedCount
     } else {
-      structure.checklistOpenCount += selectedCount
+      structure.fixtureChecklistOpenCount += selectedCount
     }
     structure.hasChecklist = true
-    structure.hasChecklistInProgress = structure.checklistOpenCount > 0
+    structure.hasChecklistInProgress = structure.fixtureChecklistOpenCount > 0
 
     var states: [Int: Bool] = [:]
     var ordinalMap: [String: Int] = [:]
     var checklistOrdinal = 1
-    for anchor in structure.paragraphAnchors.sorted(by: { $0.ordinal < $1.ordinal }) where anchor.isChecklist {
+    for anchor in structure.fixtureParagraphAnchors.sorted(by: { $0.ordinal < $1.ordinal }) where anchor.isChecklist {
       ordinalMap[anchor.idSHA256] = checklistOrdinal
       states[checklistOrdinal] = anchor.checklistDone ?? false
       checklistOrdinal += 1
@@ -25595,7 +26023,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     bodyChecklistParagraphOrdinals[draft.noteID] = ordinalMap
     syncChecklistAnchorStates(noteID: draft.noteID, structure: &structure)
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyChecklistConvertRangeWriteResult(changed: true, note: note, structure: structure)
   }
@@ -25618,7 +26046,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    let checklistAnchors = structure.paragraphAnchors.filter { $0.isChecklist }
+    let checklistAnchors = structure.fixtureParagraphAnchors.filter { $0.isChecklist }
     guard let sourceIndex = checklistReorderSourceIndex(for: draft, checklistAnchors: checklistAnchors) else {
       throw CLIError(
         code: .notFound,
@@ -25647,7 +26075,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     reorderedChecklistAnchors.insert(movedAnchor, at: targetIndex)
 
     var remainingChecklistAnchors = reorderedChecklistAnchors
-    structure.paragraphAnchors = structure.paragraphAnchors.map { anchor in
+    structure.fixtureParagraphAnchors = structure.fixtureParagraphAnchors.map { anchor in
       guard anchor.isChecklist else {
         return anchor
       }
@@ -25667,7 +26095,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     bodyChecklistParagraphOrdinals[draft.noteID] = newOrdinalMap
     bodyChecklistStates[draft.noteID] = newStates
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyChecklistReorderWriteResult(changed: true, note: note, structure: structure)
   }
@@ -25690,7 +26118,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    let checklistAnchors = structure.paragraphAnchors.filter { $0.isChecklist }
+    let checklistAnchors = structure.fixtureParagraphAnchors.filter { $0.isChecklist }
     guard let checklistIndex = checklistIndentSourceIndex(for: draft, checklistAnchors: checklistAnchors) else {
       throw CLIError(
         code: .notFound,
@@ -25699,7 +26127,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       )
     }
     let selectedAnchorID = checklistAnchors[checklistIndex].idSHA256
-    guard let anchorIndex = structure.paragraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchorID }) else {
+    guard let anchorIndex = structure.fixtureParagraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchorID }) else {
       throw CLIError(
         code: .notFound,
         message: "Checklist selector did not match any body paragraph anchor.",
@@ -25708,8 +26136,8 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     }
 
     bodyChecklistIndentDrafts.append(draft)
-    let currentIndent = structure.paragraphAnchors[anchorIndex].indentationLevel ?? 0
-    let canIndent = structure.paragraphAnchors[anchorIndex].canIndent ?? true
+    let currentIndent = structure.fixtureParagraphAnchors[anchorIndex].indentationLevel ?? 0
+    let canIndent = structure.fixtureParagraphAnchors[anchorIndex].canIndent ?? true
     let proposedIndent = currentIndent + draft.delta
     guard proposedIndent >= 0, draft.delta <= 0 || canIndent else {
       return NotesBodyChecklistIndentWriteResult(changed: false, note: note, structure: structure)
@@ -25718,9 +26146,9 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       return NotesBodyChecklistIndentWriteResult(changed: false, note: note, structure: structure)
     }
 
-    structure.paragraphAnchors[anchorIndex].indentationLevel = proposedIndent
+    structure.fixtureParagraphAnchors[anchorIndex].indentationLevel = proposedIndent
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyChecklistIndentWriteResult(changed: true, note: note, structure: structure)
   }
@@ -25743,7 +26171,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    let checklistAnchors = structure.paragraphAnchors.filter { $0.isChecklist }
+    let checklistAnchors = structure.fixtureParagraphAnchors.filter { $0.isChecklist }
     guard let checklistIndex = checklistDeleteSourceIndex(for: draft, checklistAnchors: checklistAnchors) else {
       throw CLIError(
         code: .notFound,
@@ -25752,7 +26180,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       )
     }
     let selectedAnchor = checklistAnchors[checklistIndex]
-    guard let anchorIndex = structure.paragraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchor.idSHA256 }) else {
+    guard let anchorIndex = structure.fixtureParagraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchor.idSHA256 }) else {
       throw CLIError(
         code: .notFound,
         message: "Checklist selector did not match any body paragraph anchor.",
@@ -25766,35 +26194,35 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     let oldOrdinal = oldOrdinalMap[selectedAnchor.idSHA256] ?? checklistIndex + 1
     let wasDone = selectedAnchor.checklistDone ?? oldStates[oldOrdinal] ?? false
 
-    structure.paragraphAnchors.remove(at: anchorIndex)
-    for index in structure.paragraphAnchors.indices {
-      structure.paragraphAnchors[index].ordinal = index + 1
+    structure.fixtureParagraphAnchors.remove(at: anchorIndex)
+    for index in structure.fixtureParagraphAnchors.indices {
+      structure.fixtureParagraphAnchors[index].ordinal = index + 1
     }
     let deletedByteCount = max(1, (selectedAnchor.titleByteCount ?? 0) + 1)
     structure.plainTextByteCount = max(0, (structure.plainTextByteCount ?? 0) - deletedByteCount)
     structure.plainTextSHA256 = "after-delete-\(selectedAnchor.idSHA256)"
     structure.richTextLength = max(0, (structure.richTextLength ?? 0) - deletedByteCount)
-    structure.paragraphCount = max(0, (structure.paragraphCount ?? structure.paragraphAnchors.count + 1) - 1)
-    structure.paragraphStyleRunCount = max(0, structure.paragraphStyleRunCount - 1)
-    structure.listItemCount = max(0, structure.listItemCount - 1)
-    structure.checklistItemCount = max(0, structure.checklistItemCount - 1)
+    structure.paragraphCount = max(0, (structure.paragraphCount ?? structure.fixtureParagraphAnchors.count + 1) - 1)
+    structure.fixtureParagraphStyleRunCount = max(0, structure.fixtureParagraphStyleRunCount - 1)
+    structure.fixtureListItemCount = max(0, structure.fixtureListItemCount - 1)
+    structure.fixtureChecklistItemCount = max(0, structure.fixtureChecklistItemCount - 1)
     if wasDone {
-      structure.checklistDoneCount = max(0, structure.checklistDoneCount - 1)
+      structure.fixtureChecklistDoneCount = max(0, structure.fixtureChecklistDoneCount - 1)
     } else {
-      structure.checklistOpenCount = max(0, structure.checklistOpenCount - 1)
+      structure.fixtureChecklistOpenCount = max(0, structure.fixtureChecklistOpenCount - 1)
     }
-    structure.hasChecklist = structure.checklistItemCount > 0
-    structure.hasChecklistInProgress = structure.checklistOpenCount > 0
-    if let styleIndex = structure.styleCounts.firstIndex(where: { $0.style == "checklist" }) {
-      structure.styleCounts[styleIndex].count -= 1
-      if structure.styleCounts[styleIndex].count <= 0 {
-        structure.styleCounts.remove(at: styleIndex)
+    structure.hasChecklist = structure.fixtureChecklistItemCount > 0
+    structure.hasChecklistInProgress = structure.fixtureChecklistOpenCount > 0
+    if let styleIndex = structure.fixtureStyleCounts.firstIndex(where: { $0.style == "checklist" }) {
+      structure.fixtureStyleCounts[styleIndex].count -= 1
+      if structure.fixtureStyleCounts[styleIndex].count <= 0 {
+        structure.fixtureStyleCounts.remove(at: styleIndex)
       }
     }
 
     var newOrdinalMap: [String: Int] = [:]
     var newStates: [Int: Bool] = [:]
-    for (index, anchor) in structure.paragraphAnchors.filter({ $0.isChecklist }).enumerated() {
+    for (index, anchor) in structure.fixtureParagraphAnchors.filter({ $0.isChecklist }).enumerated() {
       let newOrdinal = index + 1
       newOrdinalMap[anchor.idSHA256] = newOrdinal
       let oldOrdinal = oldOrdinalMap[anchor.idSHA256] ?? newOrdinal
@@ -25804,7 +26232,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     bodyChecklistStates[draft.noteID] = newStates
     syncChecklistAnchorStates(noteID: draft.noteID, structure: &structure)
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyChecklistDeleteWriteResult(changed: true, note: note, structure: structure)
   }
@@ -25835,10 +26263,10 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     structure.plainTextSHA256 = testSHA256Hex(note.body ?? "")
     structure.richTextLength = (structure.richTextLength ?? 0) + addedLength
     structure.paragraphCount = (structure.paragraphCount ?? 0) + 1
-    structure.paragraphStyleRunCount += 1
-    structure.listItemCount += 1
+    structure.fixtureParagraphStyleRunCount += 1
+    structure.fixtureListItemCount += 1
     incrementStyle("list", in: &structure)
-    let nextOrdinal = (structure.paragraphAnchors.map(\.ordinal).max() ?? 0) + 1
+    let nextOrdinal = (structure.fixtureParagraphAnchors.map(\.ordinal).max() ?? 0) + 1
     let anchor = NotesBodyParagraphAnchorRecord(
       ordinal: nextOrdinal,
       idSHA256: "added-list-\(nextOrdinal)-paragraph-anchor-hash",
@@ -25851,9 +26279,9 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       indentationLevel: 0,
       canIndent: true
     )
-    structure.paragraphAnchors.append(anchor)
+    structure.fixtureParagraphAnchors.append(anchor)
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyListAddWriteResult(changed: true, note: note, structure: structure)
   }
@@ -25883,7 +26311,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
         details: ["id": draft.noteID]
       )
     }
-    guard !structure.paragraphAnchors[anchorIndex].isChecklist, !structure.paragraphAnchors[anchorIndex].isList else {
+    guard !structure.fixtureParagraphAnchors[anchorIndex].isChecklist, !structure.fixtureParagraphAnchors[anchorIndex].isList else {
       throw CLIError(
         code: .validationError,
         message: "Ordinary list convert requires a non-list paragraph anchor.",
@@ -25892,20 +26320,20 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     }
 
     bodyListConvertDrafts.append(draft)
-    decrementStyle(structure.paragraphAnchors[anchorIndex].style, in: &structure)
+    decrementStyle(structure.fixtureParagraphAnchors[anchorIndex].style, in: &structure)
     incrementStyle("list", in: &structure)
-    structure.paragraphAnchors[anchorIndex].style = "list"
-    structure.paragraphAnchors[anchorIndex].listStyle = draft.style.rawValue
-    structure.paragraphAnchors[anchorIndex].isHeader = false
-    structure.paragraphAnchors[anchorIndex].isList = true
-    structure.paragraphAnchors[anchorIndex].isChecklist = false
-    structure.paragraphAnchors[anchorIndex].isBlockQuote = false
-    structure.paragraphAnchors[anchorIndex].indentationLevel = 0
-    structure.paragraphAnchors[anchorIndex].canIndent = true
-    structure.paragraphAnchors[anchorIndex].checklistDone = nil
-    structure.listItemCount += 1
+    structure.fixtureParagraphAnchors[anchorIndex].style = "list"
+    structure.fixtureParagraphAnchors[anchorIndex].listStyle = draft.style.rawValue
+    structure.fixtureParagraphAnchors[anchorIndex].isHeader = false
+    structure.fixtureParagraphAnchors[anchorIndex].isList = true
+    structure.fixtureParagraphAnchors[anchorIndex].isChecklist = false
+    structure.fixtureParagraphAnchors[anchorIndex].isBlockQuote = false
+    structure.fixtureParagraphAnchors[anchorIndex].indentationLevel = 0
+    structure.fixtureParagraphAnchors[anchorIndex].canIndent = true
+    structure.fixtureParagraphAnchors[anchorIndex].checklistDone = nil
+    structure.fixtureListItemCount += 1
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyListConvertWriteResult(changed: true, note: note, structure: structure)
   }
@@ -25929,7 +26357,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
 
-    let orderedAnchors = structure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+    let orderedAnchors = structure.fixtureParagraphAnchors.sorted { $0.ordinal < $1.ordinal }
     guard draft.fromOrdinal > 0, draft.fromOrdinal <= draft.toOrdinal,
       draft.toOrdinal <= orderedAnchors.count
     else {
@@ -25954,20 +26382,20 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       decrementStyle(anchor.style, in: &structure)
     }
     incrementStyle("list", by: selectedAnchors.count, in: &structure)
-    for index in structure.paragraphAnchors.indices where selectedAnchorIDs.contains(structure.paragraphAnchors[index].idSHA256) {
-      structure.paragraphAnchors[index].style = "list"
-      structure.paragraphAnchors[index].listStyle = draft.style.rawValue
-      structure.paragraphAnchors[index].isHeader = false
-      structure.paragraphAnchors[index].isList = true
-      structure.paragraphAnchors[index].isChecklist = false
-      structure.paragraphAnchors[index].isBlockQuote = false
-      structure.paragraphAnchors[index].indentationLevel = 0
-      structure.paragraphAnchors[index].canIndent = true
-      structure.paragraphAnchors[index].checklistDone = nil
+    for index in structure.fixtureParagraphAnchors.indices where selectedAnchorIDs.contains(structure.fixtureParagraphAnchors[index].idSHA256) {
+      structure.fixtureParagraphAnchors[index].style = "list"
+      structure.fixtureParagraphAnchors[index].listStyle = draft.style.rawValue
+      structure.fixtureParagraphAnchors[index].isHeader = false
+      structure.fixtureParagraphAnchors[index].isList = true
+      structure.fixtureParagraphAnchors[index].isChecklist = false
+      structure.fixtureParagraphAnchors[index].isBlockQuote = false
+      structure.fixtureParagraphAnchors[index].indentationLevel = 0
+      structure.fixtureParagraphAnchors[index].canIndent = true
+      structure.fixtureParagraphAnchors[index].checklistDone = nil
     }
-    structure.listItemCount += selectedAnchors.count
+    structure.fixtureListItemCount += selectedAnchors.count
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyListConvertRangeWriteResult(changed: true, note: note, structure: structure)
   }
@@ -25988,9 +26416,9 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    let listAnchors = structure.paragraphAnchors.filter { $0.isList && !$0.isChecklist }.sorted { $0.ordinal < $1.ordinal }
+    let listAnchors = structure.fixtureParagraphAnchors.filter { $0.isList && !$0.isChecklist }.sorted { $0.ordinal < $1.ordinal }
     guard let sourceIndex = listSetStyleSourceIndex(for: draft, listAnchors: listAnchors),
-      let anchorIndex = structure.paragraphAnchors.firstIndex(where: { $0.idSHA256 == listAnchors[sourceIndex].idSHA256 })
+      let anchorIndex = structure.fixtureParagraphAnchors.firstIndex(where: { $0.idSHA256 == listAnchors[sourceIndex].idSHA256 })
     else {
       throw CLIError(
         code: .notFound,
@@ -26000,11 +26428,11 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     }
 
     bodyListSetStyleDrafts.append(draft)
-    let changed = structure.paragraphAnchors[anchorIndex].listStyle != draft.style.rawValue
+    let changed = structure.fixtureParagraphAnchors[anchorIndex].listStyle != draft.style.rawValue
     if changed {
-      structure.paragraphAnchors[anchorIndex].listStyle = draft.style.rawValue
+      structure.fixtureParagraphAnchors[anchorIndex].listStyle = draft.style.rawValue
       bodyStructures[draft.noteID] = structure
-      reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+      reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
     }
 
     return NotesBodyListSetStyleWriteResult(changed: changed, note: note, structure: structure)
@@ -26028,7 +26456,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    let listAnchors = structure.paragraphAnchors.filter { $0.isList && !$0.isChecklist }
+    let listAnchors = structure.fixtureParagraphAnchors.filter { $0.isList && !$0.isChecklist }
     guard let sourceIndex = listReorderSourceIndex(for: draft, listAnchors: listAnchors) else {
       throw CLIError(
         code: .notFound,
@@ -26055,7 +26483,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     reorderedListAnchors.insert(movedAnchor, at: targetIndex)
 
     var remainingListAnchors = reorderedListAnchors
-    structure.paragraphAnchors = structure.paragraphAnchors.map { anchor in
+    structure.fixtureParagraphAnchors = structure.fixtureParagraphAnchors.map { anchor in
       guard anchor.isList && !anchor.isChecklist else {
         return anchor
       }
@@ -26066,7 +26494,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
 
     syncChecklistAnchorStates(noteID: draft.noteID, structure: &structure)
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyListReorderWriteResult(changed: true, note: note, structure: structure)
   }
@@ -26089,7 +26517,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    let listAnchors = structure.paragraphAnchors.filter { $0.isList && !$0.isChecklist }
+    let listAnchors = structure.fixtureParagraphAnchors.filter { $0.isList && !$0.isChecklist }
     guard let listIndex = listIndentSourceIndex(for: draft, listAnchors: listAnchors) else {
       throw CLIError(
         code: .notFound,
@@ -26098,7 +26526,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       )
     }
     let selectedAnchorID = listAnchors[listIndex].idSHA256
-    guard let anchorIndex = structure.paragraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchorID }) else {
+    guard let anchorIndex = structure.fixtureParagraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchorID }) else {
       throw CLIError(
         code: .notFound,
         message: "List selector did not match any body paragraph anchor.",
@@ -26107,8 +26535,8 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     }
 
     bodyListIndentDrafts.append(draft)
-    let currentIndent = structure.paragraphAnchors[anchorIndex].indentationLevel ?? 0
-    let canIndent = structure.paragraphAnchors[anchorIndex].canIndent ?? true
+    let currentIndent = structure.fixtureParagraphAnchors[anchorIndex].indentationLevel ?? 0
+    let canIndent = structure.fixtureParagraphAnchors[anchorIndex].canIndent ?? true
     let proposedIndent = currentIndent + draft.delta
     guard proposedIndent >= 0, draft.delta <= 0 || canIndent else {
       return NotesBodyListIndentWriteResult(changed: false, note: note, structure: structure)
@@ -26117,9 +26545,9 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       return NotesBodyListIndentWriteResult(changed: false, note: note, structure: structure)
     }
 
-    structure.paragraphAnchors[anchorIndex].indentationLevel = proposedIndent
+    structure.fixtureParagraphAnchors[anchorIndex].indentationLevel = proposedIndent
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyListIndentWriteResult(changed: true, note: note, structure: structure)
   }
@@ -26142,7 +26570,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    let listAnchors = structure.paragraphAnchors.filter { $0.isList && !$0.isChecklist }
+    let listAnchors = structure.fixtureParagraphAnchors.filter { $0.isList && !$0.isChecklist }
     guard let listIndex = listDeleteSourceIndex(for: draft, listAnchors: listAnchors) else {
       throw CLIError(
         code: .notFound,
@@ -26151,7 +26579,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       )
     }
     let selectedAnchor = listAnchors[listIndex]
-    guard let anchorIndex = structure.paragraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchor.idSHA256 }) else {
+    guard let anchorIndex = structure.fixtureParagraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchor.idSHA256 }) else {
       throw CLIError(
         code: .notFound,
         message: "List selector did not match any body paragraph anchor.",
@@ -26160,27 +26588,27 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     }
 
     bodyListDeleteDrafts.append(draft)
-    structure.paragraphAnchors.remove(at: anchorIndex)
-    for index in structure.paragraphAnchors.indices {
-      structure.paragraphAnchors[index].ordinal = index + 1
+    structure.fixtureParagraphAnchors.remove(at: anchorIndex)
+    for index in structure.fixtureParagraphAnchors.indices {
+      structure.fixtureParagraphAnchors[index].ordinal = index + 1
     }
     let deletedByteCount = max(1, (selectedAnchor.titleByteCount ?? 0) + 1)
     structure.plainTextByteCount = max(0, (structure.plainTextByteCount ?? 0) - deletedByteCount)
     structure.plainTextSHA256 = "after-list-delete-\(selectedAnchor.idSHA256)"
     structure.richTextLength = max(0, (structure.richTextLength ?? 0) - deletedByteCount)
-    structure.paragraphCount = max(0, (structure.paragraphCount ?? structure.paragraphAnchors.count + 1) - 1)
-    structure.paragraphStyleRunCount = max(0, structure.paragraphStyleRunCount - 1)
-    structure.listItemCount = max(0, structure.listItemCount - 1)
-    if let styleIndex = structure.styleCounts.firstIndex(where: { $0.style == "list" }) {
-      structure.styleCounts[styleIndex].count -= 1
-      if structure.styleCounts[styleIndex].count <= 0 {
-        structure.styleCounts.remove(at: styleIndex)
+    structure.paragraphCount = max(0, (structure.paragraphCount ?? structure.fixtureParagraphAnchors.count + 1) - 1)
+    structure.fixtureParagraphStyleRunCount = max(0, structure.fixtureParagraphStyleRunCount - 1)
+    structure.fixtureListItemCount = max(0, structure.fixtureListItemCount - 1)
+    if let styleIndex = structure.fixtureStyleCounts.firstIndex(where: { $0.style == "list" }) {
+      structure.fixtureStyleCounts[styleIndex].count -= 1
+      if structure.fixtureStyleCounts[styleIndex].count <= 0 {
+        structure.fixtureStyleCounts.remove(at: styleIndex)
       }
     }
 
     syncChecklistAnchorStates(noteID: draft.noteID, structure: &structure)
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyListDeleteWriteResult(changed: true, note: note, structure: structure)
   }
@@ -26220,7 +26648,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       )
     }
     let selectedAnchor = targetAnchors[targetIndex]
-    guard let anchorIndex = structure.paragraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchor.idSHA256 }) else {
+    guard let anchorIndex = structure.fixtureParagraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchor.idSHA256 }) else {
       throw CLIError(
         code: .notFound,
         message: "List text insertion selector did not match any body paragraph anchor.",
@@ -26231,9 +26659,9 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     bodyListTextInsertDrafts.append(draft)
     let insertedText = draft.insertKind.insertedText
     let insertedByteCount = insertedText.utf8.count
-    structure.paragraphAnchors[anchorIndex].titleByteCount =
-      (structure.paragraphAnchors[anchorIndex].titleByteCount ?? 0) + insertedByteCount
-    structure.paragraphAnchors[anchorIndex].titleSHA256 =
+    structure.fixtureParagraphAnchors[anchorIndex].titleByteCount =
+      (structure.fixtureParagraphAnchors[anchorIndex].titleByteCount ?? 0) + insertedByteCount
+    structure.fixtureParagraphAnchors[anchorIndex].titleSHA256 =
       testSHA256Hex("\(selectedAnchor.titleSHA256 ?? ""):\(draft.insertKind.rawValue):\(insertedByteCount)")
     structure.plainTextByteCount = (structure.plainTextByteCount ?? 0) + insertedByteCount
     structure.plainTextSHA256 =
@@ -26242,7 +26670,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
 
     syncChecklistAnchorStates(noteID: draft.noteID, structure: &structure)
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyListTextInsertWriteResult(
       changed: true,
@@ -26279,7 +26707,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       )
     }
     let selectedAnchor = targetAnchors[targetIndex]
-    guard let anchorIndex = structure.paragraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchor.idSHA256 }) else {
+    guard let anchorIndex = structure.fixtureParagraphAnchors.firstIndex(where: { $0.idSHA256 == selectedAnchor.idSHA256 }) else {
       throw CLIError(
         code: .notFound,
         message: "List end selector did not match any body paragraph anchor.",
@@ -26300,12 +26728,12 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       isChecklist: false,
       isBlockQuote: false
     )
-    structure.paragraphAnchors.insert(created, at: anchorIndex + 1)
-    for index in structure.paragraphAnchors.indices {
-      structure.paragraphAnchors[index].ordinal = index + 1
+    structure.fixtureParagraphAnchors.insert(created, at: anchorIndex + 1)
+    for index in structure.fixtureParagraphAnchors.indices {
+      structure.fixtureParagraphAnchors[index].ordinal = index + 1
     }
-    structure.paragraphCount = (structure.paragraphCount ?? structure.paragraphAnchors.count - 1) + 1
-    structure.paragraphStyleRunCount += 1
+    structure.paragraphCount = (structure.paragraphCount ?? structure.fixtureParagraphAnchors.count - 1) + 1
+    structure.fixtureParagraphStyleRunCount += 1
     structure.plainTextByteCount = (structure.plainTextByteCount ?? 0) + 1
     structure.plainTextSHA256 =
       testSHA256Hex("\(structure.plainTextSHA256 ?? ""):\(draft.targetKind.rawValue):end")
@@ -26317,7 +26745,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     paragraphAnchors[draft.noteID, default: []].append(
       NotesParagraphAnchorResolution(anchor: created, paragraphID: "raw-\(nextID)", title: "")
     )
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
 
     return NotesBodyListEndWriteResult(
       changed: true,
@@ -26353,7 +26781,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     ) else {
       throw CLIError(code: .notFound, message: "Paragraph selector did not match any body paragraph anchor.")
     }
-    let anchor = structure.paragraphAnchors[anchorIndex]
+    let anchor = structure.fixtureParagraphAnchors[anchorIndex]
     guard !anchor.isList, !anchor.isChecklist, !anchor.isBlockQuote else {
       throw CLIError(
         code: .validationError,
@@ -26367,19 +26795,19 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       decrementStyle(anchor.style, in: &structure)
       incrementStyle(draft.style.rawValue, in: &structure)
       if anchor.isHeader && !draft.style.isHeader {
-        structure.headingCount -= 1
+        structure.fixtureHeadingCount -= 1
       } else if !anchor.isHeader && draft.style.isHeader {
-        structure.headingCount += 1
+        structure.fixtureHeadingCount += 1
       }
-      structure.paragraphAnchors[anchorIndex].style = draft.style.rawValue
-      structure.paragraphAnchors[anchorIndex].isHeader = draft.style.isHeader
-      structure.paragraphAnchors[anchorIndex].isList = false
-      structure.paragraphAnchors[anchorIndex].isChecklist = false
-      structure.paragraphAnchors[anchorIndex].isBlockQuote = false
-      structure.paragraphAnchors[anchorIndex].listStyle = nil
-      structure.paragraphAnchors[anchorIndex].indentationLevel = nil
-      structure.paragraphAnchors[anchorIndex].canIndent = nil
-      structure.paragraphAnchors[anchorIndex].checklistDone = nil
+      structure.fixtureParagraphAnchors[anchorIndex].style = draft.style.rawValue
+      structure.fixtureParagraphAnchors[anchorIndex].isHeader = draft.style.isHeader
+      structure.fixtureParagraphAnchors[anchorIndex].isList = false
+      structure.fixtureParagraphAnchors[anchorIndex].isChecklist = false
+      structure.fixtureParagraphAnchors[anchorIndex].isBlockQuote = false
+      structure.fixtureParagraphAnchors[anchorIndex].listStyle = nil
+      structure.fixtureParagraphAnchors[anchorIndex].indentationLevel = nil
+      structure.fixtureParagraphAnchors[anchorIndex].canIndent = nil
+      structure.fixtureParagraphAnchors[anchorIndex].checklistDone = nil
       var sections = bodyCollapsibleSections[draft.noteID] ?? []
       if let sectionIndex = sections.firstIndex(where: { $0.paragraphIDSHA256 == anchor.idSHA256 }) {
         if draft.style.createsCollapsibleSection {
@@ -26402,12 +26830,12 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
         sections[index].ordinal = index + 1
       }
       bodyCollapsibleSections[draft.noteID] = sections
-      structure.collapsibleSectionCount = sections.count
-      structure.collapsedSectionCount = sections.filter { $0.collapsed }.count
+      structure.fixtureCollapsibleSectionCount = sections.count
+      structure.fixtureCollapsedSectionCount = sections.filter { $0.collapsed }.count
     }
 
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
     return NotesBodyParagraphFormatWriteResult(changed: changed, note: note, structure: structure)
   }
 
@@ -26436,7 +26864,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     ) else {
       throw CLIError(code: .notFound, message: "Paragraph selector did not match any body paragraph anchor.")
     }
-    let anchor = structure.paragraphAnchors[anchorIndex]
+    let anchor = structure.fixtureParagraphAnchors[anchorIndex]
     guard !anchor.isList, !anchor.isChecklist, !anchor.isBlockQuote else {
       throw CLIError(
         code: .validationError,
@@ -26447,11 +26875,11 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     bodyParagraphAlignmentDrafts.append(draft)
     let changed = anchor.alignment != draft.alignment.rawValue
     if changed {
-      structure.paragraphAnchors[anchorIndex].alignment = draft.alignment.rawValue
+      structure.fixtureParagraphAnchors[anchorIndex].alignment = draft.alignment.rawValue
     }
 
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
     return NotesBodyParagraphFormatWriteResult(changed: changed, note: note, structure: structure)
   }
 
@@ -26480,7 +26908,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     ) else {
       throw CLIError(code: .notFound, message: "Paragraph selector did not match any body paragraph anchor.")
     }
-    let anchor = structure.paragraphAnchors[anchorIndex]
+    let anchor = structure.fixtureParagraphAnchors[anchorIndex]
     guard !anchor.isList, !anchor.isChecklist else {
       throw CLIError(
         code: .validationError,
@@ -26495,30 +26923,30 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
         decrementStyle(anchor.style, in: &structure)
         incrementStyle("block_quote", in: &structure)
         if anchor.isHeader {
-          structure.headingCount = max(0, structure.headingCount - 1)
+          structure.fixtureHeadingCount = max(0, structure.fixtureHeadingCount - 1)
         }
-        structure.blockQuoteCount += 1
-        structure.paragraphAnchors[anchorIndex].style = "block_quote"
-        structure.paragraphAnchors[anchorIndex].isHeader = false
-        structure.paragraphAnchors[anchorIndex].isBlockQuote = true
+        structure.fixtureBlockQuoteCount += 1
+        structure.fixtureParagraphAnchors[anchorIndex].style = "block_quote"
+        structure.fixtureParagraphAnchors[anchorIndex].isHeader = false
+        structure.fixtureParagraphAnchors[anchorIndex].isBlockQuote = true
       } else {
         decrementStyle(anchor.style, in: &structure)
         incrementStyle("body", in: &structure)
-        structure.blockQuoteCount = max(0, structure.blockQuoteCount - 1)
-        structure.paragraphAnchors[anchorIndex].style = "body"
-        structure.paragraphAnchors[anchorIndex].isHeader = false
-        structure.paragraphAnchors[anchorIndex].isBlockQuote = false
+        structure.fixtureBlockQuoteCount = max(0, structure.fixtureBlockQuoteCount - 1)
+        structure.fixtureParagraphAnchors[anchorIndex].style = "body"
+        structure.fixtureParagraphAnchors[anchorIndex].isHeader = false
+        structure.fixtureParagraphAnchors[anchorIndex].isBlockQuote = false
       }
-      structure.paragraphAnchors[anchorIndex].isList = false
-      structure.paragraphAnchors[anchorIndex].isChecklist = false
-      structure.paragraphAnchors[anchorIndex].listStyle = nil
-      structure.paragraphAnchors[anchorIndex].indentationLevel = nil
-      structure.paragraphAnchors[anchorIndex].canIndent = nil
-      structure.paragraphAnchors[anchorIndex].checklistDone = nil
+      structure.fixtureParagraphAnchors[anchorIndex].isList = false
+      structure.fixtureParagraphAnchors[anchorIndex].isChecklist = false
+      structure.fixtureParagraphAnchors[anchorIndex].listStyle = nil
+      structure.fixtureParagraphAnchors[anchorIndex].indentationLevel = nil
+      structure.fixtureParagraphAnchors[anchorIndex].canIndent = nil
+      structure.fixtureParagraphAnchors[anchorIndex].checklistDone = nil
     }
 
     bodyStructures[draft.noteID] = structure
-    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.paragraphAnchors)
+    reorderParagraphAnchorResolutions(noteID: draft.noteID, anchors: structure.fixtureParagraphAnchors)
     return NotesBodyParagraphFormatWriteResult(changed: changed, note: note, structure: structure)
   }
 
@@ -26540,7 +26968,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     guard var structure = bodyStructures[draft.noteID] else {
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
-    let evidence = inlineEvidence(
+    let evidence = try inlineEvidence(
       noteID: draft.noteID,
       paragraphIDSHA256: draft.paragraphIDSHA256,
       ordinal: draft.ordinal,
@@ -26550,31 +26978,35 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       colorSHA256: nil,
       structure: structure
     )
-    let existing = structure.inlineFormatRuns.contains {
+    let existing = try #require(structure.inlineFormatRuns).contains {
       $0.format == draft.format.rawValue
         && $0.textSHA256 == evidence.textSHA256
         && $0.textByteCount == evidence.textByteCount
         && $0.paragraphIDSHA256 == evidence.paragraphIDSHA256
+        && $0.utf16Location == evidence.utf16Location && $0.utf16Length == evidence.utf16Length
     }
     let changed = existing != draft.enabled
     bodyInlineFormatDrafts.append(draft)
     if changed {
       if draft.enabled {
-        structure.inlineFormatRuns.append(
+        let runOrdinal = (structure.inlineFormatRuns?.count ?? 0) + 1
+        structure.inlineFormatRuns?.append(
           NotesBodyInlineFormatRunRecord(
-            ordinal: structure.inlineFormatRuns.count + 1,
+            ordinal: runOrdinal,
             paragraphIDSHA256: evidence.paragraphIDSHA256,
             format: draft.format.rawValue,
             textByteCount: evidence.textByteCount,
-            textSHA256: evidence.textSHA256
+            textSHA256: evidence.textSHA256,
+            utf16Location: evidence.utf16Location, utf16Length: evidence.utf16Length
           ))
         incrementInlineFormat(draft.format.rawValue, in: &structure)
       } else {
-        structure.inlineFormatRuns.removeAll {
+        structure.inlineFormatRuns?.removeAll {
           $0.format == draft.format.rawValue
             && $0.textSHA256 == evidence.textSHA256
             && $0.textByteCount == evidence.textByteCount
             && $0.paragraphIDSHA256 == evidence.paragraphIDSHA256
+        && $0.utf16Location == evidence.utf16Location && $0.utf16Length == evidence.utf16Length
         }
         decrementInlineFormat(draft.format.rawValue, in: &structure)
       }
@@ -26614,7 +27046,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
     let fontSHA256 = testFontSHA256(family: draft.family, size: draft.pointSize)
-    let evidence = inlineEvidence(
+    let evidence = try inlineEvidence(
       noteID: draft.noteID,
       paragraphIDSHA256: draft.paragraphIDSHA256,
       ordinal: draft.ordinal,
@@ -26625,29 +27057,33 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       fontSHA256: fontSHA256,
       structure: structure
     )
-    let existing = structure.inlineFormatRuns.contains {
+    let existing = try #require(structure.inlineFormatRuns).contains {
       $0.format == "font"
         && $0.fontSHA256 == fontSHA256
         && $0.textSHA256 == evidence.textSHA256
         && $0.textByteCount == evidence.textByteCount
         && $0.paragraphIDSHA256 == evidence.paragraphIDSHA256
+        && $0.utf16Location == evidence.utf16Location && $0.utf16Length == evidence.utf16Length
     }
     bodyInlineFontDrafts.append(draft)
     if !existing {
-      structure.inlineFormatRuns.removeAll {
+      structure.inlineFormatRuns?.removeAll {
         $0.format == "font"
           && $0.textSHA256 == evidence.textSHA256
           && $0.textByteCount == evidence.textByteCount
           && $0.paragraphIDSHA256 == evidence.paragraphIDSHA256
+        && $0.utf16Location == evidence.utf16Location && $0.utf16Length == evidence.utf16Length
       }
-      structure.inlineFormatRuns.append(
+      let runOrdinal = (structure.inlineFormatRuns?.count ?? 0) + 1
+      structure.inlineFormatRuns?.append(
         NotesBodyInlineFormatRunRecord(
-          ordinal: structure.inlineFormatRuns.count + 1,
+          ordinal: runOrdinal,
           paragraphIDSHA256: evidence.paragraphIDSHA256,
           format: "font",
           fontSHA256: fontSHA256,
           textByteCount: evidence.textByteCount,
-          textSHA256: evidence.textSHA256
+          textSHA256: evidence.textSHA256,
+            utf16Location: evidence.utf16Location, utf16Length: evidence.utf16Length
         ))
       incrementInlineFormat("font", in: &structure)
       bodyStructures[draft.noteID] = structure
@@ -26661,11 +27097,11 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
   }
 
   private func checklistOrdinal(for draft: NotesBodyChecklistSetDraft, structure: NotesBodyStructureRecord) throws -> Int {
-    if let ordinal = draft.ordinal, ordinal > 0, ordinal <= structure.checklistItemCount {
+    if let ordinal = draft.ordinal, ordinal > 0, ordinal <= structure.fixtureChecklistItemCount {
       return ordinal
     }
     if let paragraphIDSHA256 = draft.paragraphIDSHA256 {
-      guard structure.paragraphAnchors.contains(where: { $0.idSHA256 == paragraphIDSHA256 && $0.isChecklist }),
+      guard structure.fixtureParagraphAnchors.contains(where: { $0.idSHA256 == paragraphIDSHA256 && $0.isChecklist }),
         let ordinal = bodyChecklistParagraphOrdinals[draft.noteID]?[paragraphIDSHA256]
       else {
         throw CLIError(
@@ -26688,10 +27124,10 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     structure: NotesBodyStructureRecord
   ) -> Int? {
     if let ordinal = draft.ordinal {
-      return structure.paragraphAnchors.firstIndex { $0.ordinal == ordinal }
+      return structure.fixtureParagraphAnchors.firstIndex { $0.ordinal == ordinal }
     }
     if let paragraphIDSHA256 = draft.paragraphIDSHA256 {
-      return structure.paragraphAnchors.firstIndex { $0.idSHA256 == paragraphIDSHA256 }
+      return structure.fixtureParagraphAnchors.firstIndex { $0.idSHA256 == paragraphIDSHA256 }
     }
     return nil
   }
@@ -26795,9 +27231,9 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
   ) -> [NotesBodyParagraphAnchorRecord] {
     switch targetKind {
     case .ordinaryList:
-      return structure.paragraphAnchors.filter { $0.isList && !$0.isChecklist }
+      return structure.fixtureParagraphAnchors.filter { $0.isList && !$0.isChecklist }
     case .checklist:
-      return structure.paragraphAnchors.filter { $0.isChecklist }
+      return structure.fixtureParagraphAnchors.filter { $0.isChecklist }
     }
   }
 
@@ -26820,9 +27256,9 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
   ) -> [NotesBodyParagraphAnchorRecord] {
     switch targetKind {
     case .ordinaryList:
-      return structure.paragraphAnchors.filter { $0.isList && !$0.isChecklist }
+      return structure.fixtureParagraphAnchors.filter { $0.isList && !$0.isChecklist }
     case .checklist:
-      return structure.paragraphAnchors.filter { $0.isChecklist }
+      return structure.fixtureParagraphAnchors.filter { $0.isChecklist }
     }
   }
 
@@ -26844,10 +27280,10 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     structure: NotesBodyStructureRecord
   ) -> Int? {
     if let ordinal = draft.ordinal {
-      return structure.paragraphAnchors.firstIndex { $0.ordinal == ordinal }
+      return structure.fixtureParagraphAnchors.firstIndex { $0.ordinal == ordinal }
     }
     if let paragraphIDSHA256 = draft.paragraphIDSHA256 {
-      return structure.paragraphAnchors.firstIndex { $0.idSHA256 == paragraphIDSHA256 }
+      return structure.fixtureParagraphAnchors.firstIndex { $0.idSHA256 == paragraphIDSHA256 }
     }
     return nil
   }
@@ -26871,29 +27307,29 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     structure: NotesBodyStructureRecord
   ) -> Int? {
     if let ordinal {
-      return structure.paragraphAnchors.firstIndex { $0.ordinal == ordinal }
+      return structure.fixtureParagraphAnchors.firstIndex { $0.ordinal == ordinal }
     }
     if let paragraphIDSHA256 {
-      return structure.paragraphAnchors.firstIndex { $0.idSHA256 == paragraphIDSHA256 }
+      return structure.fixtureParagraphAnchors.firstIndex { $0.idSHA256 == paragraphIDSHA256 }
     }
     return nil
   }
 
   private func incrementStyle(_ style: String, by amount: Int = 1, in structure: inout NotesBodyStructureRecord) {
-    if let index = structure.styleCounts.firstIndex(where: { $0.style == style }) {
-      structure.styleCounts[index].count += amount
+    if let index = structure.fixtureStyleCounts.firstIndex(where: { $0.style == style }) {
+      structure.fixtureStyleCounts[index].count += amount
     } else {
-      structure.styleCounts.append(NotesBodyStyleCount(style: style, count: amount))
+      structure.fixtureStyleCounts.append(NotesBodyStyleCount(style: style, count: amount))
     }
   }
 
   private func decrementStyle(_ style: String, in structure: inout NotesBodyStructureRecord) {
-    guard let index = structure.styleCounts.firstIndex(where: { $0.style == style }) else {
+    guard let index = structure.fixtureStyleCounts.firstIndex(where: { $0.style == style }) else {
       return
     }
-    structure.styleCounts[index].count -= 1
-    if structure.styleCounts[index].count <= 0 {
-      structure.styleCounts.remove(at: index)
+    structure.fixtureStyleCounts[index].count -= 1
+    if structure.fixtureStyleCounts[index].count <= 0 {
+      structure.fixtureStyleCounts.remove(at: index)
     }
   }
 
@@ -26907,17 +27343,24 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     colorSHA256: String?,
     fontSHA256: String? = nil,
     structure: NotesBodyStructureRecord
-  ) -> NotesBodyInlineMutationEvidence {
+  ) throws -> NotesBodyInlineMutationEvidence {
     let paragraphHash = paragraphIDSHA256
-      ?? ordinal.flatMap { ordinal in structure.paragraphAnchors.first { $0.ordinal == ordinal }?.idSHA256 }
+      ?? ordinal.flatMap { ordinal in structure.fixtureParagraphAnchors.first { $0.ordinal == ordinal }?.idSHA256 }
+    let body = try #require(notes[noteID]?.body)
+    let selection = try notesInlineTextSelection(in: body as NSString, text: text,
+      paragraphRange: NSRange(location: 0, length: (body as NSString).length),
+      occurrence: occurrence, operation: "fixture.inline.write")
+    let range = selection.range
     return NotesBodyInlineMutationEvidence(
       paragraphIDSHA256: paragraphHash,
       textByteCount: text.utf8.count,
       textSHA256: testSHA256Hex(text),
-      occurrence: occurrence ?? 1,
+      occurrence: selection.occurrence,
       role: role,
       colorSHA256: colorSHA256,
-      fontSHA256: fontSHA256
+      fontSHA256: fontSHA256,
+      utf16Location: inlineEvidenceLocationOverride ?? range.location, utf16Length: range.length,
+      richTextSHA256: testSHA256Hex(body)
     )
   }
 
@@ -26941,7 +27384,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       throw CLIError(code: .notFound, message: "Note body structure was not found.", details: ["id": draft.noteID])
     }
     let colorSHA256 = draft.color.map { testSHA256Hex($0) }
-    let evidence = inlineEvidence(
+    let evidence = try inlineEvidence(
       noteID: draft.noteID,
       paragraphIDSHA256: draft.paragraphIDSHA256,
       ordinal: draft.ordinal,
@@ -26955,11 +27398,12 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
     let evidenceTextByteCount = evidence.textByteCount
     let evidenceParagraphIDSHA256 = evidence.paragraphIDSHA256
     let expectedColorSHA256 = colorSHA256
-    let existing = structure.colorRuns.contains { run in
+    let existing = try #require(structure.colorRuns).contains { run in
       guard run.role == role else { return false }
       guard run.textSHA256 == evidenceTextSHA256 else { return false }
       guard run.textByteCount == evidenceTextByteCount else { return false }
       guard run.paragraphIDSHA256 == evidenceParagraphIDSHA256 else { return false }
+      guard run.utf16Location == evidence.utf16Location && run.utf16Length == evidence.utf16Length else { return false }
       guard let expectedColorSHA256 else {
         return true
       }
@@ -26973,21 +27417,24 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       bodyInlineHighlightColorDrafts.append(draft)
     }
     if changed {
-      structure.colorRuns.removeAll {
+      structure.colorRuns?.removeAll {
         $0.role == role
           && $0.textSHA256 == evidence.textSHA256
           && $0.textByteCount == evidence.textByteCount
           && $0.paragraphIDSHA256 == evidence.paragraphIDSHA256
+          && $0.utf16Location == evidence.utf16Location && $0.utf16Length == evidence.utf16Length
       }
       if let colorSHA256 {
-        structure.colorRuns.append(
+        let runOrdinal = (structure.colorRuns?.count ?? 0) + 1
+        structure.colorRuns?.append(
           NotesBodyInlineColorRunRecord(
-            ordinal: structure.colorRuns.count + 1,
+            ordinal: runOrdinal,
             paragraphIDSHA256: evidence.paragraphIDSHA256,
             role: role,
             colorSHA256: colorSHA256,
             textByteCount: evidence.textByteCount,
-            textSHA256: evidence.textSHA256
+            textSHA256: evidence.textSHA256,
+            utf16Location: evidence.utf16Location, utf16Length: evidence.utf16Length
           ))
         incrementInlineColor(role: role, colorSHA256: colorSHA256, in: &structure)
       } else {
@@ -26999,62 +27446,62 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
   }
 
   private func incrementInlineFormat(_ format: String, in structure: inout NotesBodyStructureRecord) {
-    structure.inlineFormatRunCount += 1
+    structure.inlineFormatRunCount = structure.inlineFormatRunCount.map { $0 + 1 }
     switch format {
-    case "bold": structure.boldRunCount += 1
-    case "italic": structure.italicRunCount += 1
-    case "underline": structure.underlineRunCount += 1
-    case "strikethrough": structure.strikethroughRunCount += 1
-    case "font": structure.fontRunCount += 1
+    case "bold": structure.boldRunCount = structure.boldRunCount.map { $0 + 1 }
+    case "italic": structure.italicRunCount = structure.italicRunCount.map { $0 + 1 }
+    case "underline": structure.underlineRunCount = structure.underlineRunCount.map { $0 + 1 }
+    case "strikethrough": structure.strikethroughRunCount = structure.strikethroughRunCount.map { $0 + 1 }
+    case "font": structure.fontRunCount = structure.fontRunCount.map { $0 + 1 }
     default: break
     }
-    if let index = structure.inlineFormatCounts.firstIndex(where: { $0.format == format }) {
-      structure.inlineFormatCounts[index].count += 1
+    if let index = structure.inlineFormatCounts?.firstIndex(where: { $0.format == format }) {
+      structure.inlineFormatCounts?[index].count += 1
     } else {
-      structure.inlineFormatCounts.append(NotesBodyInlineFormatCount(format: format, count: 1))
+      structure.inlineFormatCounts?.append(NotesBodyInlineFormatCount(format: format, count: 1))
     }
   }
 
   private func decrementInlineFormat(_ format: String, in structure: inout NotesBodyStructureRecord) {
-    structure.inlineFormatRunCount = max(0, structure.inlineFormatRunCount - 1)
+    structure.inlineFormatRunCount = structure.inlineFormatRunCount.map { max(0, $0 - 1) }
     switch format {
-    case "bold": structure.boldRunCount = max(0, structure.boldRunCount - 1)
-    case "italic": structure.italicRunCount = max(0, structure.italicRunCount - 1)
-    case "underline": structure.underlineRunCount = max(0, structure.underlineRunCount - 1)
-    case "strikethrough": structure.strikethroughRunCount = max(0, structure.strikethroughRunCount - 1)
-    case "font": structure.fontRunCount = max(0, structure.fontRunCount - 1)
+    case "bold": structure.boldRunCount = structure.boldRunCount.map { max(0, $0 - 1) }
+    case "italic": structure.italicRunCount = structure.italicRunCount.map { max(0, $0 - 1) }
+    case "underline": structure.underlineRunCount = structure.underlineRunCount.map { max(0, $0 - 1) }
+    case "strikethrough": structure.strikethroughRunCount = structure.strikethroughRunCount.map { max(0, $0 - 1) }
+    case "font": structure.fontRunCount = structure.fontRunCount.map { max(0, $0 - 1) }
     default: break
     }
-    guard let index = structure.inlineFormatCounts.firstIndex(where: { $0.format == format }) else {
+    guard let index = structure.inlineFormatCounts?.firstIndex(where: { $0.format == format }) else {
       return
     }
-    structure.inlineFormatCounts[index].count -= 1
-    if structure.inlineFormatCounts[index].count <= 0 {
-      structure.inlineFormatCounts.remove(at: index)
+    structure.inlineFormatCounts?[index].count -= 1
+    if (structure.inlineFormatCounts?[index].count ?? 0) <= 0 {
+      structure.inlineFormatCounts?.remove(at: index)
     }
   }
 
   private func incrementInlineColor(role: String, colorSHA256: String, in structure: inout NotesBodyStructureRecord) {
     if role == "foreground" {
-      structure.foregroundColorRunCount += 1
+      structure.foregroundColorRunCount = structure.foregroundColorRunCount.map { $0 + 1 }
       incrementInlineFormat("foreground_color", in: &structure)
     } else if role == "highlight" {
-      structure.highlightRunCount += 1
+      structure.highlightRunCount = structure.highlightRunCount.map { $0 + 1 }
       incrementInlineFormat("highlight", in: &structure)
     }
-    if let index = structure.colorHashCounts.firstIndex(where: { $0.role == role && $0.colorSHA256 == colorSHA256 }) {
-      structure.colorHashCounts[index].count += 1
+    if let index = structure.colorHashCounts?.firstIndex(where: { $0.role == role && $0.colorSHA256 == colorSHA256 }) {
+      structure.colorHashCounts?[index].count += 1
     } else {
-      structure.colorHashCounts.append(NotesBodyColorHashCount(role: role, colorSHA256: colorSHA256, count: 1))
+      structure.colorHashCounts?.append(NotesBodyColorHashCount(role: role, colorSHA256: colorSHA256, count: 1))
     }
   }
 
   private func decrementInlineColor(role: String, in structure: inout NotesBodyStructureRecord) {
     if role == "foreground" {
-      structure.foregroundColorRunCount = max(0, structure.foregroundColorRunCount - 1)
+      structure.foregroundColorRunCount = structure.foregroundColorRunCount.map { max(0, $0 - 1) }
       decrementInlineFormat("foreground_color", in: &structure)
     } else if role == "highlight" {
-      structure.highlightRunCount = max(0, structure.highlightRunCount - 1)
+      structure.highlightRunCount = structure.highlightRunCount.map { max(0, $0 - 1) }
       decrementInlineFormat("highlight", in: &structure)
     }
   }
@@ -27062,11 +27509,11 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
   private func syncChecklistAnchorStates(noteID: String, structure: inout NotesBodyStructureRecord) {
     let states = bodyChecklistStates[noteID] ?? [:]
     let ordinalMap = bodyChecklistParagraphOrdinals[noteID] ?? [:]
-    for index in structure.paragraphAnchors.indices where structure.paragraphAnchors[index].isChecklist {
-      let anchorID = structure.paragraphAnchors[index].idSHA256
+    for index in structure.fixtureParagraphAnchors.indices where structure.fixtureParagraphAnchors[index].isChecklist {
+      let anchorID = structure.fixtureParagraphAnchors[index].idSHA256
       let checklistOrdinal = ordinalMap[anchorID]
-      structure.paragraphAnchors[index].checklistDone = checklistOrdinal.flatMap { states[$0] }
-        ?? structure.paragraphAnchors[index].checklistDone
+      structure.fixtureParagraphAnchors[index].checklistDone = checklistOrdinal.flatMap { states[$0] }
+        ?? structure.fixtureParagraphAnchors[index].checklistDone
         ?? false
     }
   }
@@ -27938,9 +28385,11 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
   }
 
   func deleteNote(id: String) throws -> Bool {
-    guard notes.removeValue(forKey: id) != nil else {
+    guard var note = notes.removeValue(forKey: id) else {
       throw CLIError(code: .notFound, message: "Note was not found.", details: ["id": id])
     }
+    note.folderName = "Recently Deleted"
+    restorableNotes[id] = note
     deletedIDs.append(id)
     return true
   }
@@ -28120,13 +28569,36 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       paragraphStyleRunCount: styleCounts.reduce(0) { $0 + $1.count },
       headingCount: summary.headingCount,
       listItemCount: summary.listItemCount,
+      checklistItemCount: 0,
+      checklistDoneCount: 0,
+      checklistOpenCount: 0,
       blockQuoteCount: summary.blockQuoteLineCount,
+      tableCount: 0,
+      collapsibleSectionCount: 0,
+      collapsedSectionCount: 0,
+      inlineAttachmentCount: 0,
       linkCount: summary.linkReferenceCount + summary.imageReferenceCount,
+      attachmentCount: 0,
+      mathAttachmentCount: 0,
       inlineFormatRunCount: summary.inlineCodeSpanCount + summary.emphasizedSpanCount,
       boldRunCount: summary.emphasizedSpanCount,
+      italicRunCount: 0,
+      underlineRunCount: 0,
+      strikethroughRunCount: 0,
+      fontRunCount: 0,
+      foregroundColorRunCount: 0,
+      highlightRunCount: 0,
+      hasChecklist: false,
+      hasChecklistInProgress: false,
+      isMathNote: false,
       styleCounts: styleCounts,
+      attachmentKindCounts: [],
       inlineFormatCounts: summary.emphasizedSpanCount > 0
         ? [NotesBodyInlineFormatCount(format: "bold", count: summary.emphasizedSpanCount)] : [],
+      colorHashCounts: [],
+      inlineFormatRuns: [],
+      colorRuns: [],
+      mentionUserIDSHA256s: [],
       paragraphAnchors: [
         NotesBodyParagraphAnchorRecord(
           ordinal: 1,
@@ -28513,6 +28985,7 @@ private final class TestMailBackend: MailReading, MailDrafting, MailSending, Mai
   private(set) var listMessageQueries: [MailMessageQuery] = []
   var createdDrafts: [MailDraftRequest] = []
   var sentMessages: [MailDraftRequest] = []
+  var submissionAccepted = true
   var movedMessages: [(MailMessageDetail, String)] = []
   var archivedMessages: [(MailMessageDetail, String)] = []
   var deletedMessages: [MailMessageDetail] = []
@@ -28624,6 +29097,7 @@ private final class TestMailBackend: MailReading, MailDrafting, MailSending, Mai
       cc: draft.cc,
       bcc: draft.bcc,
       subject: draft.subject,
+      submitted: submissionAccepted,
       bodyIncluded: false
     )
   }
@@ -28762,4 +29236,102 @@ private func testFontSHA256(family: String, size: Double) -> String {
 
 private enum NotesMailCommandTestError: Error {
   case notObject
+}
+
+private extension NotesBodyStructureRecord {
+  // Mutable fixture state is fully known; unavailable readback is projected separately.
+  func requiredFixtureValue<Value>(_ value: Value?, field: String) -> Value {
+    guard let value else { preconditionFailure("Known Notes fixture is missing \(field).") }
+    return value
+  }
+
+  var fixtureParagraphStyleRunCount: Int {
+    get { requiredFixtureValue(paragraphStyleRunCount, field: "paragraphStyleRunCount") }
+    set { paragraphStyleRunCount = newValue }
+  }
+
+  var fixtureHeadingCount: Int {
+    get { requiredFixtureValue(headingCount, field: "headingCount") }
+    set { headingCount = newValue }
+  }
+
+  var fixtureListItemCount: Int {
+    get { requiredFixtureValue(listItemCount, field: "listItemCount") }
+    set { listItemCount = newValue }
+  }
+
+  var fixtureChecklistItemCount: Int {
+    get { requiredFixtureValue(checklistItemCount, field: "checklistItemCount") }
+    set { checklistItemCount = newValue }
+  }
+
+  var fixtureChecklistDoneCount: Int {
+    get { requiredFixtureValue(checklistDoneCount, field: "checklistDoneCount") }
+    set { checklistDoneCount = newValue }
+  }
+
+  var fixtureChecklistOpenCount: Int {
+    get { requiredFixtureValue(checklistOpenCount, field: "checklistOpenCount") }
+    set { checklistOpenCount = newValue }
+  }
+
+  var fixtureBlockQuoteCount: Int {
+    get { requiredFixtureValue(blockQuoteCount, field: "blockQuoteCount") }
+    set { blockQuoteCount = newValue }
+  }
+
+  var fixtureTableCount: Int {
+    get { requiredFixtureValue(tableCount, field: "tableCount") }
+    set { tableCount = newValue }
+  }
+
+  var fixtureCollapsibleSectionCount: Int {
+    get { requiredFixtureValue(collapsibleSectionCount, field: "collapsibleSectionCount") }
+    set { collapsibleSectionCount = newValue }
+  }
+
+  var fixtureCollapsedSectionCount: Int {
+    get { requiredFixtureValue(collapsedSectionCount, field: "collapsedSectionCount") }
+    set { collapsedSectionCount = newValue }
+  }
+
+  var fixtureInlineAttachmentCount: Int {
+    get { requiredFixtureValue(inlineAttachmentCount, field: "inlineAttachmentCount") }
+    set { inlineAttachmentCount = newValue }
+  }
+
+  var fixtureLinkCount: Int {
+    get { requiredFixtureValue(linkCount, field: "linkCount") }
+    set { linkCount = newValue }
+  }
+
+  var fixtureAttachmentCount: Int {
+    get { requiredFixtureValue(attachmentCount, field: "attachmentCount") }
+    set { attachmentCount = newValue }
+  }
+
+  var fixtureMathAttachmentCount: Int {
+    get { requiredFixtureValue(mathAttachmentCount, field: "mathAttachmentCount") }
+    set { mathAttachmentCount = newValue }
+  }
+
+  var fixtureStyleCounts: [NotesBodyStyleCount] {
+    get { requiredFixtureValue(styleCounts, field: "styleCounts") }
+    set { styleCounts = newValue }
+  }
+
+  var fixtureAttachmentKindCounts: [NotesBodyAttachmentKindCount] {
+    get { requiredFixtureValue(attachmentKindCounts, field: "attachmentKindCounts") }
+    set { attachmentKindCounts = newValue }
+  }
+
+  var fixtureMentionUserIDSHA256s: [String] {
+    get { requiredFixtureValue(mentionUserIDSHA256s, field: "mentionUserIDSHA256s") }
+    set { mentionUserIDSHA256s = newValue }
+  }
+
+  var fixtureParagraphAnchors: [NotesBodyParagraphAnchorRecord] {
+    get { requiredFixtureValue(paragraphAnchors, field: "paragraphAnchors") }
+    set { paragraphAnchors = newValue }
+  }
 }

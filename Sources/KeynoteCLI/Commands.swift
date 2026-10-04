@@ -4,14 +4,14 @@ import Utility
 public struct KeynoteTarget: ParsableCommand {
   public static let targetName = "keynote"
   public static let targetStatus =
-    "Implemented: Keynote presentation list/search/read metadata, QuickLook-backed slides list, slide image export, open, QuickLook PDF/thumbnail export, and package export paths; richer app-native export/write remain gated."
+    "Implemented: Keynote file/package metadata, native slide text/order/skipped/presenter notes, native PDF export, cached preview list/export, presentation open, and package copy; rich content and presentation writes remain gated."
   public static let isImplemented = true
 
   public static let configuration = CommandConfiguration(
     commandName: "keynote",
     abstract: "Keynote presentation and slide workflows.",
     version: CLIVersion.current,
-    subcommands: [Presentations.self, Slides.self, Doctor.self]
+    subcommands: [Presentations.self, Slides.self, Previews.self, Doctor.self]
   )
 
   @OptionGroup public var shared: CLISharedOptions
@@ -78,7 +78,7 @@ public struct KeynoteTarget: ParsableCommand {
   public struct Slides: ParsableCommand {
     public static let configuration = CommandConfiguration(
       commandName: "slides",
-      subcommands: [List.self, Export.self]
+      subcommands: [List.self]
     )
     public init() {}
 
@@ -89,10 +89,27 @@ public struct KeynoteTarget: ParsableCommand {
       @OptionGroup public var targetOptions: KeynoteTargetOptions
       public init() {}
     }
+  }
+
+  public struct Previews: ParsableCommand {
+    public static let configuration = CommandConfiguration(
+      commandName: "previews",
+      abstract: "Inspect or copy cached QuickLook image previews.",
+      subcommands: [List.self, Export.self]
+    )
+    public init() {}
+
+    public struct List: Leaf {
+      public static let configuration = CommandConfiguration(commandName: "list")
+      public static let positionals = ["previews", "list"]
+      @OptionGroup public var shared: CLISharedOptions
+      @OptionGroup public var targetOptions: KeynoteTargetOptions
+      public init() {}
+    }
 
     public struct Export: Leaf {
       public static let configuration = CommandConfiguration(commandName: "export")
-      public static let positionals = ["slides", "export"]
+      public static let positionals = ["previews", "export"]
       @OptionGroup public var shared: CLISharedOptions
       @OptionGroup public var targetOptions: KeynoteTargetOptions
       public init() {}
@@ -195,7 +212,7 @@ public func keynoteDoctorChecks() -> [CLIDoctorCheck] {
       name: "keynote_presentation_backend",
       status: .ok,
       message:
-        "Path-bounded Keynote presentation metadata, slide list, slide image export, QuickLook PDF/thumbnail export, and package export commands are implemented."
+        "Path-bounded presentation metadata and cached previews are available; native slide reads and PDF export require Keynote Automation permission."
     ),
   ]
 }

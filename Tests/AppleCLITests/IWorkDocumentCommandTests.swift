@@ -400,7 +400,10 @@ struct IWorkDocumentCommandTests {
     #expect(object["ok"] as? Bool == true)
     #expect(presentation?["name"] as? String == "Deck.key")
     #expect(slides?.map { $0["index"] as? Int } == [1, 2])
-    #expect(slides?.first?["previewPath"] as? String == "/tmp/Deck.key/QuickLook/Slide 1.jpg")
+    #expect(slides?.first?["title"] as? String == "Opening")
+    #expect(slides?.last?["skipped"] as? Bool == true)
+    #expect(slides?.first?["identityKind"] as? String == "snapshot_position")
+    #expect(data?["totalSlideCount"] as? Int == 2)
   }
 
   @Test func keynotePresentationsSearchRequiresNonTrivialQuery() throws {
@@ -451,11 +454,11 @@ struct IWorkDocumentCommandTests {
     }
   }
 
-  @Test func keynoteSlidesExportRequiresAllowArtifactActionBeforeLookup() throws {
+  @Test func keynotePreviewsExportRequiresAllowArtifactActionBeforeLookup() throws {
     let backend = FakeKeynoteBackend()
     let command = KeynoteCommand(backend: backend)
     let options = try CLIOptionsFixture.parse([
-      "slides",
+      "previews",
       "export",
       "--path",
       "/tmp/Missing.key",
@@ -468,17 +471,17 @@ struct IWorkDocumentCommandTests {
 
     do {
       _ = try command.run(options: options)
-      Issue.record("Expected Keynote slides export execution to throw.")
+      Issue.record("Expected Keynote previews export execution to throw.")
     } catch let error as CLIError {
       #expect(error.code == .unsafeMutationRefused)
-      #expect(backend.listSlidesPaths.isEmpty)
+      #expect(backend.listPreviewsPaths.isEmpty)
       #expect(backend.readPresentationPaths.isEmpty)
     } catch {
       Issue.record("Expected CLIError, got \(error).")
     }
   }
 
-  @Test func keynoteSlidesExportDryRunAndAllowFlagExecutesImages() throws {
+  @Test func keynotePreviewsExportDryRunAndAllowFlagExecutesImages() throws {
     let root = try temporaryIWorkRoot(documentName: "Deck.key")
     defer { try? FileManager.default.removeItem(at: root) }
     let presentation = root.appendingPathComponent("Deck.key", isDirectory: true)
@@ -486,7 +489,7 @@ struct IWorkDocumentCommandTests {
     let destination = root.appendingPathComponent("DeckSlides")
     let command = KeynoteCommand(backend: FileManagerKeynoteBackend())
     let dryRunOptions = try CLIOptionsFixture.parse([
-      "slides",
+      "previews",
       "export",
       "--path",
       presentation.path,
@@ -503,11 +506,11 @@ struct IWorkDocumentCommandTests {
     let data = dryRunObject["data"] as? [String: Any]
     let summary = data?["normalizedArguments"] as? [String: Any]
 
-    #expect(summary?["slides"] as? String == "2")
+    #expect(summary?["previews"] as? String == "2")
     #expect(FileManager.default.fileExists(atPath: destination.path) == false)
 
     let executeOptions = try CLIOptionsFixture.parse([
-      "slides",
+      "previews",
       "export",
       "--path",
       presentation.path,
@@ -523,17 +526,17 @@ struct IWorkDocumentCommandTests {
     let executedData = executedObject["data"] as? [String: Any]
     let files = executedData?["files"] as? [[String: Any]]
 
-    #expect(executedData?["exportedSlideCount"] as? Int == 2)
+    #expect(executedData?["exportedPreviewCount"] as? Int == 2)
     #expect(files?.compactMap { $0["index"] as? Int } == [1, 2])
     #expect(
-      try Data(contentsOf: destination.appendingPathComponent("slide-001.jpg"))
+      try Data(contentsOf: destination.appendingPathComponent("preview-001.jpg"))
         == Data("slide-1".utf8))
     #expect(
-      try Data(contentsOf: destination.appendingPathComponent("slide-002.png"))
+      try Data(contentsOf: destination.appendingPathComponent("preview-002.png"))
         == Data("slide-2".utf8))
   }
 
-  @Test func keynoteSlidesExportAllowExecutionUsesCurrentDestination() throws {
+  @Test func keynotePreviewsExportAllowExecutionUsesCurrentDestination() throws {
     let root = try temporaryIWorkRoot(documentName: "Deck.key")
     defer { try? FileManager.default.removeItem(at: root) }
     let presentation = root.appendingPathComponent("Deck.key", isDirectory: true)
@@ -542,7 +545,7 @@ struct IWorkDocumentCommandTests {
     let changedDestination = root.appendingPathComponent("OtherSlides")
     let command = KeynoteCommand(backend: FileManagerKeynoteBackend())
     let dryRunOptions = try CLIOptionsFixture.parse([
-      "slides",
+      "previews",
       "export",
       "--path",
       presentation.path,
@@ -558,7 +561,7 @@ struct IWorkDocumentCommandTests {
     let dryRunObject = try jsonObject(dryRun.stdout ?? "")
     _ = dryRunObject["data"] as? [String: Any]
     let executeOptions = try CLIOptionsFixture.parse([
-      "slides",
+      "previews",
       "export",
       "--path",
       presentation.path,
@@ -574,11 +577,11 @@ struct IWorkDocumentCommandTests {
 
     #expect(FileManager.default.fileExists(atPath: destination.path) == false)
     #expect(
-      try Data(contentsOf: changedDestination.appendingPathComponent("slide-001.jpg"))
+      try Data(contentsOf: changedDestination.appendingPathComponent("preview-001.jpg"))
         == Data("slide-1".utf8))
   }
 
-  @Test func keynoteSlidesExportAllowExecutionUsesCurrentSlideArtifacts() throws {
+  @Test func keynotePreviewsExportAllowExecutionUsesCurrentSlideArtifacts() throws {
     let root = try temporaryIWorkRoot(documentName: "Deck.key")
     defer { try? FileManager.default.removeItem(at: root) }
     let presentation = root.appendingPathComponent("Deck.key", isDirectory: true)
@@ -586,7 +589,7 @@ struct IWorkDocumentCommandTests {
     let destination = root.appendingPathComponent("DeckSlides")
     let command = KeynoteCommand(backend: FileManagerKeynoteBackend())
     let dryRunOptions = try CLIOptionsFixture.parse([
-      "slides",
+      "previews",
       "export",
       "--path",
       presentation.path,
@@ -603,7 +606,7 @@ struct IWorkDocumentCommandTests {
     _ = dryRunObject["data"] as? [String: Any]
     try Data("changed-slide-1".utf8).write(to: quickLook.appendingPathComponent("Slide 1.jpg"))
     let executeOptions = try CLIOptionsFixture.parse([
-      "slides",
+      "previews",
       "export",
       "--path",
       presentation.path,
@@ -618,7 +621,7 @@ struct IWorkDocumentCommandTests {
     _ = try #require(try command.run(options: executeOptions))
 
     #expect(
-      try Data(contentsOf: destination.appendingPathComponent("slide-001.jpg"))
+      try Data(contentsOf: destination.appendingPathComponent("preview-001.jpg"))
         == Data("changed-slide-1".utf8))
   }
 
@@ -856,7 +859,7 @@ struct IWorkDocumentCommandTests {
     #expect(read.quickLookPreviewPath?.hasSuffix("Preview.pdf") == true)
   }
 
-  @Test func fileManagerKeynoteBackendListsQuickLookSlidePreviews() throws {
+  @Test func fileManagerKeynoteBackendListsQuickLookImagePreviews() throws {
     let root = try temporaryIWorkRoot(documentName: "Deck.key")
     defer { try? FileManager.default.removeItem(at: root) }
 
@@ -876,12 +879,12 @@ struct IWorkDocumentCommandTests {
     )
 
     let backend = FileManagerKeynoteBackend()
-    let response = try #require(try backend.listSlides(path: presentation.path, limit: 10))
+    let response = try #require(try backend.listPreviews(path: presentation.path, limit: 10))
 
     #expect(response.presentation.name == "Deck.key")
-    #expect(response.slides.map(\.index) == [1, 2])
-    #expect(response.slides.first?.previewPath?.hasSuffix("Slide 1.jpg") == true)
-    #expect(response.slides.last?.previewPath?.hasSuffix("Slide 2.png") == true)
+    #expect(response.previews.map(\.index) == [1, 2])
+    #expect(response.previews.first?.previewPath.hasSuffix("Slide 1.jpg") == true)
+    #expect(response.previews.last?.previewPath.hasSuffix("Slide 2.png") == true)
   }
 
   @Test func fileManagerKeynoteBackendExportsQuickLookPreviewPDF() throws {
@@ -892,7 +895,7 @@ struct IWorkDocumentCommandTests {
     let destination = root.appendingPathComponent("Deck.pdf")
     let backend = FileManagerKeynoteBackend()
     let result = try backend.exportPresentation(
-      path: presentation.path, format: "pdf", to: destination.path)
+      path: presentation.path, format: "preview-pdf", to: destination.path)
 
     #expect(result.destinationPath == destination.path)
     #expect(try Data(contentsOf: destination) == Data("preview".utf8))
@@ -957,6 +960,7 @@ private final class FakePagesActions: PagesExternalActioning, @unchecked Sendabl
 private final class FakeKeynoteBackend: KeynoteReading, KeynoteExporting, @unchecked Sendable {
   var readPresentationPaths: [String] = []
   var listSlidesPaths: [String] = []
+  var listPreviewsPaths: [String] = []
 
   func listPresentations(path: String, limit: Int) throws -> [KeynotePresentationRecord] {
     presentations().prefix(limit).map { $0 }
@@ -984,17 +988,28 @@ private final class FakeKeynoteBackend: KeynoteReading, KeynoteExporting, @unche
       KeynoteSlideRecord(
         presentationPath: presentation.path,
         index: 1,
-        id: "slide-1",
-        previewPath: "/tmp/Deck.key/QuickLook/Slide 1.jpg"
+        id: "snapshot:fixture-snapshot:1",
+        skipped: false, titleShowing: true, bodyShowing: true, title: "Opening", body: "Body",
+        presenterNotes: "First notes"
       ),
       KeynoteSlideRecord(
         presentationPath: presentation.path,
         index: 2,
-        id: "slide-2",
-        previewPath: "/tmp/Deck.key/QuickLook/Slide 2.jpg"
+        id: "snapshot:fixture-snapshot:2",
+        skipped: true, titleShowing: true, bodyShowing: false, title: "Closing",
+        presenterNotes: "Last notes"
       ),
     ].prefix(limit)
-    return KeynoteSlidesResponse(presentation: presentation, slides: Array(slides))
+    return KeynoteSlidesResponse(
+      presentation: presentation, slides: Array(slides), documentID: "document-1",
+      snapshotID: "fixture-snapshot", totalSlideCount: 2, truncated: slides.count < 2,
+      readSource: "live_document")
+  }
+
+  func listPreviews(path: String, limit: Int) throws -> KeynotePreviewsResponse? {
+    listPreviewsPaths.append(path)
+    guard let presentation = try readPresentation(path: path) else { return nil }
+    return KeynotePreviewsResponse(presentation: presentation, previews: [])
   }
 
   func exportPresentation(path: String, format: String, to destinationPath: String) throws

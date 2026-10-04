@@ -168,24 +168,17 @@ extension RemindersCommand {
   }
 
   func reminderSmartListEvidenceHash(_ list: ReminderListRecord) throws -> String {
-    let debug = try sqliteReader.debugList(list: list)
-    let payload = debug.privateStoreMatches
-      .sorted {
-        smartListPrivateEvidenceScopeDigest($0) < smartListPrivateEvidenceScopeDigest($1)
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    if list.listType == "smart" {
+      guard let snapshot = try readReminderSmartListSnapshot(id: list.id),
+        snapshot.list.sourceId == list.sourceId else {
+        throw CLIError(code: .backendUnavailable, message: "Smart List identity could not be verified.",
+          details: ["list_id": list.id])
       }
-      .map(smartListPrivateEvidenceScopeDigest)
-      .joined(separator: "\n")
-    return sha256Hex("\(debug.privateStoreMatches.count)|\(payload)")
-  }
-
-  func smartListPrivateEvidenceScopeDigest(_ list: RemindersPrivateListDebugRecord) -> String {
-    [
-      list.ckIdentifier ?? "",
-      list.externalIdentifier ?? "",
-      list.title ?? "",
-      list.listType ?? "",
-      list.smartListType ?? "",
-      list.filterDataLengthBytes.map(String.init) ?? "",
-    ].joined(separator: "\u{1F}")
+      let payload = String(decoding: try encoder.encode(snapshot.list), as: UTF8.self)
+      return sha256Hex(payload + "|" + (snapshot.filterData?.base64EncodedString() ?? ""))
+    }
+    return sha256Hex(String(decoding: try encoder.encode(list), as: UTF8.self))
   }
 }

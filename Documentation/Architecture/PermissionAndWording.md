@@ -18,8 +18,9 @@ Each target owns the permission semantics for its backend:
 - Automation-backed targets own their app automation failures and guidance.
 - File and database backed targets own Full Disk Access diagnostics for the
   exact resource they try to read.
-- `notifications` owns the local notification surface and must not claim a
-  reliable global notification-permission probe from the unbundled SwiftPM CLI.
+- `notifications` owns its application identity, native per-app settings and
+  explicit authorization request. Submission results do not establish system
+  presentation or global notification state.
 - `tcc` owns TCC service catalog lookup, current-process identity diagnostics,
   read-only TCC database inspection, official reset, explicit public
   preflight/request helpers, and gated private database/framework diagnostics.

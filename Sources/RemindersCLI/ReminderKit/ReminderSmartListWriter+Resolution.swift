@@ -6,33 +6,37 @@ import Utility
 extension ReminderSmartListWriter {
   static func fetchSmartList(
     listID: String,
-    operation: String
+    operation: String,
+    store existingStore: REMStore? = nil
   ) throws -> (store: REMStore, smartList: REMSmartList) {
-    let store = try reminderKitStore(operation: operation, details: ["list_id": listID])
+    let store = try existingStore ?? reminderKitStore(operation: operation, details: ["list_id": listID])
+    guard let objectID = try coreREMObjectID(entity: "REMCDSmartList", identifier: listID) else {
+      throw CLIError(code: .validationError, message: "A valid custom Smart List ID is required.")
+    }
+    try ReminderKitRuntimeMethod(owner: "REMStore",
+      selector: "fetchCustomSmartListWithObjectID:error:", returnType: "@", argumentTypes: ["@", "^@"]
+    ).require(operation: operation, receiver: store)
     var fetchError: AnyObject?
-    if let objectID = remObjectID(entity: "REMCDSmartList", identifier: listID),
-      let smartList = store.fetchCustomSmartList(withObjectID: objectID, error: &fetchError)
-        as? REMSmartList
-    {
-      return (store, smartList)
+    let fetched = store.fetchCustomSmartList(withObjectID: objectID, error: &fetchError)
+    if let error = fetchError as? NSError, fetched == nil,
+      error.domain == "com.apple.reminderkit", error.code == -3000 {
+      throw CLIError(code: .notFound, message: "Custom Smart List was not found.", details: ["list_id": listID])
     }
-
-    if let dataView = REMSmartListsDataView(store: store),
-      let smartLists = dataView.fetchCustomSmartListsWithError(&fetchError) as? [REMSmartList],
-      let smartList = smartLists.first(where: { smartListMatches($0, listID: listID) })
-    {
-      return (store, smartList)
+    guard fetchError == nil else {
+      throw reminderKitOperationFailed(capability: capability, operation: operation,
+        message: "ReminderKit could not read the custom Smart List.",
+        details: ["list_id": listID, "fetch_error": reminderKitErrorSummary(fetchError)])
     }
-
-    throw reminderKitOperationFailed(
-      capability: capability,
-      operation: operation,
-      message: "ReminderKit could not fetch the custom Smart List.",
-      details: [
-        "list_id": listID,
-        "fetch_error": reminderKitErrorSummary(fetchError),
-      ]
-    )
+    guard let fetched else {
+      throw CLIError(code: .notFound, message: "Custom Smart List was not found.", details: ["list_id": listID])
+    }
+    guard let smartList = fetched as? REMSmartList,
+      coreObjectIDsMatch(try reminderSmartListStorage(smartList, operation: operation).objectID, objectID)
+    else {
+      throw reminderKitOperationFailed(capability: capability, operation: operation,
+        message: "ReminderKit returned an unexpected Smart List identity.", details: ["list_id": listID])
+    }
+    return (store, smartList)
   }
 
   static func fetchList(
@@ -41,21 +45,16 @@ extension ReminderSmartListWriter {
   ) throws -> (store: REMStore, list: REMList) {
     let store = try reminderKitStore(operation: operation, details: ["list_id": listID])
     var fetchError: AnyObject?
-    if let objectID = remObjectID(entity: "REMCDList", identifier: listID),
+    if let objectID = try coreREMObjectID(entity: "REMCDList", identifier: listID),
       let list = store.fetchList(withObjectID: objectID, error: &fetchError) as? REMList
     {
-      return (store, list)
-    }
-
-    let lists = try reminderKitFetchLists(store: store, operation: operation)
-    if let list = lists.first(where: { listMatches($0, listID: listID) }) {
       return (store, list)
     }
 
     throw reminderKitOperationFailed(
       capability: capability,
       operation: operation,
-      message: "ReminderKit could not fetch the list by title or ReminderKit identifier.",
+      message: "ReminderKit could not fetch the list by its ReminderKit identifier.",
       details: [
         "list_id": listID,
         "fetch_error": reminderKitErrorSummary(fetchError),
@@ -123,8 +122,11 @@ extension ReminderSmartListWriter {
     details: [String: String]
   ) throws -> [REMReminder] {
     var fetchError: AnyObject?
-    let reminders = source.fetchRemindersAndSubtasksWithError(&fetchError) as? [REMReminder] ?? []
-    guard fetchError == nil else {
+    try ReminderKitRuntimeMethod(owner: "REMList", selector: "fetchRemindersAndSubtasksWithError:",
+      returnType: "@", argumentTypes: ["^@"]
+    ).require(operation: "convert", receiver: source)
+    guard let reminders = source.fetchRemindersAndSubtasksWithError(&fetchError) as? [REMReminder],
+      fetchError == nil else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: "convert",

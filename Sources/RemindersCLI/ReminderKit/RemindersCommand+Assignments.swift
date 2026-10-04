@@ -137,7 +137,7 @@ enum ReminderAssignmentWriter {
     operation: String
   ) throws -> (REMSaveRequest, REMReminderChangeItem) {
     let resolved = try fetchReminder(reminderID: reminderID, operation: operation)
-    guard let saveRequest = REMSaveRequest(store: resolved.store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: resolved.store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -161,7 +161,7 @@ enum ReminderAssignmentWriter {
     reminderID: String,
     operation: String
   ) throws -> (store: REMStore, reminder: Any) {
-    guard let store = REMStore() else {
+    guard let store = try reminderKitNewStore() else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -232,7 +232,7 @@ enum ReminderAssignmentWriter {
     operation: String
   ) throws {
     var saveError: AnyObject?
-    guard saveRequest.saveSynchronouslyWithError(&saveError) else {
+    guard try reminderKitSaveSynchronously(saveRequest, error: &saveError) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
