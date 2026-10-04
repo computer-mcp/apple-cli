@@ -1,4 +1,7 @@
-![apple-cli: local Apple app automation through CLI and MCP](Documentation/Reference/Assets/AppleCLIBanner.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="Documentation/Brand/header-dark.png">
+  <img alt="Computer MCP — Apple CLI: local Apple app automation through CLI and MCP" src="Documentation/Brand/header-light.png">
+</picture>
 
 # apple-cli
 

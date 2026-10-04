@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "authority": "https://github.com/computer-mcp/.github",
+  "revision": "9042c987ef8b3482f63e3a037ae0d0d2fdeffb9a7768c03295c9a6a6c5a43ae2",
+  "consumer": "apple-cli",
+  "files": {
+    "Documentation/Brand/header-light.png": "b444099bff55964716df590a49681763dd681eb750baea9e9bf053303b58978f",
+    "Documentation/Brand/header-dark.png": "9311a9d29c431d8b425b920c6fdcf8b1317aac4a639ca8dd8d6a75bfba583bde",
+    ".github/brand/social.png": "366973793e6c0acaebb17e220584debbe0e30c1becad46840907a0a9f6760ad9"
+  },
+  "entries": {
+    "README.md": [
+      "Apple CLI",
+      "Documentation/Brand/header-light.png",
+      "Documentation/Brand/header-dark.png"
+    ]
+  }
+}
