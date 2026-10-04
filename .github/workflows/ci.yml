@@ -47,3 +47,5 @@ jobs:
           name: validation-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: .build/release-validation
           if-no-files-found: ignore
+  brand:
+    uses: computer-mcp/.github/.github/workflows/brand-check.yml@9b58c7b9823a808273c8a60d4676c6555b2bcaad # master

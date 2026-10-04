@@ -82,6 +82,12 @@ When changing documentation, keep roles separate:
 
 The following sections are package-specific operating notes.
 
+## Brand Delivery
+
+README headers and the social preview come from the Computer MCP organization
+`.github` repository through `.github/brand/brand.lock.json`. Update them only
+with that repository's `python3 Brand/brand.py sync`; CI verifies the lock.
+
 ## Execution Plans
 
 Use `.agent/PLANS.md` as the active temporary execution-state surface for
