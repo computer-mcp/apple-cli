@@ -169,6 +169,7 @@ extension RemindersSQLiteReader {
               completed: boolValue(row["completed"]),
               sectionId: section?.id,
               sectionTitle: section?.title,
+              subtaskRelationshipAvailable: subtask != nil,
               parentReminderId: subtask?.parentId,
               parentReminderTitle: subtask?.parentTitle,
               subtaskCount: subtask?.subtaskCount ?? 0,

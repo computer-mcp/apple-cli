@@ -1,6 +1,7 @@
 import AppKit
 import CryptoKit
 import Foundation
+import PDFKit
 import Utility
 
 
@@ -19,7 +20,11 @@ public struct NSWorkspaceKeynoteExternalActions: KeynoteExternalActioning {
 }
 
 public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
-  public init() {}
+  private let native: KeynoteAppleScriptBackend
+
+  public init() { native = KeynoteAppleScriptBackend() }
+
+  init(native: KeynoteAppleScriptBackend) { self.native = native }
 
   public func listPresentations(path: String, limit: Int) throws -> [KeynotePresentationRecord] {
     let url = normalizedURL(path)
@@ -47,10 +52,24 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
     -> [KeynotePresentationRecord]
   {
     let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    return try listPresentations(path: path, limit: 500)
-      .filter { $0.name.localizedCaseInsensitiveContains(normalizedQuery) }
+    let url = normalizedURL(path)
+    let candidates: [URL]
+    if isKeynotePresentation(url) {
+      candidates = [url]
+    } else {
+      candidates = try FileManager.default.contentsOfDirectory(
+        at: directoryURL(path),
+        includingPropertiesForKeys: Array(KeynoteResourceKeys.all),
+        options: [.skipsHiddenFiles]
+      ).filter(isKeynotePresentation)
+    }
+    return try candidates
+      .filter { $0.lastPathComponent.localizedCaseInsensitiveContains(normalizedQuery) }
+      .sorted {
+        $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending
+      }
       .prefix(limit)
-      .map { $0 }
+      .map(presentationRecord)
   }
 
   public func readPresentation(path: String) throws -> KeynotePresentationRecord? {
@@ -60,7 +79,7 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
     }
     guard isKeynotePresentation(url) else {
       throw CLIError(
-        code: .validationError, message: "`--path` must identify a `.key` presentation package.",
+        code: .validationError, message: "`--path` must identify a `.key` presentation file or package.",
         details: ["path": path])
     }
     return try presentationRecord(url)
@@ -71,13 +90,38 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
       return nil
     }
 
+    let snapshot = try native.readSlides(
+      path: normalizedURL(presentation.path).resolvingSymlinksInPath().path, limit: limit)
+    let snapshotID = UUID().uuidString
+    let slides = snapshot.slides.map { slide in
+      KeynoteSlideRecord(
+        presentationPath: presentation.path,
+        index: slide.index,
+        id: "snapshot:\(snapshotID):\(slide.index)",
+        skipped: slide.skipped,
+        titleShowing: slide.titleShowing,
+        bodyShowing: slide.bodyShowing,
+        title: slide.title,
+        body: slide.body,
+        presenterNotes: slide.presenterNotes
+      )
+    }
+    return KeynoteSlidesResponse(
+      presentation: presentation, slides: slides, documentID: snapshot.documentID,
+      snapshotID: snapshotID, totalSlideCount: snapshot.totalSlideCount,
+      truncated: slides.count < snapshot.totalSlideCount, readSource: snapshot.readSource
+    )
+  }
+
+  public func listPreviews(path: String, limit: Int) throws -> KeynotePreviewsResponse? {
+    guard let presentation = try readPresentation(path: path) else { return nil }
     let root = URL(fileURLWithPath: presentation.path).standardizedFileURL
     let quickLook = root.appendingPathComponent("QuickLook", isDirectory: true)
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: quickLook.path, isDirectory: &isDirectory),
       isDirectory.boolValue
     else {
-      return KeynoteSlidesResponse(presentation: presentation, slides: [])
+      return KeynotePreviewsResponse(presentation: presentation, previews: [])
     }
 
     let previews = try FileManager.default.contentsOfDirectory(
@@ -85,22 +129,22 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
       includingPropertiesForKeys: Array(KeynoteResourceKeys.all),
       options: [.skipsHiddenFiles]
     )
-    .filter(isSlidePreviewArtifact)
+    .filter(isPreviewArtifact)
     .sorted {
       $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
     }
     .prefix(limit)
 
-    let slides = previews.enumerated().map { offset, preview in
-      KeynoteSlideRecord(
+    let records = previews.enumerated().map { offset, preview in
+      KeynotePreviewRecord(
         presentationPath: presentation.path,
         index: offset + 1,
-        id: keynoteSlideID(presentation: presentation, preview: preview, index: offset + 1),
+        id: "preview:\(sha256Hex(preview.path))",
         previewPath: preview.path
       )
     }
 
-    return KeynoteSlidesResponse(presentation: presentation, slides: slides)
+    return KeynotePreviewsResponse(presentation: presentation, previews: records)
   }
 
   public func exportPresentation(path: String, format: String, to destinationPath: String) throws
@@ -109,6 +153,11 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
     guard let presentation = try readPresentation(path: path) else {
       throw CLIError(
         code: .notFound, message: "Keynote presentation was not found.", details: ["path": path])
+    }
+    try validatePresentationArtifactRelationship(
+      source: normalizedURL(presentation.path), destination: normalizedURL(destinationPath))
+    if format == "pdf" {
+      return try exportNativePDF(presentation, to: destinationPath)
     }
     if format == "package" {
       guard presentation.isPackage else {
@@ -121,7 +170,7 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
       let source = normalizedURL(presentation.path)
       let destination = normalizedURL(destinationPath)
       try validatePresentationExportDestination(destination.path, format: format)
-      try validatePackageExportRelationship(source: source, destination: destination)
+      try validatePresentationArtifactRelationship(source: source, destination: destination)
       try FileManager.default.copyItem(at: source, to: destination)
       return KeynoteExportResult(
         operation: "keynote.export",
@@ -133,14 +182,14 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
     }
     let sourcePath: String?
     switch format {
-    case "pdf":
+    case "preview-pdf":
       sourcePath = presentation.quickLookPreviewPath
     case "thumbnail":
       sourcePath = presentation.quickLookThumbnailPath
     default:
       throw CLIError(
         code: .unsupportedOperation,
-        message: "Keynote export currently supports only `pdf`, `thumbnail`, and `package`.")
+        message: "Keynote export supports `pdf`, `preview-pdf`, `thumbnail`, and `package`.")
     }
     guard let sourcePath else {
       throw CLIError(
@@ -159,7 +208,72 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
       changed: true,
       sourcePath: presentation.path,
       destinationPath: destination.path,
-      format: format
+      format: format,
+      source: "quicklook_cache"
+    )
+  }
+
+  private func exportNativePDF(
+    _ presentation: KeynotePresentationRecord, to destinationPath: String
+  ) throws -> KeynoteExportResult {
+    let destination = normalizedURL(destinationPath)
+    try validatePresentationExportDestination(destination.path, format: "pdf")
+    let staging = destination.deletingLastPathComponent().appendingPathComponent(
+      ".apple-cli-keynote-\(UUID().uuidString).pdf")
+    var published = false
+    defer { if !published { try? FileManager.default.removeItem(at: staging) } }
+    let receipt: KeynoteNativePDFReceipt
+    do {
+      receipt = try native.exportPDF(
+        path: normalizedURL(presentation.path).resolvingSymlinksInPath().path, to: staging.path)
+    } catch let error as CLIError {
+      throw CLIError(
+        code: error.code, message: error.message,
+        details: error.details.merging([
+          "artifact_outcome": "unconfirmed", "staging_path": staging.path,
+          "retry_policy": "inspect_before_retry",
+        ]) { _, new in new }
+      )
+    }
+    let data: Data
+    do {
+      data = try Data(contentsOf: staging)
+    } catch {
+      throw CLIError(code: .backendUnavailable, message: "Keynote PDF export did not produce a readable artifact.")
+    }
+    guard data.starts(with: Data("%PDF-".utf8)),
+      let document = PDFDocument(data: data), !document.isEncrypted,
+      receipt.slideCount > 0, document.pageCount == receipt.slideCount
+    else {
+      throw CLIError(
+        code: .backendUnavailable,
+        message: "Keynote PDF export could not verify one page for each slide, including skipped slides."
+      )
+    }
+    try validatePresentationExportDestination(destination.path, format: "pdf")
+    // A same-volume hard link publishes the verified file without replacing an existing destination.
+    do {
+      try FileManager.default.linkItem(at: staging, to: destination)
+    } catch {
+      throw CLIError(
+        code: FileManager.default.fileExists(atPath: destination.path) ? .validationError : .backendUnavailable,
+        message: "Could not publish the verified PDF without replacing an existing destination.",
+        details: CLIError.diagnosticDetails(for: error)
+      )
+    }
+    published = true
+    var residualArtifactPaths: [String] = []
+    do {
+      try FileManager.default.removeItem(at: staging)
+    } catch {
+      residualArtifactPaths = [staging.path]
+    }
+    return KeynoteExportResult(
+      operation: "keynote.export", changed: true, sourcePath: presentation.path,
+      destinationPath: destination.path, format: "pdf", source: "keynote_document",
+      documentID: receipt.documentID, readSource: receipt.readSource,
+      exportedSlideCount: receipt.slideCount, byteCount: data.count,
+      sha256: sha256Hex(data), verification: "verified", residualArtifactPaths: residualArtifactPaths
     )
   }
 
@@ -173,7 +287,7 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
     guard isDirectory.boolValue else {
       throw CLIError(
         code: .validationError,
-        message: "`--path` must identify a directory or `.key` presentation package.",
+        message: "`--path` must identify a directory or `.key` presentation.",
         details: ["path": path])
     }
     return url
@@ -193,9 +307,10 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
     guard url.pathExtension.lowercased() == "key" else {
       return false
     }
-    var isDirectory: ObjCBool = false
-    return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-      && isDirectory.boolValue
+    guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey]) else {
+      return false
+    }
+    return values.isDirectory == true || values.isRegularFile == true
   }
 
   private func presentationRecord(_ url: URL) throws -> KeynotePresentationRecord {
@@ -216,7 +331,7 @@ public struct FileManagerKeynoteBackend: KeynoteReading, KeynoteExporting {
     return FileManager.default.fileExists(atPath: path) ? path : nil
   }
 
-  private func isSlidePreviewArtifact(_ url: URL) -> Bool {
+  private func isPreviewArtifact(_ url: URL) -> Bool {
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
       !isDirectory.boolValue

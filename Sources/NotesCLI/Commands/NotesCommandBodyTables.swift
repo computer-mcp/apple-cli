@@ -174,12 +174,19 @@ extension NotesCommand {
     )
     let anchor: NotesBodyParagraphAnchorRecord?
     let requestedSelector: String
+    guard let anchors = structure.paragraphAnchors else {
+      throw CLIError(
+        code: .backendUnavailable,
+        message: "Notes body paragraph readback is unavailable.",
+        details: ["id_sha256": sha256Hex(noteID)]
+      )
+    }
     if let paragraph {
       requestedSelector = "paragraph"
-      anchor = structure.paragraphAnchors.first { $0.idSHA256 == paragraph }
+      anchor = anchors.first { $0.idSHA256 == paragraph }
     } else if let ordinal {
       requestedSelector = "ordinal"
-      anchor = structure.paragraphAnchors.first { $0.ordinal == ordinal }
+      anchor = anchors.first { $0.ordinal == ordinal }
     } else {
       requestedSelector = "unknown"
       anchor = nil
@@ -192,7 +199,7 @@ extension NotesCommand {
           "id_sha256": sha256Hex(noteID),
           "paragraph_sha256": paragraph ?? "",
           "ordinal": ordinal.map(String.init) ?? "",
-          "paragraph_anchor_count": "\(structure.paragraphAnchors.count)",
+          "paragraph_anchor_count": "\(anchors.count)",
         ]
       )
     }
@@ -484,7 +491,7 @@ extension NotesCommand {
       verificationBoolCheck(
         name: "table_count_matches_structure",
         expected: true,
-        actual: tables.count == structure.tableCount
+        actual: structure.tableCount.map { tables.count == $0 }
       ),
       verificationBoolCheck(
         name: "table_ordinals_contiguous",
@@ -510,7 +517,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.body.table.list",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_body_table_attachment_readback",
       targetIDSHA256: sha256Hex(structure.noteID),
       checks: checks

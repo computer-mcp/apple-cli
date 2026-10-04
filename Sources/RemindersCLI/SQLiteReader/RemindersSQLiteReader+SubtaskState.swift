@@ -48,7 +48,12 @@ extension RemindersSQLiteReader {
         """
     )
 
-    return rows.compactMap(subtaskState).first ?? ReminderPrivateSubtaskState()
+    guard let row = rows.first else {
+      throw CLIError(code: .backendUnavailable,
+        message: "Reminder subtask relationship could not be read.",
+        details: ["verifier": "reminders_store_readonly"])
+    }
+    return subtaskState(row)
   }
 
   func mergeSubtaskRelationships(

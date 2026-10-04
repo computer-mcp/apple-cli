@@ -1662,7 +1662,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.export.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_note_state_readback+apple_notes_export_family_accounting",
       targetIDSHA256: sha256Hex(note.id),
       checks: checks
@@ -1734,7 +1734,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.import.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "filesystem_import_preflight+apple_notes_import_family_accounting",
       targetIDSHA256: sha256Hex(records.map(\.pathSHA256).joined(separator: "\n")),
       checks: checks
@@ -3002,7 +3002,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_write_v1",
       operation: "notes.open-in-pages",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_rtfd_filewrapper+rtfd_tree_hash+external_pages_dispatch+note_readback",
       targetIDSHA256: sha256Hex(source.noteID),
       checks: checks

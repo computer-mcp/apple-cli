@@ -447,7 +447,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.state.lockability",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_note_state+account_lockability+tag_membership+attachment_family_readback",
       targetIDSHA256: sha256Hex(noteID),
       checks: checks
@@ -571,7 +571,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.state.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_note_state_batch_readback",
       targetIDSHA256: sha256Hex(records.map(\.noteID).joined(separator: "\n")),
       checks: checks
@@ -748,7 +748,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: operation,
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_activity_events_metadata_readback",
       targetIDSHA256: activity.noteIDSHA256,
       checks: checks
@@ -806,7 +806,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: operation,
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_activity_events_metadata_readback+artifact_hash+activity_readback",
       targetIDSHA256: activity.noteIDSHA256,
       checks: checks

@@ -1,10 +1,181 @@
-import CalendarCLI
+@testable import CalendarCLI
+import EventKit
 import Foundation
 import Testing
 import Utility
 
 @Suite
 struct EventKitCommandTests {
+  @Test(arguments: ["Asia/Shanghai", "Pacific/Kiritimati", "America/Los_Angeles"])
+  func calendarAllDayExportPreservesLocalDatesAndExclusiveEnd(timeZoneIdentifier: String) throws {
+    let timeZone = try #require(TimeZone(identifier: timeZoneIdentifier))
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = timeZone
+    let start = try #require(calendar.date(from: DateComponents(year: 2027, month: 3, day: 13)))
+    let end = try #require(calendar.date(byAdding: .day, value: 2, to: start))
+    let event = CalendarEventSummary(id: "all-day", calendarId: "fixture", calendarTitle: "Fixture",
+      title: "Two calendar days", start: start, end: end, isAllDay: true,
+      timeZoneIdentifier: timeZoneIdentifier)
+    let content = try renderICalendar([event])
+    #expect(content.contains("DTSTART;VALUE=DATE:20270313\r\n"))
+    #expect(content.contains("DTEND;VALUE=DATE:20270315\r\n"))
+    if timeZoneIdentifier == "America/Los_Angeles" {
+      #expect(end.timeIntervalSince(start) == 47 * 3600)
+    }
+  }
+
+  @Test(arguments: ["weekly", "monthly", "yearly"])
+  func calendarNativeRecurrenceProjectionPreservesCustomSelectors(frequency: String) throws {
+    let native: EKRecurrenceRule
+    let selectors: [String]
+    switch frequency {
+    case "weekly":
+      native = EKRecurrenceRule(recurrenceWith: .weekly, interval: 2,
+        daysOfTheWeek: [EKRecurrenceDayOfWeek(.monday), EKRecurrenceDayOfWeek(.wednesday)],
+        daysOfTheMonth: nil, monthsOfTheYear: nil, weeksOfTheYear: nil,
+        daysOfTheYear: nil, setPositions: [-1], end: nil)
+      selectors = ["BYDAY=MO,WE", "BYSETPOS=-1", "WKST=MO"]
+    case "monthly":
+      native = EKRecurrenceRule(recurrenceWith: .monthly, interval: 1,
+        daysOfTheWeek: [EKRecurrenceDayOfWeek(.friday, weekNumber: 2),
+          EKRecurrenceDayOfWeek(.monday, weekNumber: -1)],
+        daysOfTheMonth: nil, monthsOfTheYear: nil, weeksOfTheYear: nil,
+        daysOfTheYear: nil, setPositions: nil, end: EKRecurrenceEnd(occurrenceCount: 6))
+      selectors = ["BYDAY=2FR,-1MO", "COUNT=6"]
+    default:
+      native = EKRecurrenceRule(recurrenceWith: .yearly, interval: 1,
+        daysOfTheWeek: nil, daysOfTheMonth: nil, monthsOfTheYear: [2, 12],
+        weeksOfTheYear: [1, -1], daysOfTheYear: [1, -366], setPositions: [1, -1], end: nil)
+      selectors = ["BYMONTH=2,12", "BYWEEKNO=1,-1", "BYYEARDAY=1,-366", "BYSETPOS=1,-1"]
+    }
+    let record = recurrenceRecord(native)
+    let object = try jsonObject(CLIJSON.encodeString(record))
+    #expect(object["calendarIdentifier"] as? String == native.calendarIdentifier)
+    #expect(object["firstDayOfTheWeek"] as? Int == native.firstDayOfTheWeek)
+    let serialized = iCalendarRecurrence(record)
+    for selector in selectors { #expect(serialized.contains(selector)) }
+    #expect(try recurrenceRecord(eventKitRecurrenceRule(record)) == record)
+  }
+
+  @Test(arguments: [
+    ["daily", "--recurrence-by-day", "MO"],
+    ["weekly", "--recurrence-by-day", "2MO"],
+    ["monthly", "--recurrence-by-day", "6MO"],
+    ["monthly", "--recurrence-by-month-day", "0"],
+    ["monthly", "--recurrence-by-month", "2"],
+    ["yearly", "--recurrence-by-week-no", "54"],
+    ["yearly", "--recurrence-by-year-day", "367"],
+    ["yearly", "--recurrence-by-set-pos", "-1"],
+    ["yearly", "--recurrence-by-day", "2MO", "--recurrence-by-week-no", "1"],
+  ])
+  func calendarRecurrenceRejectsIgnoredOrInvalidSelectors(_ fields: [String]) throws {
+    let options = try CLIOptionsFixture.parse(["--recurrence-frequency", fields[0]] + fields.dropFirst())
+    #expect(throws: CLIError.self) {
+      try recurrenceRuleOption(options, effectiveStart: isoDate("2026-01-01T00:00:00Z"))
+    }
+  }
+
+  @Test(arguments: ["2026-02-30", "2026-13-01", "2026-00-10", "2026-10-00", "26-1-1"])
+  func calendarDateOnlyRejectsInvalidOrNoncanonicalCalendarDays(_ value: String) {
+    #expect(parseDateOnly(value, role: .lower) == nil)
+    #expect(throws: CLIError.self) { try parseEventDate(value) }
+  }
+
+  @Test(arguments: [
+    String(repeating: "会议😀", count: 30),
+    "e" + String(repeating: "\u{0301}", count: 100),
+    String(repeating: "x", count: 150),
+  ])
+  func calendarICalendarFoldingBoundsUTF8AndPreservesTheUnfoldedContent(_ title: String) {
+    let line = "SUMMARY:" + title
+    let folded = foldICalendarLine(line)
+    #expect(folded.components(separatedBy: "\r\n").allSatisfy { $0.utf8.count <= 75 })
+    let unfolded = folded.replacingOccurrences(of: "\r\n ", with: "", options: .literal)
+    #expect(Array(unfolded.utf8) == Array(line.utf8))
+  }
+
+  @Test func calendarWriteOnlyAccessCannotReadMutationIdentity() {
+    #expect(throws: CLIError.self) {
+      try eventStoreWithCalendarWriteAccess(authorizationStatus: .writeOnly)
+    }
+  }
+
+  @Test func calendarCollectionReadsKeepSourceIDsAndExposeTruncation() throws {
+    let backend = FakeCalendarBackend()
+    var second = backend.calendars[0]
+    second.id = "cal-second"
+    second.sourceId = "source-second"
+    backend.calendars.append(second)
+    backend.sources.append(CalendarSourceRecord(
+      id: "source-second", title: "iCloud", type: "caldav", typeRawValue: 2,
+      isDelegate: false, calendarIds: [second.id]))
+    let command = CalendarCommand(backend: backend)
+    let source = try #require(try command.run(options: CLIOptionsFixture.parse([
+      "sources", "read", "--id", "source-second", "--json"])))
+    let sourceData = try #require(try jsonObject(source.stdout ?? "")["data"] as? [String: Any])
+    #expect((sourceData["source"] as? [String: Any])?["id"] as? String == "source-second")
+    let filtered = try #require(try command.run(options: CLIOptionsFixture.parse([
+      "calendars", "list", "--source", "source-second", "--limit", "1", "--json"])))
+    let filteredData = try #require(try jsonObject(filtered.stdout ?? "")["data"] as? [String: Any])
+    #expect((filteredData["calendars"] as? [[String: Any]])?.first?["id"] as? String == second.id)
+    #expect(filteredData["truncated"] as? Bool == false)
+    let limited = try #require(try command.run(options: CLIOptionsFixture.parse([
+      "calendars", "list", "--limit", "1", "--json"])))
+    #expect((try jsonObject(limited.stdout ?? "")["data"] as? [String: Any])?["truncated"] as? Bool == true)
+  }
+
+  @Test func calendarCollectionLifecycleUsesBoundIDsAndSkipsUnchangedUpdates() throws {
+    let backend = FakeCalendarBackend()
+    let command = CalendarCommand(backend: backend)
+    let create = ["calendars", "create", "--source", "source-icloud", "--title", "临时日历 🗓",
+      "--color", "#abcdef", "--json"]
+    _ = try command.run(options: CLIOptionsFixture.parse(create + ["--dry-run"]))
+    #expect(backend.createdCalendars.isEmpty)
+    _ = try command.run(options: CLIOptionsFixture.parse(create))
+    #expect(backend.createdCalendars.first?.sourceId == "source-icloud")
+    #expect(backend.createdCalendars.first?.color == "#ABCDEFFF")
+    let created = try #require(try backend.readCalendar(id: "cal-created"))
+    let update = ["calendars", "update", "--id", created.id, "--title", "改名 🗓", "--json"]
+    _ = try command.run(options: CLIOptionsFixture.parse(update))
+    #expect(backend.updatedCalendars.first?.0 == created)
+    #expect(backend.updatedCalendars.first?.1.color == nil)
+    let repeated = try #require(try command.run(options: CLIOptionsFixture.parse(update)))
+    #expect((try jsonObject(repeated.stdout ?? "")["data"] as? [String: Any])?["changed"] as? Bool == false)
+    #expect(backend.updatedCalendars.count == 1)
+    #expect(try backend.readCalendar(id: created.id)?.color == created.color)
+    _ = try command.run(options: CLIOptionsFixture.parse([
+      "calendars", "delete", "--id", created.id, "--dry-run", "--json"]))
+    #expect(backend.deletedCalendars.isEmpty)
+    _ = try command.run(options: CLIOptionsFixture.parse([
+      "calendars", "delete", "--id", created.id, "--json"]))
+    #expect(backend.deletedCalendars.first?.id == created.id)
+  }
+
+  @Test func calendarAttributeImmutabilityDoesNotBlockEventWritesAndBadFieldsDoNotReadSources() throws {
+    let backend = FakeCalendarBackend()
+    let command = CalendarCommand(backend: backend)
+    for fields in [["--title", " ", "--color", "#FFFFFF"], ["--title", "Valid", "--color", "#GGGGGG"]] {
+      #expect(throws: CLIError.self) {
+        try command.run(options: CLIOptionsFixture.parse([
+          "calendars", "create", "--source", "source-icloud", "--json"] + fields))
+      }
+    }
+    #expect(backend.readSourceIDs.isEmpty)
+    backend.calendars[0].isImmutable = true
+    let unchanged = try #require(try command.run(options: CLIOptionsFixture.parse([
+      "calendars", "update", "--id", "cal-work", "--title", "Work", "--json"])))
+    #expect((try jsonObject(unchanged.stdout ?? "")["data"] as? [String: Any])?["changed"] as? Bool == false)
+    #expect(throws: CLIError.self) {
+      try command.run(options: CLIOptionsFixture.parse([
+        "calendars", "update", "--id", "cal-work", "--title", "Change", "--json"]))
+    }
+    #expect(backend.updatedCalendars.isEmpty)
+    _ = try command.run(options: CLIOptionsFixture.parse([
+      "events", "create", "--calendar", "cal-work", "--title", "Event",
+      "--start", "2026-01-01T09:00:00Z", "--end", "2026-01-01T10:00:00Z", "--json"]))
+    #expect(backend.createdDrafts.count == 1)
+  }
+
   @Test func calendarCommandListsCalendarsAsJSON() throws {
     let command = CalendarCommand(backend: FakeCalendarBackend())
     let options = try CLIOptionsFixture.parse(["calendars", "list", "--json"])
@@ -340,6 +511,17 @@ struct EventKitCommandTests {
     #expect(content.contains("BEGIN:VEVENT"))
     #expect(content.contains("SUMMARY:Launch review"))
     #expect(content.contains("BEGIN:VALARM"))
+    try FileManager.default.removeItem(atPath: destination)
+    backend.listedRecurrence = CalendarRecurrenceRule(frequency: "weekly")
+    for options in [dryRunOptions, executeOptions] {
+      do {
+        _ = try command.run(options: options)
+        Issue.record("Expanded occurrences cannot provide complete series export data.")
+      } catch let error as CLIError {
+        #expect(error.code == .unsupportedOperation)
+      }
+      #expect(!FileManager.default.fileExists(atPath: destination))
+    }
   }
 
   @Test func calendarEventCreateExecutesWithoutAllowFlag() throws {
@@ -579,6 +761,10 @@ struct EventKitCommandTests {
       "2",
       "--recurrence-count",
       "5",
+      "--recurrence-by-day",
+      "WE,MO",
+      "--recurrence-by-set-pos",
+      "-1",
       "--dry-run",
       "--json",
     ])
@@ -604,6 +790,10 @@ struct EventKitCommandTests {
       "2",
       "--recurrence-count",
       "5",
+      "--recurrence-by-day",
+      "WE,MO",
+      "--recurrence-by-set-pos",
+      "-1",
       "--allow-external-dispatch",
       "--json",
     ])
@@ -616,6 +806,9 @@ struct EventKitCommandTests {
     #expect(recurrence?["frequency"] as? String == "weekly")
     #expect(recurrence?["interval"] as? Int == 2)
     #expect(recurrence?["occurrenceCount"] as? Int == 5)
+    let days = try #require(recurrence?["daysOfTheWeek"] as? [[String: Any]])
+    #expect(days.compactMap { $0["dayOfWeek"] as? String } == ["MO", "WE"])
+    #expect((recurrence?["setPositions"] as? [Int]) == [-1])
     #expect(backend.createdDrafts.first?.recurrence?.frequency == "weekly")
   }
 
@@ -684,6 +877,19 @@ struct EventKitCommandTests {
 }
 
 private final class FakeCalendarBackend: CalendarReading, CalendarMutating, @unchecked Sendable {
+  var calendars = [CalendarRecord(
+    id: "cal-work", title: "Work", sourceTitle: "iCloud", allowsContentModifications: true,
+    sourceId: "source-icloud", type: "caldav", typeRawValue: 1, isImmutable: false,
+    isSubscribed: false, color: "#123456FF", allowedEntityTypesRawValue: 1,
+    supportedEventAvailabilitiesRawValue: 15)]
+  var sources = [CalendarSourceRecord(
+    id: "source-icloud", title: "iCloud", type: "caldav", typeRawValue: 2,
+    isDelegate: false, calendarIds: ["cal-work"])]
+  var readSourceIDs: [String] = []
+  var createdCalendars: [CalendarCreateDraft] = []
+  var updatedCalendars: [(CalendarRecord, CalendarPatch)] = []
+  var deletedCalendars: [CalendarRecord] = []
+  var listedRecurrence: CalendarRecurrenceRule?
   var createdDrafts: [CalendarEventDraft] = []
   var updatedPatches: [String: CalendarEventPatch] = [:]
   var deletedIDs: [String] = []
@@ -700,15 +906,45 @@ private final class FakeCalendarBackend: CalendarReading, CalendarMutating, @unc
     )
   ]
 
-  func listCalendars() throws -> [CalendarRecord] {
-    [
-      CalendarRecord(
-        id: "cal-work",
-        title: "Work",
-        sourceTitle: "iCloud",
-        allowsContentModifications: true
-      )
-    ]
+  func listSources() throws -> [CalendarSourceRecord] { sources }
+
+  func readSource(id: String) throws -> CalendarSourceRecord? {
+    readSourceIDs.append(id)
+    return sources.first { $0.id == id }
+  }
+
+  func listCalendars(sourceID: String?) throws -> [CalendarRecord] {
+    calendars.filter { sourceID == nil || $0.sourceId == sourceID }
+  }
+
+  func readCalendar(id: String) throws -> CalendarRecord? {
+    calendars.first { $0.id == id }
+  }
+
+  func createCalendar(_ draft: CalendarCreateDraft) throws -> CalendarRecord {
+    createdCalendars.append(draft)
+    let source = try #require(sources.first { $0.id == draft.sourceId })
+    let calendar = CalendarRecord(
+      id: "cal-created", title: draft.title, sourceTitle: source.title, allowsContentModifications: true,
+      sourceId: source.id, type: "caldav", typeRawValue: 1, isImmutable: false,
+      isSubscribed: false, color: draft.color, allowedEntityTypesRawValue: 1,
+      supportedEventAvailabilitiesRawValue: 15)
+    calendars.append(calendar)
+    return calendar
+  }
+
+  func updateCalendar(current: CalendarRecord, patch: CalendarPatch) throws -> CalendarRecord {
+    updatedCalendars.append((current, patch))
+    let index = try #require(calendars.firstIndex { $0.id == current.id })
+    if let title = patch.title { calendars[index].title = title }
+    if let color = patch.color { calendars[index].color = color }
+    return calendars[index]
+  }
+
+  func deleteCalendar(current: CalendarRecord) throws -> Bool {
+    deletedCalendars.append(current)
+    calendars.removeAll { $0.id == current.id }
+    return true
   }
 
   func listEvents(_ query: CalendarEventQuery) throws -> [CalendarEventSummary] {
@@ -725,6 +961,7 @@ private final class FakeCalendarBackend: CalendarReading, CalendarMutating, @unc
         location: "Room 1",
         alarmMinutesBefore: [30],
         absoluteAlarmDates: [launchAbsoluteAlarm],
+        recurrence: listedRecurrence,
         attendees: attendees
       ),
       CalendarEventSummary(
@@ -821,7 +1058,7 @@ private final class FakeCalendarBackend: CalendarReading, CalendarMutating, @unc
   }
 
   func calendarForMutation(selector: String) throws -> CalendarRecord {
-    let calendars = try listCalendars()
+    let calendars = try listCalendars(sourceID: nil)
     if let match = calendars.first(where: { $0.id == selector }) {
       return match
     }

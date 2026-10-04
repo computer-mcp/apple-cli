@@ -30,7 +30,7 @@ Non-primary resources stay explicit:
 - `apple mail messages read`
 - `apple finder items search`
 - `apple numbers tables read`
-- `apple keynote slides export`
+- `apple keynote presentations export`
 - `apple print jobs submit`
 
 ## Current Structure
@@ -117,8 +117,9 @@ design.
   explicit bounded body preview, reply/forward preview, draft,
   reply-draft/forward-draft, send, move, archive, and delete.
 - `messages` owns local Messages read/search and safety-gated send flows.
-- `maps` owns place search/read, query or coordinate directions preview, and
-  safety-gated `maps:` URL open.
+- `maps` owns native place search/read, saved favorite reads, collection lifecycle
+  and existing member links, route and ETA requests,
+  query or coordinate directions link previews, and safety-gated `maps:` URL open.
 - `finder` owns path-bounded Finder/app-bound file workflows.
 - `numbers`, `pages`, and `keynote` own path-bounded iWork document workflows,
   QuickLook/package export paths, and the focused iWork reads or writes already
@@ -135,9 +136,9 @@ design.
   slideshow/spotlight, and strong-gated Swift eval hooks or post-commands.
 - `print` owns local printer/job inspection and print submit/cancel.
 - `clipboard` owns pasteboard type/read/write/clear.
-- `notifications` owns this tool's notification preview/send surface through a
-  target-local legacy CLI delivery backend; direct `UserNotifications` probing
-  is disabled for the unbundled SwiftPM CLI process.
+- `notifications` owns this tool's preview, authorization, submission and scoped
+  pending/delivered management through UserNotifications. The CLI embeds its
+  application identity; authorization requests and removals have explicit gates.
 - `intelligence` owns Apple Intelligence workflows as a Swift target-local
   implementation. Its current production line is a local-cache path; the
   current backend uses macOS eligibility cache files and `eligibilityd`. It

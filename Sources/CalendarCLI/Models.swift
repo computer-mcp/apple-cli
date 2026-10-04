@@ -6,19 +6,86 @@ import Utility
 public struct CalendarRecord: Codable, Equatable, Sendable {
   public var id: String
   public var title: String
-  public var sourceTitle: String
+  public var sourceTitle: String?
   public var allowsContentModifications: Bool
+  public var sourceId: String?
+  public var type: String?
+  public var typeRawValue: Int?
+  public var isImmutable: Bool?
+  public var isSubscribed: Bool?
+  public var color: String?
+  public var allowedEntityTypesRawValue: UInt?
+  public var supportedEventAvailabilitiesRawValue: UInt?
 
   public init(
     id: String,
     title: String,
-    sourceTitle: String,
-    allowsContentModifications: Bool
+    sourceTitle: String?,
+    allowsContentModifications: Bool,
+    sourceId: String? = nil,
+    type: String? = nil,
+    typeRawValue: Int? = nil,
+    isImmutable: Bool? = nil,
+    isSubscribed: Bool? = nil,
+    color: String? = nil,
+    allowedEntityTypesRawValue: UInt? = nil,
+    supportedEventAvailabilitiesRawValue: UInt? = nil
   ) {
     self.id = id
     self.title = title
     self.sourceTitle = sourceTitle
     self.allowsContentModifications = allowsContentModifications
+    self.sourceId = sourceId
+    self.type = type
+    self.typeRawValue = typeRawValue
+    self.isImmutable = isImmutable
+    self.isSubscribed = isSubscribed
+    self.color = color
+    self.allowedEntityTypesRawValue = allowedEntityTypesRawValue
+    self.supportedEventAvailabilitiesRawValue = supportedEventAvailabilitiesRawValue
+  }
+}
+
+public struct CalendarSourceRecord: Codable, Equatable, Sendable {
+  public var id: String
+  public var title: String
+  public var type: String
+  public var typeRawValue: Int
+  public var isDelegate: Bool
+  public var calendarIds: [String]
+
+  public init(
+    id: String, title: String, type: String, typeRawValue: Int, isDelegate: Bool,
+    calendarIds: [String]
+  ) {
+    self.id = id
+    self.title = title
+    self.type = type
+    self.typeRawValue = typeRawValue
+    self.isDelegate = isDelegate
+    self.calendarIds = calendarIds
+  }
+}
+
+public struct CalendarCreateDraft: Codable, Equatable, Sendable {
+  public var sourceId: String
+  public var title: String
+  public var color: String?
+
+  public init(sourceId: String, title: String, color: String? = nil) {
+    self.sourceId = sourceId
+    self.title = title
+    self.color = color
+  }
+}
+
+public struct CalendarPatch: Codable, Equatable, Sendable {
+  public var title: String?
+  public var color: String?
+
+  public init(title: String? = nil, color: String? = nil) {
+    self.title = title
+    self.color = color
   }
 }
 
@@ -104,6 +171,9 @@ public struct CalendarEventSummary: Codable, Equatable, Sendable {
   public var absoluteAlarmDates: [Date]
   public var recurrence: CalendarRecurrenceRule?
   public var attendees: [CalendarAttendeeRecord]
+  public var recurrenceRules: [CalendarRecurrenceRule]?
+  public var isDetached: Bool?
+  public var timeZoneIdentifier: String?
 
   public init(
     id: String,
@@ -117,7 +187,10 @@ public struct CalendarEventSummary: Codable, Equatable, Sendable {
     alarmMinutesBefore: [Int] = [],
     absoluteAlarmDates: [Date] = [],
     recurrence: CalendarRecurrenceRule? = nil,
-    attendees: [CalendarAttendeeRecord] = []
+    attendees: [CalendarAttendeeRecord] = [],
+    recurrenceRules: [CalendarRecurrenceRule]? = nil,
+    isDetached: Bool? = nil,
+    timeZoneIdentifier: String? = nil
   ) {
     self.id = id
     self.calendarId = calendarId
@@ -131,6 +204,9 @@ public struct CalendarEventSummary: Codable, Equatable, Sendable {
     self.absoluteAlarmDates = absoluteAlarmDates
     self.recurrence = recurrence
     self.attendees = attendees
+    self.recurrenceRules = recurrenceRules
+    self.isDetached = isDetached
+    self.timeZoneIdentifier = timeZoneIdentifier
   }
 }
 
@@ -148,6 +224,8 @@ public struct CalendarEventDetail: Codable, Equatable, Sendable {
   public var absoluteAlarmDates: [Date]
   public var recurrence: CalendarRecurrenceRule?
   public var attendees: [CalendarAttendeeRecord]
+  public var recurrenceRules: [CalendarRecurrenceRule]?
+  public var timeZoneIdentifier: String?
 
   public init(
     id: String,
@@ -162,7 +240,9 @@ public struct CalendarEventDetail: Codable, Equatable, Sendable {
     alarmMinutesBefore: [Int] = [],
     absoluteAlarmDates: [Date] = [],
     recurrence: CalendarRecurrenceRule? = nil,
-    attendees: [CalendarAttendeeRecord] = []
+    attendees: [CalendarAttendeeRecord] = [],
+    recurrenceRules: [CalendarRecurrenceRule]? = nil,
+    timeZoneIdentifier: String? = nil
   ) {
     self.id = id
     self.calendarId = calendarId
@@ -177,6 +257,8 @@ public struct CalendarEventDetail: Codable, Equatable, Sendable {
     self.absoluteAlarmDates = absoluteAlarmDates
     self.recurrence = recurrence
     self.attendees = attendees
+    self.recurrenceRules = recurrenceRules
+    self.timeZoneIdentifier = timeZoneIdentifier
   }
 }
 
@@ -232,27 +314,75 @@ public struct CalendarEventOccurrence: Codable, Equatable, Sendable {
   }
 }
 
+public struct CalendarRecurrenceWeekday: Codable, Equatable, Hashable, Sendable {
+  public var dayOfWeek: String
+  public var weekNumber: Int
+
+  public init(dayOfWeek: String, weekNumber: Int = 0) {
+    self.dayOfWeek = dayOfWeek
+    self.weekNumber = weekNumber
+  }
+}
+
 public struct CalendarRecurrenceRule: Codable, Equatable, Sendable {
   public var frequency: String
   public var interval: Int
   public var occurrenceCount: Int?
   public var until: Date?
+  public var calendarIdentifier: String?
+  public var firstDayOfTheWeek: Int?
+  public var daysOfTheWeek: [CalendarRecurrenceWeekday]?
+  public var daysOfTheMonth: [Int]?
+  public var monthsOfTheYear: [Int]?
+  public var weeksOfTheYear: [Int]?
+  public var daysOfTheYear: [Int]?
+  public var setPositions: [Int]?
 
   public init(
     frequency: String,
     interval: Int = 1,
     occurrenceCount: Int? = nil,
-    until: Date? = nil
+    until: Date? = nil,
+    calendarIdentifier: String? = nil,
+    firstDayOfTheWeek: Int? = nil,
+    daysOfTheWeek: [CalendarRecurrenceWeekday]? = nil,
+    daysOfTheMonth: [Int]? = nil,
+    monthsOfTheYear: [Int]? = nil,
+    weeksOfTheYear: [Int]? = nil,
+    daysOfTheYear: [Int]? = nil,
+    setPositions: [Int]? = nil
   ) {
     self.frequency = frequency
     self.interval = interval
     self.occurrenceCount = occurrenceCount
     self.until = until
+    self.calendarIdentifier = calendarIdentifier
+    self.firstDayOfTheWeek = firstDayOfTheWeek
+    self.daysOfTheWeek = daysOfTheWeek
+    self.daysOfTheMonth = daysOfTheMonth
+    self.monthsOfTheYear = monthsOfTheYear
+    self.weeksOfTheYear = weeksOfTheYear
+    self.daysOfTheYear = daysOfTheYear
+    self.setPositions = setPositions
   }
 }
 
 public struct CalendarListResponse: Codable, Equatable, Sendable {
   public var calendars: [CalendarRecord]
+  public var truncated: Bool = false
+}
+
+public struct CalendarSourceListResponse: Codable, Equatable, Sendable {
+  public var sources: [CalendarSourceRecord]
+  public var truncated: Bool = false
+}
+
+public struct CalendarSourceResponse: Codable, Equatable, Sendable {
+  public var source: CalendarSourceRecord
+}
+
+public struct CalendarResponse: Codable, Equatable, Sendable {
+  public var calendar: CalendarRecord
 }
 
 public struct CalendarEventsResponse: Codable, Equatable, Sendable {
@@ -366,6 +496,7 @@ public struct CalendarMutationResult: Codable, Equatable, Sendable {
   public var changed: Bool
   public var event: CalendarEventDetail?
   public var deletedID: String?
+  public var calendar: CalendarRecord? = nil
 }
 
 public struct CalendarExportResult: Codable, Equatable, Sendable {

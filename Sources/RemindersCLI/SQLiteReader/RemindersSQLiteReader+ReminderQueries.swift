@@ -2,6 +2,59 @@ import Foundation
 import Utility
 
 extension RemindersSQLiteReader {
+  func templateItemIDs(templateID: String, limit: Int) throws -> [String] {
+    guard let templateUUID = UUID(uuidString: URL(string: templateID)?.lastPathComponent ?? ""),
+      limit > 0
+    else {
+      throw CLIError(code: .validationError, message: "Template item lookup requires valid identities and a positive limit.")
+    }
+    let files = sqliteStoreFiles(in: remindersStoresURL)
+    guard !files.isEmpty, files.allSatisfy(\.isReadable) else {
+      throw CLIError(code: .backendUnavailable, message: "The Reminders template item index is unavailable.")
+    }
+    let templateHex = templateUUID.uuidString.replacingOccurrences(of: "-", with: "")
+    var matches: [(path: String, key: Int64)] = []
+    for file in files {
+      let rows = try sqliteJSONRows(storePath: file.path, sql: """
+        select t.Z_PK as template_key
+        from ZREMCDTEMPLATE t
+        where t.ZIDENTIFIER = X'\(templateHex)'
+          and t.ZMARKEDFORDELETION = 0
+        limit 2;
+        """)
+      for row in rows {
+        guard let key = int64Value(row["template_key"]) else {
+          throw CLIError(code: .backendUnavailable, message: "The Reminders template item index has an invalid identity.")
+        }
+        matches.append((file.path, key))
+      }
+    }
+    guard matches.count == 1, let match = matches.first else {
+      throw CLIError(code: .backendUnavailable,
+        message: "The Reminders template item index could not identify the selected template uniquely.",
+        details: ["template_id": templateID, "match_count": String(matches.count)])
+    }
+    let rows = try sqliteJSONRows(storePath: match.path, sql: """
+      select hex(ZIDENTIFIER) as identifier
+      from ZREMCDSAVEDREMINDER
+      where ZTEMPLATE = \(match.key) and ZMARKEDFORDELETION = 0
+      order by Z_PK
+      limit \(limit);
+      """)
+    let ids = try rows.map { row -> String in
+      guard let identifier = uuidStringFromSQLiteHex(stringValue(row["identifier"])),
+        let uuid = UUID(uuidString: identifier)
+      else {
+        throw CLIError(code: .backendUnavailable, message: "The Reminders template item index has an invalid item identity.")
+      }
+      return uuid.uuidString
+    }
+    guard Set(ids).count == ids.count else {
+      throw CLIError(code: .backendUnavailable, message: "The Reminders template item index has duplicate item identities.")
+    }
+    return ids
+  }
+
   func privateReminders(storePath: String) throws -> [RemindersPrivateReminderDebugRecord] {
     let reminderColumns = try tableColumnNames(storePath: storePath, tableName: "ZREMCDREMINDER")
     let urgentExpression =
@@ -74,6 +127,7 @@ extension RemindersSQLiteReader {
         completed: boolValue(row["completed"]),
         sectionId: section?.id,
         sectionTitle: section?.title,
+        subtaskRelationshipAvailable: subtask != nil,
         parentReminderId: subtask?.parentId,
         parentReminderTitle: subtask?.parentTitle,
         subtaskCount: subtask?.subtaskCount ?? 0,

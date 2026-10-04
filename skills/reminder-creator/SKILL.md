@@ -238,11 +238,17 @@ target state.
 
 ## Field Preservation
 
+When collecting reminders through a Smart List, retain each item's physical
+`listId` and `parentReminderId` as its ownership and relationship evidence.
+Deduplicate by reminder ID before planning updates. Smart List results can
+include contextual subtasks that do not independently match the view's rules;
+preserve the established parent/subtask relationship when organizing content.
+
 Before moving, rebuilding, completing, deleting, or merging reminders, identify
 which fields must survive:
 
 - title
-- notes
+- notes, including inline formatting, links, and paragraph list styles
 - URL
 - attachments
 - priority
@@ -265,6 +271,10 @@ the target reminder instead of deleting it.
 For completed history migration, preserve the original completion date when the
 CLI supports it. If completion date cannot be preserved, do not force a
 cosmetic migration that destroys historical value.
+
+For notes appearance changes, use selective formatting operations and inspect
+structured notes before and after writing. A plain-text notes replacement can
+discard formatting; use it when replacing content is the intended result.
 
 ## Lists, Templates, And Appearance
 

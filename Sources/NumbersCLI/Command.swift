@@ -407,6 +407,8 @@ public struct NumbersCommand: Sendable {
       "row": "\(cell.row)",
       "column": "\(cell.column)",
       "previous_value_sha256": sha256Hex(cell.value),
+      "previous_value_type": cell.valueType?.rawValue ?? "unknown",
+      "previous_formula_sha256": cell.formula.map(sha256Hex) ?? "unknown",
       "value_sha256": valueHash,
       "value_bytes": "\(Data(value.utf8).count)",
     ]
@@ -434,16 +436,43 @@ public struct NumbersCommand: Sendable {
       message: "Numbers table cell writes persist document state and require `--allow-persistent-action`."
     )
 
-    let changed = cell.value != value
+    let changed = !cell.matchesLiteralText(value)
     if changed {
-      try contentBackend.setCellText(
-        path: document.path,
-        sheet: cell.sheetName,
-        table: cell.tableName,
-        row: cell.row,
-        column: cell.column,
-        value: value
-      )
+      do {
+        try contentBackend.setCellText(
+          path: document.path,
+          sheet: cell.sheetName,
+          table: cell.tableName,
+          row: cell.row,
+          column: cell.column,
+          value: value
+        )
+      } catch var error as CLIError where error.code == .timeout || error.code == .backendUnavailable {
+        error.details["mutation_may_have_occurred"] = "true"
+        error.details["verification"] = "unconfirmed"
+        error.details["retry_guidance"] = "inspect_document_before_retrying"
+        throw error
+      }
+      do {
+        guard let actual = try contentBackend.readCell(
+          path: document.path, sheet: cell.sheetName, table: cell.tableName,
+          row: cell.row, column: cell.column
+        ), actual.sheetName == cell.sheetName, actual.tableName == cell.tableName,
+          actual.row == cell.row, actual.column == cell.column,
+          actual.rowCount == cell.rowCount, actual.columnCount == cell.columnCount,
+          actual.matchesLiteralText(value) else {
+          throw CLIError(code: .backendUnavailable, message: "Numbers cell readback did not match.")
+        }
+      } catch {
+        throw CLIError(
+          code: .backendUnavailable,
+          message: "Numbers cell write could not be verified. Inspect the document before retrying.",
+          details: [
+            "mutation_may_have_occurred": "true", "verification": "unconfirmed",
+            "retry_guidance": "inspect_document_before_retrying",
+          ]
+        )
+      }
     }
 
     return try result(
@@ -456,7 +485,8 @@ public struct NumbersCommand: Sendable {
         row: cell.row,
         column: cell.column,
         valueByteCount: Data(value.utf8).count,
-        valueSHA256: valueHash
+        valueSHA256: valueHash,
+        verified: true
       ),
       human: "\(operation) executed",
       options: options

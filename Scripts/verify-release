@@ -140,6 +140,7 @@ def verify(directory, source, tag=None, require_verification=False):
         for name in [
             "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md",
             "Documentation/Reference/ReleaseGuide.md", "Documentation/Architecture/VersioningAndRelease.md",
+            "Documentation/Reference/NativeFixtureValidation.md", "Documentation/Reference/NativeFixtureManifest.schema.json",
         ]:
             require((package / name).read_bytes() == (source / name).read_bytes(), f"Source input mismatch: {name}")
         license_directory = Path("Documentation/Reference/ThirdPartyLicenses")

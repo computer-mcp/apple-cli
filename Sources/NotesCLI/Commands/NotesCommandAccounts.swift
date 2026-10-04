@@ -399,7 +399,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.accounts.workflow.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "capability_accounting+privacy_boundary+no_backend_calls",
       targetIDSHA256: sha256Hex("notes.accounts.workflow.audit"),
       checks: checks

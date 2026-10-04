@@ -11,7 +11,7 @@ capability truth for `apple intelligence`.
 | Capability | CLI surface | Implementation mechanism | Gate / verifier / gap |
 | --- | --- | --- | --- |
 | Support and diagnosis | `support`, `doctor`, `verify` | Foundation plist reads and bounded host fact checks | Read-only diagnostics. |
-| Enablement | `enable` | Foundation plist writes to local eligibility cache | Requires explicit `--allow-system-cache-write`; not `DryRun` payload-based. |
+| Enablement | `enable` | Foundation plist writes to local eligibility cache | Requires explicit `--allow-system-cache-write`; all inputs prepared before writes, stale snapshot checks and group readback. Optional country changes require a supported archive and preserve historical/shared objects. Cache verification does not prove service readiness. |
 | Cache and recovery | `reset-cache`, `rollback`, `unlock` | Bounded file/cache/service operations | Uses target-specific risk flags. |
 | Recompute and service | `recompute`, `service install/uninstall` | Bounded subprocess and LaunchDaemon workflows | Requires explicit debug/service risk flags. |
 

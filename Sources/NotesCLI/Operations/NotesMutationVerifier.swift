@@ -461,7 +461,7 @@ struct NotesMutationVerifier {
         boolCheck(name: "changed", expected: true, actual: changed),
         boolCheck(name: "visible_exists_after", expected: false, actual: visibleFolder != nil),
         boolCheck(name: "purgable_exists_after", expected: false, actual: purgableFolder != nil),
-        storeMatchCheck(objectID: draft.folderID, storeObject: debug.storeObject),
+        storeAbsenceCheck(objectID: draft.folderID, storeObject: debug.storeObject),
       ]
 
       return checkedReport(
@@ -552,19 +552,19 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "checklist_item_count",
-          expected: beforeStructure.checklistItemCount + 1,
+          expected: beforeStructure.checklistItemCount.map { $0 + 1 },
           actual: postWriteStructure.checklistItemCount
         ))
       checks.append(
         intCheck(
           name: "checklist_done_count",
-          expected: beforeStructure.checklistDoneCount + (draft.checked ? 1 : 0),
+          expected: beforeStructure.checklistDoneCount.map { $0 + (draft.checked ? 1 : 0) },
           actual: postWriteStructure.checklistDoneCount
         ))
       checks.append(
         intCheck(
           name: "checklist_open_count",
-          expected: beforeStructure.checklistOpenCount + (draft.checked ? 0 : 1),
+          expected: beforeStructure.checklistOpenCount.map { $0 + (draft.checked ? 0 : 1) },
           actual: postWriteStructure.checklistOpenCount
         ))
       checks.append(boolCheck(name: "has_checklist", expected: true, actual: postWriteStructure.hasChecklist))
@@ -602,6 +602,7 @@ struct NotesMutationVerifier {
       let beforeTableKindCount = bodyAttachmentKindCount("table", in: beforeStructure)
       let postTableKindCount = bodyAttachmentKindCount("table", in: postWriteStructure)
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -612,19 +613,19 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "table_count",
-          expected: beforeStructure.tableCount + 1,
+          expected: beforeStructure.tableCount.map { $0 + 1 },
           actual: postWriteStructure.tableCount
         ))
       checks.append(
         intCheck(
           name: "table_attachment_kind_count",
-          expected: beforeTableKindCount + 1,
+          expected: beforeTableKindCount.map { $0 + 1 },
           actual: postTableKindCount
         ))
       checks.append(
         intCheck(
           name: "inline_attachment_count",
-          expected: beforeStructure.inlineAttachmentCount + 1,
+          expected: beforeStructure.inlineAttachmentCount.map { $0 + 1 },
           actual: postWriteStructure.inlineAttachmentCount
         ))
       checks.append(
@@ -717,6 +718,7 @@ struct NotesMutationVerifier {
       )
 
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -727,7 +729,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "table_count",
-          expected: beforeStructure.tableCount + 1,
+          expected: beforeStructure.tableCount.map { $0 + 1 },
           actual: postWriteStructure.tableCount
         ))
       checks.append(
@@ -745,13 +747,13 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "table_attachment_kind_count",
-          expected: beforeTableKindCount + 1,
+          expected: beforeTableKindCount.map { $0 + 1 },
           actual: postTableKindCount
         ))
       checks.append(
         intCheck(
           name: "inline_attachment_count",
-          expected: beforeStructure.inlineAttachmentCount + 1,
+          expected: beforeStructure.inlineAttachmentCount.map { $0 + 1 },
           actual: postWriteStructure.inlineAttachmentCount
         ))
       checks.append(
@@ -866,6 +868,7 @@ struct NotesMutationVerifier {
       let expectedChanged = beforeCell.textSHA256 != draft.textSHA256
         || beforeCell.textByteCount != draft.textByteCount
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -1070,6 +1073,7 @@ struct NotesMutationVerifier {
         table: selectedPost
       )
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -1453,6 +1457,7 @@ struct NotesMutationVerifier {
       let beforeSet = Set(beforeOrder)
       let postSet = Set(postOrder)
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -1620,6 +1625,7 @@ struct NotesMutationVerifier {
       let expectedChanged = selectedBefore?.resultSHA256 != draft.resultSHA256
         || selectedBefore?.resultByteCount != draft.resultByteCount
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -1872,6 +1878,7 @@ struct NotesMutationVerifier {
       let beforeIDs = Set(beforeResults.map(\.idSHA256))
       let postTarget = postWriteResults.first { $0.idSHA256 == result.target.idSHA256 }
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -1906,13 +1913,13 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "math_attachment_count_incremented",
-          expected: beforeStructure.mathAttachmentCount + 1,
+          expected: beforeStructure.mathAttachmentCount.map { $0 + 1 },
           actual: postWriteStructure.mathAttachmentCount
         ))
       checks.append(
         intCheck(
           name: "inline_attachment_count_incremented",
-          expected: beforeStructure.inlineAttachmentCount + 1,
+          expected: beforeStructure.inlineAttachmentCount.map { $0 + 1 },
           actual: postWriteStructure.inlineAttachmentCount
         ))
       checks.append(
@@ -2040,7 +2047,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "math_attachment_count_incremented",
-          expected: beforeStructure.mathAttachmentCount + 2,
+          expected: beforeStructure.mathAttachmentCount.map { $0 + 2 },
           actual: postWriteStructure.mathAttachmentCount
         ))
       checks.append(
@@ -2253,6 +2260,7 @@ struct NotesMutationVerifier {
         ? beforeTables[draft.ordinal - 1]
         : nil
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -2281,7 +2289,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "table_count",
-          expected: max(0, beforeStructure.tableCount - 1),
+          expected: beforeStructure.tableCount.map { max(0, $0 - 1) },
           actual: postWriteStructure.tableCount
         ))
       checks.append(
@@ -2299,13 +2307,13 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "table_attachment_kind_count",
-          expected: max(0, beforeTableKindCount - 1),
+          expected: beforeTableKindCount.map { max(0, $0 - 1) },
           actual: postTableKindCount
         ))
       checks.append(
         intCheck(
           name: "inline_attachment_count",
-          expected: max(0, beforeStructure.inlineAttachmentCount - 1),
+          expected: beforeStructure.inlineAttachmentCount.map { max(0, $0 - 1) },
           actual: postWriteStructure.inlineAttachmentCount
         ))
       checks.append(
@@ -2387,6 +2395,7 @@ struct NotesMutationVerifier {
         ? true
         : (postWriteNote.body?.contains(result.convertedText) ?? false)
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -2410,7 +2419,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "table_count",
-          expected: max(0, beforeStructure.tableCount - 1),
+          expected: beforeStructure.tableCount.map { max(0, $0 - 1) },
           actual: postWriteStructure.tableCount
         ))
       checks.append(
@@ -2428,13 +2437,13 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "table_attachment_kind_count",
-          expected: max(0, beforeTableKindCount - 1),
+          expected: beforeTableKindCount.map { max(0, $0 - 1) },
           actual: postTableKindCount
         ))
       checks.append(
         intCheck(
           name: "inline_attachment_count",
-          expected: max(0, beforeStructure.inlineAttachmentCount - 1),
+          expected: beforeStructure.inlineAttachmentCount.map { max(0, $0 - 1) },
           actual: postWriteStructure.inlineAttachmentCount
         ))
       checks.append(intCheck(name: "converted_text_row_count", expected: draft.rowCount, actual: result.rowCount))
@@ -2523,8 +2532,8 @@ struct NotesMutationVerifier {
       let beforeTableKindCount = bodyAttachmentKindCount("table", in: beforeStructure)
       let postTableKindCount = bodyAttachmentKindCount("table", in: postWriteStructure)
       let beforeTableIDs = Set(beforeTables.map(\.idSHA256))
-      let selectedBefore = beforeStructure.paragraphAnchors.first { $0.idSHA256 == draft.paragraphIDSHA256 }
-      let postAnchorIDs = Set(postWriteStructure.paragraphAnchors.map(\.idSHA256))
+      let selectedBefore = (beforeStructure.paragraphAnchors ?? []).first { $0.idSHA256 == draft.paragraphIDSHA256 }
+      let postAnchorIDs = Set((postWriteStructure.paragraphAnchors ?? []).map(\.idSHA256))
       let sourceText = try normalizedBodyTableText(result.sourceText)
       let targetCellMatches = try tableCellHashesMatchSourceText(
         reader: bodyStructureReader,
@@ -2536,6 +2545,7 @@ struct NotesMutationVerifier {
       )
 
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -2562,14 +2572,14 @@ struct NotesMutationVerifier {
         boolCheck(
           name: "other_paragraph_anchors_preserved",
           expected: true,
-          actual: beforeStructure.paragraphAnchors
+          actual: (beforeStructure.paragraphAnchors ?? [])
             .filter { $0.idSHA256 != draft.paragraphIDSHA256 }
             .allSatisfy { postAnchorIDs.contains($0.idSHA256) }
         ))
       checks.append(
         intCheck(
           name: "table_count",
-          expected: beforeStructure.tableCount + 1,
+          expected: beforeStructure.tableCount.map { $0 + 1 },
           actual: postWriteStructure.tableCount
         ))
       checks.append(
@@ -2587,13 +2597,13 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "table_attachment_kind_count",
-          expected: beforeTableKindCount + 1,
+          expected: beforeTableKindCount.map { $0 + 1 },
           actual: postTableKindCount
         ))
       checks.append(
         intCheck(
           name: "inline_attachment_count",
-          expected: beforeStructure.inlineAttachmentCount + 1,
+          expected: beforeStructure.inlineAttachmentCount.map { $0 + 1 },
           actual: postWriteStructure.inlineAttachmentCount
         ))
       checks.append(
@@ -2710,11 +2720,11 @@ struct NotesMutationVerifier {
         targetTableOrdinal: result.targetTable.ordinal
       )
       let debug = sqliteReader.debugNote(postTargetNote)
-      let expectedSourceTableCount = sameNote ? beforeSourceStructure.tableCount + 1 : beforeSourceStructure.tableCount
+      let expectedSourceTableCount = sameNote ? beforeSourceStructure.tableCount.map { $0 + 1 } : beforeSourceStructure.tableCount
       let expectedSourceTableListCount = sameNote ? beforeSourceTables.count + 1 : beforeSourceTables.count
-      let expectedSourceTableKindCount = sameNote ? beforeSourceTableKindCount + 1 : beforeSourceTableKindCount
+      let expectedSourceTableKindCount = sameNote ? beforeSourceTableKindCount.map { $0 + 1 } : beforeSourceTableKindCount
       let expectedSourceInlineCount = sameNote
-        ? beforeSourceStructure.inlineAttachmentCount + 1
+        ? beforeSourceStructure.inlineAttachmentCount.map { $0 + 1 }
         : beforeSourceStructure.inlineAttachmentCount
 
       var checks = commonNoteChecks(note: postTargetNote, debug: debug)
@@ -2754,7 +2764,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "target_table_count",
-          expected: beforeTargetStructure.tableCount + 1,
+          expected: beforeTargetStructure.tableCount.map { $0 + 1 },
           actual: postTargetStructure.tableCount
         ))
       checks.append(
@@ -2790,13 +2800,13 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "target_table_attachment_kind_count",
-          expected: beforeTargetTableKindCount + 1,
+          expected: beforeTargetTableKindCount.map { $0 + 1 },
           actual: postTargetTableKindCount
         ))
       checks.append(
         intCheck(
           name: "target_inline_attachment_count",
-          expected: beforeTargetStructure.inlineAttachmentCount + 1,
+          expected: beforeTargetStructure.inlineAttachmentCount.map { $0 + 1 },
           actual: postTargetStructure.inlineAttachmentCount
         ))
       checks.append(
@@ -2894,9 +2904,10 @@ struct NotesMutationVerifier {
       let postWriteStructure = try bodyStructureReader.readBodyStructure(noteID: result.note.id)
       let debug = sqliteReader.debugNote(postWriteNote)
       let delta = result.changed ? 1 : 0
-      let expectedDone = beforeStructure.checklistDoneCount + (draft.checked ? delta : -delta)
-      let expectedOpen = beforeStructure.checklistOpenCount + (draft.checked ? -delta : delta)
+      let expectedDone = beforeStructure.checklistDoneCount.map { $0 + (draft.checked ? delta : -delta) }
+      let expectedOpen = beforeStructure.checklistOpenCount.map { $0 + (draft.checked ? -delta : delta) }
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
       checks.append(stringCheck(name: "title_preserved", expected: before.title, actual: postWriteNote.title))
@@ -2908,14 +2919,14 @@ struct NotesMutationVerifier {
           boolCheck(
             name: "ordinal_in_range",
             expected: true,
-            actual: ordinal > 0 && ordinal <= beforeStructure.checklistItemCount
+            actual: beforeStructure.checklistItemCount.map { ordinal > 0 && ordinal <= $0 }
           ))
       }
       if let paragraphIDSHA256 = draft.paragraphIDSHA256 {
-        let beforeAnchor = beforeStructure.paragraphAnchors.first {
+        let beforeAnchor = (beforeStructure.paragraphAnchors ?? []).first {
           $0.idSHA256 == paragraphIDSHA256 && $0.isChecklist
         }
-        let afterAnchor = postWriteStructure.paragraphAnchors.first {
+        let afterAnchor = (postWriteStructure.paragraphAnchors ?? []).first {
           $0.idSHA256 == paragraphIDSHA256 && $0.isChecklist
         }
         checks.append(boolCheck(name: "paragraph_anchor_checklist_before", expected: true, actual: beforeAnchor != nil))
@@ -3082,8 +3093,9 @@ struct NotesMutationVerifier {
       let debug = sqliteReader.debugNote(postWriteNote)
       let expectedDone = draft.checked ? beforeStructure.checklistItemCount : 0
       let expectedOpen = draft.checked ? 0 : beforeStructure.checklistItemCount
-      let beforeChecklistAnchors = beforeStructure.paragraphAnchors.filter { $0.isChecklist }
+      let beforeChecklistAnchors = (beforeStructure.paragraphAnchors ?? []).filter { $0.isChecklist }
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
       checks.append(stringCheck(name: "title_preserved", expected: before.title, actual: postWriteNote.title))
@@ -3094,7 +3106,7 @@ struct NotesMutationVerifier {
         boolCheck(
           name: "has_checklist_before",
           expected: true,
-          actual: beforeStructure.checklistItemCount > 0
+          actual: beforeStructure.checklistItemCount.map { $0 > 0 }
         ))
       checks.append(
         intCheck(
@@ -3119,7 +3131,7 @@ struct NotesMutationVerifier {
           boolCheck(
             name: "paragraph_anchor_preserved_\(anchor.ordinal)",
             expected: true,
-            actual: postWriteStructure.paragraphAnchors.contains {
+            actual: (postWriteStructure.paragraphAnchors ?? []).contains {
               $0.idSHA256 == anchor.idSHA256 && $0.isChecklist
             }
           ))
@@ -3168,6 +3180,7 @@ struct NotesMutationVerifier {
       let actualOrder = postChecklistAnchors.map(\.idSHA256)
       let expectedChanged = expectedOrder != beforeChecklistAnchors.map(\.idSHA256)
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -3254,9 +3267,10 @@ struct NotesMutationVerifier {
       let debug = sqliteReader.debugNote(postWriteNote)
       let beforeAnchor = bodyChecklistConvertAnchor(draft: draft, structure: beforeStructure)
       let afterAnchor = beforeAnchor.flatMap { beforeAnchor in
-        postWriteStructure.paragraphAnchors.first { $0.idSHA256 == beforeAnchor.idSHA256 }
+        (postWriteStructure.paragraphAnchors ?? []).first { $0.idSHA256 == beforeAnchor.idSHA256 }
       }
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -3269,7 +3283,7 @@ struct NotesMutationVerifier {
           boolCheck(
             name: "paragraph_ordinal_in_range",
             expected: true,
-            actual: ordinal > 0 && ordinal <= beforeStructure.paragraphAnchors.count
+            actual: beforeStructure.paragraphAnchors.map { ordinal > 0 && ordinal <= $0.count }
           ))
       }
       checks.append(boolCheck(name: "paragraph_anchor_before", expected: true, actual: beforeAnchor != nil))
@@ -3298,19 +3312,19 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "checklist_item_count",
-          expected: beforeStructure.checklistItemCount + 1,
+          expected: beforeStructure.checklistItemCount.map { $0 + 1 },
           actual: postWriteStructure.checklistItemCount
         ))
       checks.append(
         intCheck(
           name: "checklist_done_count",
-          expected: beforeStructure.checklistDoneCount + (draft.checked ? 1 : 0),
+          expected: beforeStructure.checklistDoneCount.map { $0 + (draft.checked ? 1 : 0) },
           actual: postWriteStructure.checklistDoneCount
         ))
       checks.append(
         intCheck(
           name: "checklist_open_count",
-          expected: beforeStructure.checklistOpenCount + (draft.checked ? 0 : 1),
+          expected: beforeStructure.checklistOpenCount.map { $0 + (draft.checked ? 0 : 1) },
           actual: postWriteStructure.checklistOpenCount
         ))
       if let beforeBytes = beforeStructure.plainTextByteCount, let afterBytes = postWriteStructure.plainTextByteCount {
@@ -3351,12 +3365,12 @@ struct NotesMutationVerifier {
       let postWriteNote = try requiredPostWriteNote(id: result.note.id, operation: operation)
       let postWriteStructure = try bodyStructureReader.readBodyStructure(noteID: result.note.id)
       let debug = sqliteReader.debugNote(postWriteNote)
-      let beforeAnchors = beforeStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
-      let postAnchors = postWriteStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+      let beforeAnchors = (beforeStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
+      let postAnchors = (postWriteStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
       let selectedAnchors = bodyChecklistConvertRangeAnchors(draft: draft, structure: beforeStructure)
       let selectedIDs = Set(selectedAnchors.map(\.idSHA256))
       let afterSelectedAnchors = selectedAnchors.compactMap { beforeAnchor in
-        postWriteStructure.paragraphAnchors.first { $0.idSHA256 == beforeAnchor.idSHA256 }
+        (postWriteStructure.paragraphAnchors ?? []).first { $0.idSHA256 == beforeAnchor.idSHA256 }
       }
       let selectedCount = selectedAnchors.count
       let allSelectedWereNonChecklist = !selectedAnchors.isEmpty && selectedAnchors.allSatisfy { !$0.isChecklist }
@@ -3369,6 +3383,7 @@ struct NotesMutationVerifier {
       let expectedDoneDelta = draft.checked ? selectedCount : 0
       let expectedOpenDelta = draft.checked ? 0 : selectedCount
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -3433,26 +3448,26 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "checklist_item_count",
-          expected: beforeStructure.checklistItemCount + selectedCount,
+          expected: beforeStructure.checklistItemCount.map { $0 + selectedCount },
           actual: postWriteStructure.checklistItemCount
         ))
       checks.append(
         intCheck(
           name: "checklist_done_count",
-          expected: beforeStructure.checklistDoneCount + expectedDoneDelta,
+          expected: beforeStructure.checklistDoneCount.map { $0 + expectedDoneDelta },
           actual: postWriteStructure.checklistDoneCount
         ))
       checks.append(
         intCheck(
           name: "checklist_open_count",
-          expected: beforeStructure.checklistOpenCount + expectedOpenDelta,
+          expected: beforeStructure.checklistOpenCount.map { $0 + expectedOpenDelta },
           actual: postWriteStructure.checklistOpenCount
         ))
       checks.append(
         intCheck(
           name: "paragraph_anchor_count_preserved",
-          expected: beforeStructure.paragraphAnchors.count,
-          actual: postWriteStructure.paragraphAnchors.count
+          expected: beforeStructure.paragraphAnchors?.count,
+          actual: postWriteStructure.paragraphAnchors?.count
         ))
       let nonSelectedBefore = beforeAnchors.filter { !selectedIDs.contains($0.idSHA256) }.map(\.idSHA256)
       let nonSelectedAfter = postAnchors.filter { !selectedIDs.contains($0.idSHA256) }.map(\.idSHA256)
@@ -3514,6 +3529,7 @@ struct NotesMutationVerifier {
       let actualOrder = postChecklistAnchors.map(\.idSHA256)
       let expectedChanged = sourceIndex.map { $0 != targetIndex } ?? true
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -3630,6 +3646,7 @@ struct NotesMutationVerifier {
       let addedAnchors = postListAnchors.filter { !beforeIDs.contains($0.idSHA256) }
       let addedAnchor = addedAnchors.first
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -3653,7 +3670,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "list_item_count",
-          expected: beforeStructure.listItemCount + 1,
+          expected: beforeStructure.listItemCount.map { $0 + 1 },
           actual: postWriteStructure.listItemCount
         ))
       checks.append(
@@ -3715,9 +3732,10 @@ struct NotesMutationVerifier {
       let debug = sqliteReader.debugNote(postWriteNote)
       let beforeAnchor = bodyListConvertAnchor(draft: draft, structure: beforeStructure)
       let afterAnchor = beforeAnchor.flatMap { beforeAnchor in
-        postWriteStructure.paragraphAnchors.first { $0.idSHA256 == beforeAnchor.idSHA256 }
+        (postWriteStructure.paragraphAnchors ?? []).first { $0.idSHA256 == beforeAnchor.idSHA256 }
       }
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -3753,7 +3771,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "list_item_count",
-          expected: beforeStructure.listItemCount + 1,
+          expected: beforeStructure.listItemCount.map { $0 + 1 },
           actual: postWriteStructure.listItemCount
         ))
       checks.append(
@@ -3799,11 +3817,11 @@ struct NotesMutationVerifier {
       let postWriteNote = try requiredPostWriteNote(id: result.note.id, operation: operation)
       let postWriteStructure = try bodyStructureReader.readBodyStructure(noteID: result.note.id)
       let debug = sqliteReader.debugNote(postWriteNote)
-      let beforeAnchors = beforeStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
-      let postAnchors = postWriteStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+      let beforeAnchors = (beforeStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
+      let postAnchors = (postWriteStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
       let selectedAnchors = bodyListConvertRangeAnchors(draft: draft, structure: beforeStructure)
       let afterSelectedAnchors = selectedAnchors.compactMap { beforeAnchor in
-        postWriteStructure.paragraphAnchors.first { $0.idSHA256 == beforeAnchor.idSHA256 }
+        (postWriteStructure.paragraphAnchors ?? []).first { $0.idSHA256 == beforeAnchor.idSHA256 }
       }
       let selectedCount = selectedAnchors.count
       let allSelectedWereNonList = !selectedAnchors.isEmpty && selectedAnchors.allSatisfy { !$0.isList && !$0.isChecklist }
@@ -3814,6 +3832,7 @@ struct NotesMutationVerifier {
           && beforeAnchor.titleSHA256 == afterAnchor.titleSHA256
       }
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -3834,7 +3853,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "list_item_count",
-          expected: beforeStructure.listItemCount + selectedCount,
+          expected: beforeStructure.listItemCount.map { $0 + selectedCount },
           actual: postWriteStructure.listItemCount
         ))
       checks.append(
@@ -3888,6 +3907,7 @@ struct NotesMutationVerifier {
       }
       let expectedChanged = beforeTarget.map { $0.listStyle != draft.style.rawValue } ?? true
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -3976,15 +3996,15 @@ struct NotesMutationVerifier {
       let postWriteStructure = try bodyStructureReader.readBodyStructure(noteID: result.note.id)
       let postWriteSections = try bodyStructureReader.listCollapsibleSections(noteID: result.note.id)
       let debug = sqliteReader.debugNote(postWriteNote)
-      let beforeAnchors = beforeStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
-      let postAnchors = postWriteStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+      let beforeAnchors = (beforeStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
+      let postAnchors = (postWriteStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
       let beforeTarget = bodyParagraphFormatAnchor(
         paragraphIDSHA256: draft.paragraphIDSHA256,
         ordinal: draft.ordinal,
         structure: beforeStructure
       )
       let afterTarget = beforeTarget.flatMap { target in
-        postWriteStructure.paragraphAnchors.first { $0.idSHA256 == target.idSHA256 }
+        (postWriteStructure.paragraphAnchors ?? []).first { $0.idSHA256 == target.idSHA256 }
       }
       let beforeTargetSection = beforeTarget.flatMap { target in
         beforeSections.first { $0.paragraphIDSHA256 == target.idSHA256 }
@@ -4001,6 +4021,7 @@ struct NotesMutationVerifier {
         + ((beforeTargetSection == nil && expectedCollapsible) ? 1 : 0)
         - ((beforeTargetSection != nil && !expectedCollapsible) ? 1 : 0)
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -4062,8 +4083,8 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "paragraph_count_preserved",
-          expected: beforeStructure.paragraphAnchors.count,
-          actual: postWriteStructure.paragraphAnchors.count
+          expected: beforeStructure.paragraphAnchors?.count,
+          actual: postWriteStructure.paragraphAnchors?.count
         ))
       checks.append(
         intCheck(
@@ -4126,21 +4147,22 @@ struct NotesMutationVerifier {
       let postWriteNote = try requiredPostWriteNote(id: result.note.id, operation: operation)
       let postWriteStructure = try bodyStructureReader.readBodyStructure(noteID: result.note.id)
       let debug = sqliteReader.debugNote(postWriteNote)
-      let beforeAnchors = beforeStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
-      let postAnchors = postWriteStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+      let beforeAnchors = (beforeStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
+      let postAnchors = (postWriteStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
       let beforeTarget = bodyParagraphFormatAnchor(
         paragraphIDSHA256: draft.paragraphIDSHA256,
         ordinal: draft.ordinal,
         structure: beforeStructure
       )
       let afterTarget = beforeTarget.flatMap { target in
-        postWriteStructure.paragraphAnchors.first { $0.idSHA256 == target.idSHA256 }
+        (postWriteStructure.paragraphAnchors ?? []).first { $0.idSHA256 == target.idSHA256 }
       }
       let targetWasSupported = beforeTarget.map {
         !$0.isList && !$0.isChecklist && !$0.isBlockQuote
       } ?? false
       let expectedChanged = beforeTarget.map { $0.alignment != draft.alignment.rawValue } ?? true
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -4175,8 +4197,8 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "paragraph_count_preserved",
-          expected: beforeStructure.paragraphAnchors.count,
-          actual: postWriteStructure.paragraphAnchors.count
+          expected: beforeStructure.paragraphAnchors?.count,
+          actual: postWriteStructure.paragraphAnchors?.count
         ))
       checks.append(
         intCheck(
@@ -4227,22 +4249,23 @@ struct NotesMutationVerifier {
       let postWriteNote = try requiredPostWriteNote(id: result.note.id, operation: operation)
       let postWriteStructure = try bodyStructureReader.readBodyStructure(noteID: result.note.id)
       let debug = sqliteReader.debugNote(postWriteNote)
-      let beforeAnchors = beforeStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
-      let postAnchors = postWriteStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+      let beforeAnchors = (beforeStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
+      let postAnchors = (postWriteStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
       let beforeTarget = bodyParagraphFormatAnchor(
         paragraphIDSHA256: draft.paragraphIDSHA256,
         ordinal: draft.ordinal,
         structure: beforeStructure
       )
       let afterTarget = beforeTarget.flatMap { target in
-        postWriteStructure.paragraphAnchors.first { $0.idSHA256 == target.idSHA256 }
+        (postWriteStructure.paragraphAnchors ?? []).first { $0.idSHA256 == target.idSHA256 }
       }
       let targetWasSupported = beforeTarget.map { !$0.isList && !$0.isChecklist } ?? false
       let expectedChanged = beforeTarget.map { $0.isBlockQuote != draft.enabled } ?? true
-      let expectedBlockQuoteCount = beforeTarget.map { target in
-        beforeStructure.blockQuoteCount + ((target.isBlockQuote == draft.enabled) ? 0 : (draft.enabled ? 1 : -1))
+      let expectedBlockQuoteCount = beforeTarget.flatMap { target in
+        beforeStructure.blockQuoteCount.map { $0 + ((target.isBlockQuote == draft.enabled) ? 0 : (draft.enabled ? 1 : -1)) }
       } ?? beforeStructure.blockQuoteCount
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -4262,7 +4285,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "block_quote_count",
-          expected: max(0, expectedBlockQuoteCount),
+          expected: expectedBlockQuoteCount.map { max(0, $0) },
           actual: postWriteStructure.blockQuoteCount
         ))
       if let beforeTarget, let afterTarget {
@@ -4282,8 +4305,8 @@ struct NotesMutationVerifier {
         ))
       checks.append(intCheck(
         name: "paragraph_count_preserved",
-        expected: beforeStructure.paragraphAnchors.count,
-        actual: postWriteStructure.paragraphAnchors.count
+        expected: beforeStructure.paragraphAnchors?.count,
+        actual: postWriteStructure.paragraphAnchors?.count
       ))
       checks.append(intCheck(
         name: "list_item_count_preserved",
@@ -4332,19 +4355,24 @@ struct NotesMutationVerifier {
       let postWriteNote = try requiredPostWriteNote(id: result.note.id, operation: operation)
       let postWriteStructure = try bodyStructureReader.readBodyStructure(noteID: result.note.id)
       let debug = sqliteReader.debugNote(postWriteNote)
-      let beforeRun = inlineFormatRunExists(
+      let beforeRun = notesInlineFormatCoverage(
         in: beforeStructure,
         evidence: result.evidence,
         format: draft.format.rawValue
       )
-      let afterRun = inlineFormatRunExists(
+      let afterRun = notesInlineFormatCoverage(
         in: postWriteStructure,
         evidence: result.evidence,
         format: draft.format.rawValue
       )
-      let beforeAnchors = beforeStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
-      let postAnchors = postWriteStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+      let beforeAnchors = (beforeStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
+      let postAnchors = (postWriteStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
+      checks.append(contentsOf: inlineSelectionChecks(
+        before: beforeStructure, after: postWriteStructure, evidence: result.evidence,
+        text: draft.text, paragraph: draft.paragraphIDSHA256, ordinal: draft.ordinal,
+        occurrence: draft.occurrence))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
       checks.append(stringCheck(name: "title_preserved", expected: before.title, actual: postWriteNote.title))
@@ -4353,9 +4381,9 @@ struct NotesMutationVerifier {
       checks.append(boolCheck(name: "body_structure_note", expected: true, actual: postWriteStructure.noteID == draft.noteID))
       checks.append(stringCheck(name: "selection_text_sha256", expected: sha256Hex(draft.text), actual: result.evidence.textSHA256))
       checks.append(intCheck(name: "selection_text_byte_count", expected: draft.text.utf8.count, actual: result.evidence.textByteCount))
-      checks.append(boolCheck(name: "target_format_before", expected: draft.enabled ? false : true, actual: beforeRun))
-      checks.append(boolCheck(name: "target_format_after", expected: draft.enabled, actual: afterRun))
-      checks.append(boolCheck(name: "changed_reported", expected: beforeRun != draft.enabled, actual: result.changed))
+      checks.append(boolCheck(name: "target_format_before", expected: !result.changed, actual: beforeRun.map { $0.matches(enabled: draft.enabled) }))
+      checks.append(boolCheck(name: "target_format_after", expected: true, actual: afterRun.map { $0.matches(enabled: draft.enabled) }))
+      checks.append(boolCheck(name: "changed_reported", expected: beforeRun.map { !$0.matches(enabled: draft.enabled) }, actual: result.changed))
       checks.append(
         stringCheck(
           name: "paragraph_anchor_order_preserved",
@@ -4364,8 +4392,8 @@ struct NotesMutationVerifier {
         ))
       checks.append(intCheck(
         name: "paragraph_count_preserved",
-        expected: beforeStructure.paragraphAnchors.count,
-        actual: postWriteStructure.paragraphAnchors.count
+        expected: beforeStructure.paragraphAnchors?.count,
+        actual: postWriteStructure.paragraphAnchors?.count
       ))
       if let beforeBytes = beforeStructure.plainTextByteCount, let afterBytes = postWriteStructure.plainTextByteCount {
         checks.append(intCheck(name: "body_byte_count_preserved", expected: beforeBytes, actual: afterBytes))
@@ -4404,18 +4432,23 @@ struct NotesMutationVerifier {
       let postWriteNote = try requiredPostWriteNote(id: result.note.id, operation: operation)
       let postWriteStructure = try bodyStructureReader.readBodyStructure(noteID: result.note.id)
       let debug = sqliteReader.debugNote(postWriteNote)
-      let beforeRun = inlineColorRunExists(
+      let beforeRun = notesInlineColorCoverage(
         in: beforeStructure,
         evidence: result.evidence
       )
-      let afterRun = inlineColorRunExists(
+      let afterRun = notesInlineColorCoverage(
         in: postWriteStructure,
         evidence: result.evidence
       )
       let expectedAfter = result.evidence.colorSHA256 != nil
-      let beforeAnchors = beforeStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
-      let postAnchors = postWriteStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+      let beforeAnchors = (beforeStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
+      let postAnchors = (postWriteStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
+      checks.append(contentsOf: inlineSelectionChecks(
+        before: beforeStructure, after: postWriteStructure, evidence: result.evidence,
+        text: draft.text, paragraph: draft.paragraphIDSHA256, ordinal: draft.ordinal,
+        occurrence: draft.occurrence))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
       checks.append(stringCheck(name: "title_preserved", expected: before.title, actual: postWriteNote.title))
@@ -4424,8 +4457,8 @@ struct NotesMutationVerifier {
       checks.append(boolCheck(name: "body_structure_note", expected: true, actual: postWriteStructure.noteID == draft.noteID))
       checks.append(stringCheck(name: "selection_text_sha256", expected: sha256Hex(draft.text), actual: result.evidence.textSHA256))
       checks.append(intCheck(name: "selection_text_byte_count", expected: draft.text.utf8.count, actual: result.evidence.textByteCount))
-      checks.append(boolCheck(name: "target_color_after", expected: expectedAfter, actual: afterRun))
-      checks.append(boolCheck(name: "changed_reported", expected: beforeRun != expectedAfter, actual: result.changed))
+      checks.append(boolCheck(name: "target_color_after", expected: true, actual: afterRun.map { $0.matches(enabled: expectedAfter) }))
+      checks.append(boolCheck(name: "changed_reported", expected: beforeRun.map { !$0.matches(enabled: expectedAfter) }, actual: result.changed))
       checks.append(
         stringCheck(
           name: "paragraph_anchor_order_preserved",
@@ -4434,8 +4467,8 @@ struct NotesMutationVerifier {
         ))
       checks.append(intCheck(
         name: "paragraph_count_preserved",
-        expected: beforeStructure.paragraphAnchors.count,
-        actual: postWriteStructure.paragraphAnchors.count
+        expected: beforeStructure.paragraphAnchors?.count,
+        actual: postWriteStructure.paragraphAnchors?.count
       ))
       if let beforeBytes = beforeStructure.plainTextByteCount, let afterBytes = postWriteStructure.plainTextByteCount {
         checks.append(intCheck(name: "body_byte_count_preserved", expected: beforeBytes, actual: afterBytes))
@@ -4474,19 +4507,24 @@ struct NotesMutationVerifier {
       let postWriteNote = try requiredPostWriteNote(id: result.note.id, operation: operation)
       let postWriteStructure = try bodyStructureReader.readBodyStructure(noteID: result.note.id)
       let debug = sqliteReader.debugNote(postWriteNote)
-      let beforeRun = inlineFormatRunExists(
+      let beforeRun = notesInlineFormatCoverage(
         in: beforeStructure,
         evidence: result.evidence,
         format: "font"
-      )
-      let afterRun = inlineFormatRunExists(
+      ).map { $0 == .full }
+      let afterRun = notesInlineFormatCoverage(
         in: postWriteStructure,
         evidence: result.evidence,
         format: "font"
-      )
-      let beforeAnchors = beforeStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
-      let postAnchors = postWriteStructure.paragraphAnchors.sorted { $0.ordinal < $1.ordinal }
+      ).map { $0 == .full }
+      let beforeAnchors = (beforeStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
+      let postAnchors = (postWriteStructure.paragraphAnchors ?? []).sorted { $0.ordinal < $1.ordinal }
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
+      checks.append(contentsOf: inlineSelectionChecks(
+        before: beforeStructure, after: postWriteStructure, evidence: result.evidence,
+        text: draft.text, paragraph: draft.paragraphIDSHA256, ordinal: draft.ordinal,
+        occurrence: draft.occurrence))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
       checks.append(stringCheck(name: "title_preserved", expected: before.title, actual: postWriteNote.title))
@@ -4495,14 +4533,14 @@ struct NotesMutationVerifier {
       checks.append(boolCheck(name: "body_structure_note", expected: true, actual: postWriteStructure.noteID == draft.noteID))
       checks.append(stringCheck(name: "selection_text_sha256", expected: sha256Hex(draft.text), actual: result.evidence.textSHA256))
       checks.append(intCheck(name: "selection_text_byte_count", expected: draft.text.utf8.count, actual: result.evidence.textByteCount))
-      checks.append(boolCheck(name: "target_font_before", expected: false, actual: beforeRun))
+      checks.append(boolCheck(name: "target_font_before", expected: !result.changed, actual: beforeRun))
       checks.append(boolCheck(name: "target_font_after", expected: true, actual: afterRun))
-      checks.append(boolCheck(name: "changed_reported", expected: !beforeRun, actual: result.changed))
+      checks.append(boolCheck(name: "changed_reported", expected: beforeRun.map { !$0 }, actual: result.changed))
       checks.append(
         boolCheck(
           name: "target_font_hash_readback",
           expected: true,
-          actual: result.evidence.fontSHA256 != nil && afterRun
+          actual: afterRun.map { result.evidence.fontSHA256 != nil && $0 }
         ))
       checks.append(
         stringCheck(
@@ -4512,8 +4550,8 @@ struct NotesMutationVerifier {
         ))
       checks.append(intCheck(
         name: "paragraph_count_preserved",
-        expected: beforeStructure.paragraphAnchors.count,
-        actual: postWriteStructure.paragraphAnchors.count
+        expected: beforeStructure.paragraphAnchors?.count,
+        actual: postWriteStructure.paragraphAnchors?.count
       ))
       if let beforeBytes = beforeStructure.plainTextByteCount, let afterBytes = postWriteStructure.plainTextByteCount {
         checks.append(intCheck(name: "body_byte_count_preserved", expected: beforeBytes, actual: afterBytes))
@@ -4571,6 +4609,7 @@ struct NotesMutationVerifier {
       let actualOrder = postListAnchors.map(\.idSHA256)
       let expectedChanged = sourceIndex.map { $0 != targetIndex } ?? true
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -4705,6 +4744,7 @@ struct NotesMutationVerifier {
         expectedChanged: expectedChanged
       )
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       if let expectedChanged {
         checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       }
@@ -4824,6 +4864,7 @@ struct NotesMutationVerifier {
         .map(\.idSHA256)
       let targetWasDone = beforeTarget?.checklistDone
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -4869,26 +4910,26 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "checklist_item_count",
-          expected: max(0, beforeStructure.checklistItemCount - 1),
+          expected: beforeStructure.checklistItemCount.map { max(0, $0 - 1) },
           actual: postWriteStructure.checklistItemCount
         ))
       checks.append(
         intCheck(
           name: "list_item_count",
-          expected: max(0, beforeStructure.listItemCount - 1),
+          expected: beforeStructure.listItemCount.map { max(0, $0 - 1) },
           actual: postWriteStructure.listItemCount
         ))
       if let targetWasDone {
         checks.append(
           intCheck(
             name: "checklist_done_count",
-            expected: beforeStructure.checklistDoneCount - (targetWasDone ? 1 : 0),
+            expected: beforeStructure.checklistDoneCount.map { $0 - (targetWasDone ? 1 : 0) },
             actual: postWriteStructure.checklistDoneCount
           ))
         checks.append(
           intCheck(
             name: "checklist_open_count",
-            expected: beforeStructure.checklistOpenCount - (targetWasDone ? 0 : 1),
+            expected: beforeStructure.checklistOpenCount.map { $0 - (targetWasDone ? 0 : 1) },
             actual: postWriteStructure.checklistOpenCount
           ))
       }
@@ -4901,7 +4942,7 @@ struct NotesMutationVerifier {
       checks.append(
         boolCheck(
           name: "has_checklist",
-          expected: beforeStructure.checklistItemCount > 1,
+          expected: beforeStructure.checklistItemCount.map { $0 > 1 },
           actual: postWriteStructure.hasChecklist
         ))
       checks.append(boolCheck(name: "password_protected", expected: false, actual: postWriteStructure.isPasswordProtected))
@@ -4954,6 +4995,7 @@ struct NotesMutationVerifier {
         expectedChanged: expectedChanged
       )
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       if let expectedChanged {
         checks.append(boolCheck(name: "changed_reported", expected: expectedChanged, actual: result.changed))
       }
@@ -5078,6 +5120,7 @@ struct NotesMutationVerifier {
         }
         .map(\.idSHA256)
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -5118,7 +5161,7 @@ struct NotesMutationVerifier {
       checks.append(
         intCheck(
           name: "list_item_count",
-          expected: max(0, beforeStructure.listItemCount - 1),
+          expected: beforeStructure.listItemCount.map { max(0, $0 - 1) },
           actual: postWriteStructure.listItemCount
         ))
       checks.append(
@@ -5327,6 +5370,7 @@ struct NotesMutationVerifier {
         createdParagraphs.first { $0.idSHA256 == id }
       } ?? createdParagraphs.first
       var checks = commonNoteChecks(note: postWriteNote, debug: debug)
+      checks.append(paragraphReadbackCheck(before: beforeStructure, after: postWriteStructure))
       checks.append(boolCheck(name: "changed_reported", expected: true, actual: result.changed))
       checks.append(boolCheck(name: "identity_preserved", expected: true, actual: postWriteNote.id == before.id))
       checks.append(boolCheck(name: "draft_target_preserved", expected: true, actual: postWriteNote.id == draft.noteID))
@@ -5424,7 +5468,7 @@ struct NotesMutationVerifier {
         intCheck(
           name: "paragraph_anchor_count_delta",
           expected: 1,
-          actual: postWriteStructure.paragraphAnchors.count - beforeStructure.paragraphAnchors.count
+          actual: beforeStructure.paragraphAnchors.flatMap { before in postWriteStructure.paragraphAnchors.map { $0.count - before.count } }
         ))
       if let beforeBytes = beforeStructure.plainTextByteCount, let afterBytes = postWriteStructure.plainTextByteCount {
         checks.append(boolCheck(name: "body_byte_count_increased", expected: true, actual: afterBytes > beforeBytes))
@@ -5656,12 +5700,24 @@ struct NotesMutationVerifier {
     before: NotesNoteDetail,
     changed: Bool
   ) throws -> NotesMutationVerificationReport {
-    try retryingReport {
+    guard let restorableReader else {
+      throw CLIError(code: .backendUnavailable,
+        message: "Notes delete verification requires restorable private framework readback.",
+        details: ["operation": operation])
+    }
+    return try retryingReport {
       let postWriteNote = try reader.readNote(id: before.id)
+      let restorable = try restorableReader.readRestorableNote(id: before.id)
       let debug = sqliteReader.debugNote(before)
       let checks = [
         boolCheck(name: "changed", expected: true, actual: changed),
         boolCheck(name: "exists_after", expected: false, actual: postWriteNote != nil),
+        boolCheck(name: "restorable_exists_after", expected: true, actual: restorable != nil),
+        boolCheck(name: "identity_preserved", expected: true, actual: restorable?.id == before.id),
+        boolCheck(name: "title_preserved", expected: true, actual: restorable?.title == before.title),
+        boolCheck(name: "account_preserved", expected: true, actual: restorable?.accountName == before.accountName),
+        boolCheck(name: "body_preserved", expected: true, actual: restorable?.body == before.body),
+        boolCheck(name: "tags_preserved", expected: true, actual: restorable?.tags == before.tags),
         storeMatchCheck(noteID: before.id, storeObject: debug.storeObject),
       ]
 
@@ -5697,7 +5753,7 @@ struct NotesMutationVerifier {
         boolCheck(name: "changed", expected: true, actual: changed),
         boolCheck(name: "visible_exists_after", expected: false, actual: visibleAfter != nil),
         boolCheck(name: "restorable_exists_after", expected: false, actual: restorableAfter != nil),
-        storeMatchCheck(noteID: before.id, storeObject: debug.storeObject),
+        storeAbsenceCheck(objectID: before.id, storeObject: debug.storeObject),
       ]
 
       return checkedReport(
@@ -7835,7 +7891,7 @@ struct NotesMutationVerifier {
     checks: [NotesVerificationCheckRecord],
     warnings: [String]
   ) -> NotesMutationVerificationReport {
-    let verified = checks.allSatisfy { $0.status != "failed" }
+    let verified = checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" }
     let evidenceLevel: String
     if readback != nil, storeObject?.matched == true {
       evidenceLevel = "readback_and_store"
@@ -7885,6 +7941,14 @@ struct NotesMutationVerifier {
     throw CLIError(code: .internalError, message: "Notes mutation verification did not run.")
   }
 
+  private func paragraphReadbackCheck(
+    before: NotesBodyStructureRecord, after: NotesBodyStructureRecord
+  ) -> NotesVerificationCheckRecord {
+    boolCheck(
+      name: "paragraph_anchor_readback_available", expected: true,
+      actual: before.paragraphAnchors.flatMap { _ in after.paragraphAnchors.map { _ in true } })
+  }
+
   private func commonNoteChecks(
     note: NotesNoteDetail,
     debug: NotesObjectDebugResponse
@@ -7916,31 +7980,39 @@ struct NotesMutationVerifier {
     return before.body ?? ""
   }
 
-  private func inlineFormatRunExists(
-    in structure: NotesBodyStructureRecord,
-    evidence: NotesBodyInlineMutationEvidence,
-    format: String
-  ) -> Bool {
-    structure.inlineFormatRuns.contains { run in
-      run.format == format
-        && run.textSHA256 == evidence.textSHA256
-        && run.textByteCount == evidence.textByteCount
-        && (evidence.fontSHA256 == nil || run.fontSHA256 == evidence.fontSHA256)
-        && (evidence.paragraphIDSHA256 == nil || run.paragraphIDSHA256 == evidence.paragraphIDSHA256)
+  private func inlineSelectionChecks(
+    before: NotesBodyStructureRecord, after: NotesBodyStructureRecord,
+    evidence: NotesBodyInlineMutationEvidence, text: String,
+    paragraph: String?, ordinal: Int?, occurrence: Int?
+  ) -> [NotesVerificationCheckRecord] {
+    let readback = try? bodyStructureReader?.readInlineSelection(noteID: before.noteID,
+      paragraphIDSHA256: paragraph, ordinal: ordinal, text: text, occurrence: occurrence)
+    let range = notesInlineSelectionRange(in: before, evidence: evidence)
+    let paragraphBound = readback.flatMap { selection -> Bool? in
+      guard let paragraphRange = notesInlineRange(location: selection.paragraphUTF16Location,
+        length: selection.paragraphUTF16Length, bodyLength: before.richTextLength), let range else { return nil }
+      return evidence.paragraphIDSHA256 == selection.paragraphIDSHA256
+        && NSIntersectionRange(paragraphRange, range) == range
     }
-  }
-
-  private func inlineColorRunExists(
-    in structure: NotesBodyStructureRecord,
-    evidence: NotesBodyInlineMutationEvidence
-  ) -> Bool {
-    structure.colorRuns.contains { run in
-      run.role == evidence.role
-        && run.textSHA256 == evidence.textSHA256
-        && run.textByteCount == evidence.textByteCount
-        && (evidence.colorSHA256 == nil || run.colorSHA256 == evidence.colorSHA256)
-        && (evidence.paragraphIDSHA256 == nil || run.paragraphIDSHA256 == evidence.paragraphIDSHA256)
-    }
+    return [
+      boolCheck(name: "selection_position_readback", expected: true,
+        actual: readback.map { $0.utf16Location == evidence.utf16Location
+          && $0.utf16Length == evidence.utf16Length && $0.occurrence == evidence.occurrence
+          && $0.paragraphIDSHA256 == evidence.paragraphIDSHA256 }),
+      boolCheck(name: "selection_text_readback", expected: true,
+        actual: readback.map { $0.textSHA256 == evidence.textSHA256 && $0.textByteCount == evidence.textByteCount }),
+      boolCheck(name: "selection_snapshot_readback", expected: true,
+        actual: readback.map { $0.richTextSHA256 == evidence.richTextSHA256 }),
+      boolCheck(name: "selection_rich_snapshot_before", expected: true,
+        actual: before.richTextSHA256.flatMap { hash in evidence.richTextSHA256.map { $0 == hash } }),
+      boolCheck(name: "selection_rich_snapshot_preserved", expected: true,
+        actual: before.richTextSHA256.flatMap { hash in after.richTextSHA256.map { $0 == hash } }),
+      boolCheck(name: "selection_utf16_range", expected: true,
+        actual: range.map { $0.length == (text as NSString).length }),
+      boolCheck(name: "selection_paragraph_bound", expected: true, actual: paragraphBound),
+      boolCheck(name: "selection_occurrence", expected: true,
+        actual: evidence.occurrence > 0 && (occurrence == nil || occurrence == evidence.occurrence)),
+    ]
   }
 
   private func bodyChecklistConvertAnchor(
@@ -7948,10 +8020,10 @@ struct NotesMutationVerifier {
     structure: NotesBodyStructureRecord
   ) -> NotesBodyParagraphAnchorRecord? {
     if let paragraphIDSHA256 = draft.paragraphIDSHA256 {
-      return structure.paragraphAnchors.first { $0.idSHA256 == paragraphIDSHA256 }
+      return (structure.paragraphAnchors ?? []).first { $0.idSHA256 == paragraphIDSHA256 }
     }
     if let ordinal = draft.ordinal {
-      return structure.paragraphAnchors.first { $0.ordinal == ordinal }
+      return (structure.paragraphAnchors ?? []).first { $0.ordinal == ordinal }
     }
     return nil
   }
@@ -7963,7 +8035,7 @@ struct NotesMutationVerifier {
     guard draft.fromOrdinal > 0, draft.fromOrdinal <= draft.toOrdinal else {
       return []
     }
-    return structure.paragraphAnchors
+    return (structure.paragraphAnchors ?? [])
       .filter { $0.ordinal >= draft.fromOrdinal && $0.ordinal <= draft.toOrdinal }
       .sorted { $0.ordinal < $1.ordinal }
   }
@@ -7973,10 +8045,10 @@ struct NotesMutationVerifier {
     structure: NotesBodyStructureRecord
   ) -> NotesBodyParagraphAnchorRecord? {
     if let paragraphIDSHA256 = draft.paragraphIDSHA256 {
-      return structure.paragraphAnchors.first { $0.idSHA256 == paragraphIDSHA256 }
+      return (structure.paragraphAnchors ?? []).first { $0.idSHA256 == paragraphIDSHA256 }
     }
     if let ordinal = draft.ordinal {
-      return structure.paragraphAnchors.first { $0.ordinal == ordinal }
+      return (structure.paragraphAnchors ?? []).first { $0.ordinal == ordinal }
     }
     return nil
   }
@@ -7988,7 +8060,7 @@ struct NotesMutationVerifier {
     guard draft.fromOrdinal > 0, draft.fromOrdinal <= draft.toOrdinal else {
       return []
     }
-    return structure.paragraphAnchors
+    return (structure.paragraphAnchors ?? [])
       .filter { $0.ordinal >= draft.fromOrdinal && $0.ordinal <= draft.toOrdinal }
       .sorted { $0.ordinal < $1.ordinal }
   }
@@ -7999,10 +8071,10 @@ struct NotesMutationVerifier {
     structure: NotesBodyStructureRecord
   ) -> NotesBodyParagraphAnchorRecord? {
     if let paragraphIDSHA256 {
-      return structure.paragraphAnchors.first { $0.idSHA256 == paragraphIDSHA256 }
+      return (structure.paragraphAnchors ?? []).first { $0.idSHA256 == paragraphIDSHA256 }
     }
     if let ordinal {
-      return structure.paragraphAnchors.first { $0.ordinal == ordinal }
+      return (structure.paragraphAnchors ?? []).first { $0.ordinal == ordinal }
     }
     return nil
   }
@@ -8021,13 +8093,13 @@ struct NotesMutationVerifier {
   }
 
   private func checklistAnchors(in structure: NotesBodyStructureRecord) -> [NotesBodyParagraphAnchorRecord] {
-    structure.paragraphAnchors
+    (structure.paragraphAnchors ?? [])
       .filter { $0.isChecklist }
       .sorted { $0.ordinal < $1.ordinal }
   }
 
   private func ordinaryListAnchors(in structure: NotesBodyStructureRecord) -> [NotesBodyParagraphAnchorRecord] {
-    structure.paragraphAnchors
+    (structure.paragraphAnchors ?? [])
       .filter { $0.isList && !$0.isChecklist }
       .sorted { $0.ordinal < $1.ordinal }
   }
@@ -8086,8 +8158,8 @@ struct NotesMutationVerifier {
     before: NotesBodyStructureRecord,
     after: NotesBodyStructureRecord
   ) -> [NotesBodyParagraphAnchorRecord] {
-    let beforeIDs = Set(before.paragraphAnchors.map(\.idSHA256))
-    return after.paragraphAnchors
+    let beforeIDs = Set((before.paragraphAnchors ?? []).map(\.idSHA256))
+    return (after.paragraphAnchors ?? [])
       .filter {
         !beforeIDs.contains($0.idSHA256)
           && $0.style == "body"
@@ -8097,8 +8169,8 @@ struct NotesMutationVerifier {
       .sorted { $0.ordinal < $1.ordinal }
   }
 
-  private func bodyAttachmentKindCount(_ kind: String, in structure: NotesBodyStructureRecord) -> Int {
-    structure.attachmentKindCounts.first { $0.kind == kind }?.count ?? 0
+  private func bodyAttachmentKindCount(_ kind: String, in structure: NotesBodyStructureRecord) -> Int? {
+    structure.attachmentKindCounts.map { $0.first { $0.kind == kind }?.count ?? 0 }
   }
 
   private func expectedTableDimension(
@@ -8541,7 +8613,7 @@ struct NotesMutationVerifier {
   private func bodyCheck(name: String, expected: String, actual: String) -> NotesVerificationCheckRecord {
     NotesVerificationCheckRecord(
       name: name,
-      status: bodyEquivalent(expected: expected, actual: actual) ? "passed" : "failed",
+      status: expected == actual ? "passed" : "failed",
       expectedSHA256: sha256Hex(expected),
       actualSHA256: sha256Hex(actual),
       expectedLength: expected.count,
@@ -8549,17 +8621,10 @@ struct NotesMutationVerifier {
     )
   }
 
-  private func bodyEquivalent(expected: String, actual: String) -> Bool {
-    if expected.isEmpty {
-      return actual.isEmpty
-    }
-    return actual == expected || actual == "\n\(expected)"
-  }
-
-  private func boolCheck(name: String, expected: Bool, actual: Bool) -> NotesVerificationCheckRecord {
+  private func boolCheck(name: String, expected: Bool?, actual: Bool?) -> NotesVerificationCheckRecord {
     NotesVerificationCheckRecord(
       name: name,
-      status: expected == actual ? "passed" : "failed",
+      status: expected == nil || actual == nil ? "unavailable" : (expected == actual ? "passed" : "failed"),
       expectedBool: expected,
       actualBool: actual
     )
@@ -8574,10 +8639,10 @@ struct NotesMutationVerifier {
     )
   }
 
-  private func intCheck(name: String, expected: Int, actual: Int?) -> NotesVerificationCheckRecord {
+  private func intCheck(name: String, expected: Int?, actual: Int?) -> NotesVerificationCheckRecord {
     NotesVerificationCheckRecord(
       name: name,
-      status: actual == expected ? "passed" : "failed",
+      status: expected == nil || actual == nil ? "unavailable" : (actual == expected ? "passed" : "failed"),
       expectedLength: expected,
       actualLength: actual
     )
@@ -8799,6 +8864,18 @@ struct NotesMutationVerifier {
     -> NotesVerificationCheckRecord
   {
     storeMatchCheck(objectID: noteID, storeObject: storeObject)
+  }
+
+  private func storeAbsenceCheck(objectID: String, storeObject: NotesStoreObjectRecord)
+    -> NotesVerificationCheckRecord
+  {
+    guard objectID.hasPrefix("x-coredata://") else {
+      return NotesVerificationCheckRecord(name: "store_object_absent", status: "not_applicable")
+    }
+    guard storeObject.lookupSucceeded == true else {
+      return NotesVerificationCheckRecord(name: "store_object_absent", status: "unavailable")
+    }
+    return boolCheck(name: "store_object_absent", expected: false, actual: storeObject.matched)
   }
 
   private func storeMatchCheck(objectID: String, storeObject: NotesStoreObjectRecord)

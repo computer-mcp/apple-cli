@@ -4,6 +4,20 @@ import ReminderKitInternal
 import Utility
 
 extension ReminderSmartListWriter {
+  static func smartListChangeID(_ changeItem: REMSmartListChangeItem, operation: String) throws -> String {
+    try ReminderKitRuntimeMethod(owner: "REMSmartListChangeItem", selector: "storage", returnType: "@")
+      .require(operation: operation, receiver: changeItem)
+    guard let storage = changeItem.storage else {
+      throw coreReminderKitError(operation: operation, message: "Smart List change storage is unavailable.")
+    }
+    try ReminderKitRuntimeMethod(owner: "REMSmartListStorage", selector: "objectID", returnType: "@")
+      .require(operation: operation, receiver: storage)
+    guard let id = storage.objectID, id.entityName == "REMCDSmartList", let uuid = id.uuid else {
+      throw coreReminderKitError(operation: operation, message: "Smart List change identity is unavailable.")
+    }
+    return uuid.uuidString
+  }
+
   static func configureCustomSmartListChange(
     _ changeItem: REMSmartListChangeItem,
     title: String?,

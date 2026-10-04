@@ -266,7 +266,7 @@ extension RemindersCommand {
         )
         return ReminderSubtaskMutationResult(
           operation: "reminders.subtasks.move",
-          changed: true,
+          changed: subtaskRelationshipChanged(from: identity.reminder.reminder, to: reminder),
           reminder: reminder,
           parentReminder: parent.reminder
         )
@@ -287,7 +287,7 @@ extension RemindersCommand {
         )
         return ReminderSubtaskMutationResult(
           operation: "reminders.subtasks.promote",
-          changed: true,
+          changed: subtaskRelationshipChanged(from: identity.reminder.reminder, to: reminder),
           reminder: reminder,
           parentReminder: nil
         )

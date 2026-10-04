@@ -721,6 +721,43 @@ struct FinderCommandTests {
     #expect(items.map(\.name) == ["Alpha.txt"])
   }
 
+  @Test func finderSearchLimitCountsMatches() throws {
+    let root = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    for name in ["Alpha.txt", "Beta.txt", "Project-A.txt", "Project-B.txt"] {
+      try "fixture".write(to: root.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+    let backend = FileManagerFinderBackend()
+
+    #expect(try backend.searchItems(
+      path: root.path, query: " project ", includeHidden: false, limit: 1
+    ).map(\.name) == ["Project-A.txt"])
+    #expect(try backend.searchItems(
+      path: root.path, query: "project", includeHidden: false, limit: 2
+    ).map(\.name) == ["Project-A.txt", "Project-B.txt"])
+    #expect(try backend.searchItems(
+      path: root.path, query: "missing", includeHidden: false, limit: 1
+    ).isEmpty)
+  }
+
+  @Test func finderSearchRespectsHiddenItemsBeforeLimitingMatches() throws {
+    let root = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    for name in [".Project.txt", "Alpha.txt", "Project.txt"] {
+      try "fixture".write(to: root.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+    let backend = FileManagerFinderBackend()
+
+    #expect(try backend.searchItems(
+      path: root.path, query: "project", includeHidden: false, limit: 1
+    ).map(\.name) == ["Project.txt"])
+    #expect(try backend.searchItems(
+      path: root.path, query: "project", includeHidden: true, limit: 2
+    ).map(\.name) == [".Project.txt", "Project.txt"])
+  }
+
   @Test func fileManagerFinderBackendMovesItemWithinTemporaryDirectory() throws {
     let root = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: root) }

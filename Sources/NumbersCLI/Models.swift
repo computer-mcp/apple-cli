@@ -116,6 +116,14 @@ public struct NumbersRangeResponse: Codable, Equatable, Sendable {
   public var rows: [[String]]
 }
 
+public enum NumbersCellValueType: String, Codable, Equatable, Sendable {
+  case text
+  case number
+  case boolean
+  case date
+  case empty
+}
+
 public struct NumbersCellRecord: Codable, Equatable, Sendable {
   public var sheetName: String
   public var tableName: String
@@ -124,6 +132,10 @@ public struct NumbersCellRecord: Codable, Equatable, Sendable {
   public var rowCount: Int
   public var columnCount: Int
   public var value: String
+  public var rawValue: String?
+  public var valueType: NumbersCellValueType?
+  // An empty string confirms no formula; nil means formula information is unavailable.
+  public var formula: String?
 
   public init(
     sheetName: String,
@@ -132,7 +144,10 @@ public struct NumbersCellRecord: Codable, Equatable, Sendable {
     column: Int,
     rowCount: Int,
     columnCount: Int,
-    value: String
+    value: String,
+    rawValue: String? = nil,
+    valueType: NumbersCellValueType? = nil,
+    formula: String? = nil
   ) {
     self.sheetName = sheetName
     self.tableName = tableName
@@ -141,6 +156,9 @@ public struct NumbersCellRecord: Codable, Equatable, Sendable {
     self.rowCount = rowCount
     self.columnCount = columnCount
     self.value = value
+    self.rawValue = rawValue
+    self.valueType = valueType
+    self.formula = formula
   }
 }
 
@@ -225,6 +243,7 @@ public struct NumbersCellWriteResult: Codable, Equatable, Sendable {
   public var column: Int
   public var valueByteCount: Int
   public var valueSHA256: String
+  public var verified: Bool
 
   public init(
     operation: String,
@@ -235,7 +254,8 @@ public struct NumbersCellWriteResult: Codable, Equatable, Sendable {
     row: Int,
     column: Int,
     valueByteCount: Int,
-    valueSHA256: String
+    valueSHA256: String,
+    verified: Bool
   ) {
     self.operation = operation
     self.changed = changed
@@ -246,6 +266,7 @@ public struct NumbersCellWriteResult: Codable, Equatable, Sendable {
     self.column = column
     self.valueByteCount = valueByteCount
     self.valueSHA256 = valueSHA256
+    self.verified = verified
   }
 }
 

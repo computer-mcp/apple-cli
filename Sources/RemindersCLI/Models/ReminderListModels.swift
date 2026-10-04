@@ -168,6 +168,14 @@ public struct ReminderTemplateSectionsResponse: Codable, Equatable, Sendable {
   public var sections: [ReminderTemplateSectionRecord]
 }
 
+public struct ReminderTemplateItemResponse: Codable, Equatable, Sendable {
+  public var item: ReminderTemplateItemRecord
+}
+
+public struct ReminderTemplateItemsResponse: Codable, Equatable, Sendable {
+  public var items: [ReminderTemplateItemRecord]
+}
+
 public struct ReminderTemplateItemRecord: Codable, Equatable, Sendable {
   public var id: String
   public var title: String

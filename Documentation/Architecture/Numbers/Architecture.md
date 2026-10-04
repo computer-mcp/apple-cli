@@ -23,6 +23,15 @@ Numbers uses package/FileManager metadata, QuickLook export, and target-local
 Numbers.app structured scripting for sheet/table reads and single-cell text
 writes.
 
+Cell write comparison uses the native value type, actual value, and formula.
+Formatted text is presentation evidence. A write is skipped only for identical
+literal text with a confirmed absence of a formula. After a write, the command
+reads the saved cell again and checks its identity, value, type, and formula.
+
+Path-based writes require ownership of the document's open/save lifecycle.
+The writer refuses a document already open in Numbers, including one resolved
+by the app to an existing document, to protect pending edits.
+
 ## Validation
 
 Use document path validation, iWork command tests, and Numbers-specific tests.

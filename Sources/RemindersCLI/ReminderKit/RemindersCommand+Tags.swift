@@ -212,7 +212,7 @@ enum ReminderTagWriter {
     reminderID: String,
     operation: String
   ) throws -> (saveRequest: REMSaveRequest, hashtagContext: REMReminderHashtagContextChangeItem) {
-    guard let saveRequest = REMSaveRequest(store: store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -234,7 +234,7 @@ enum ReminderTagWriter {
     operation: String,
     reminderIDs: [String]
   ) throws -> (store: REMStore, saveRequest: REMSaveRequest) {
-    guard let store = REMStore() else {
+    guard let store = try reminderKitNewStore() else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -242,7 +242,7 @@ enum ReminderTagWriter {
         details: ["affected_reminder_count": "\(reminderIDs.count)"]
       )
     }
-    guard let saveRequest = REMSaveRequest(store: store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -277,7 +277,7 @@ enum ReminderTagWriter {
     reminderID: String,
     operation: String
   ) throws -> (store: REMStore, reminder: Any) {
-    guard let store = REMStore() else {
+    guard let store = try reminderKitNewStore() else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: operation,
@@ -332,7 +332,7 @@ enum ReminderTagWriter {
     details additionalDetails: [String: String]
   ) throws {
     var saveError: AnyObject?
-    guard saveRequest.saveSynchronouslyWithError(&saveError) else {
+    guard try reminderKitSaveSynchronously(saveRequest, error: &saveError) else {
       var details = additionalDetails
       details["save_error"] = reminderKitErrorSummary(saveError)
       throw reminderKitOperationFailed(

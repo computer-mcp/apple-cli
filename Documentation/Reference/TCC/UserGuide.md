@@ -19,3 +19,8 @@ apple tcc reset Reminders com.example.App --allow-tcc-reset --json
 
 The detailed capability boundary lives in
 `../../Architecture/TCC/CapabilityList.md`.
+
+Private framework write results report `attempted: true` and
+`verification: "unverified"` when the native call returns. `changed` is omitted
+until the permission effect can be independently confirmed. Inspect the
+permission state for the same app identity after a framework operation.

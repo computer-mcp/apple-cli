@@ -227,7 +227,9 @@ public struct SQLiteReader: Sendable {
     }
 
     do {
-      return try query(inspection.store.path, reference)
+      var record = try query(inspection.store.path, reference)
+      record.lookupSucceeded = true
+      return record
     } catch let error as CLIError {
       warnings.append("Read-only Notes object query failed: \(error.message)")
     } catch {

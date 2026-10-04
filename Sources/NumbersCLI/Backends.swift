@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import CryptoKit
 import Darwin
 import Foundation
@@ -20,7 +21,15 @@ public struct NSWorkspaceNumbersExternalActions: NumbersExternalActioning {
 }
 
 public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersContentWriting {
-  public init() {}
+  private let executeScript: @Sendable (String) throws -> NSAppleEventDescriptor
+
+  public init() {
+    executeScript = Self.runScript
+  }
+
+  init(executeScript: @escaping @Sendable (String) throws -> NSAppleEventDescriptor) {
+    self.executeScript = executeScript
+  }
 
   public func listSheets(path: String) throws -> [NumbersSheetRecord] {
     let rows = try runRows(
@@ -29,6 +38,7 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
       tell application "Numbers"
         set targetDocument to missing value
         set documentWasOpen to false
+        set existingDocumentIDs to id of every document
         repeat with eachDocument in documents
           try
             set documentPath to POSIX path of (file of eachDocument as alias)
@@ -41,6 +51,7 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
         end repeat
         if targetDocument is missing value then
           set targetDocument to open (POSIX file "\(appleScriptString(path))")
+          set documentWasOpen to (id of targetDocument) is in existingDocumentIDs
         end if
         set sheetIndex to 0
         repeat with eachSheet in sheets of targetDocument
@@ -105,6 +116,7 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
       tell application "Numbers"
         set targetDocument to missing value
         set documentWasOpen to false
+        set existingDocumentIDs to id of every document
         repeat with eachDocument in documents
           try
             set documentPath to POSIX path of (file of eachDocument as alias)
@@ -117,6 +129,7 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
         end repeat
         if targetDocument is missing value then
           set targetDocument to open (POSIX file "\(appleScriptString(path))")
+          set documentWasOpen to (id of targetDocument) is in existingDocumentIDs
         end if
         repeat with eachSheet in sheets of targetDocument
           set sheetName to name of eachSheet as text
@@ -183,12 +196,13 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
   public func readCell(path: String, sheet: String, table: String, row: Int, column: Int) throws
     -> NumbersCellRecord?
   {
-    let rows = try runRows(
+    let output = try executeScript(
       """
       set output to {}
       tell application "Numbers"
         set targetDocument to missing value
         set documentWasOpen to false
+        set existingDocumentIDs to id of every document
         repeat with eachDocument in documents
           try
             set documentPath to POSIX path of (file of eachDocument as alias)
@@ -201,58 +215,51 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
         end repeat
         if targetDocument is missing value then
           set targetDocument to open (POSIX file "\(appleScriptString(path))")
+          set documentWasOpen to (id of targetDocument) is in existingDocumentIDs
         end if
-        repeat with eachSheet in sheets of targetDocument
-          set sheetName to name of eachSheet as text
-          if sheetName is equal to "\(appleScriptString(sheet))" then
-            repeat with eachTable in tables of eachSheet
-              set tableName to name of eachTable as text
-              if tableName is equal to "\(appleScriptString(table))" then
-                set rowCount to count of rows of eachTable
-                set columnCount to count of columns of eachTable
-                if \(row) is greater than rowCount or \(column) is greater than columnCount then
+        try
+          repeat with eachSheet in sheets of targetDocument
+            set sheetName to name of eachSheet as text
+            if sheetName is equal to "\(appleScriptString(sheet))" then
+              repeat with eachTable in tables of eachSheet
+                set tableName to name of eachTable as text
+                if tableName is equal to "\(appleScriptString(table))" then
+                  set rowCount to count of rows of eachTable
+                  set columnCount to count of columns of eachTable
+                  if \(row) is greater than rowCount or \(column) is greater than columnCount then
+                    if documentWasOpen is false then close targetDocument saving no
+                    return output
+                  end if
+                  set targetCell to cell \(column) of row \(row) of eachTable
+                  set cellText to formatted value of targetCell
+                  set rawCellValue to value of targetCell
+                  set cellFormula to formula of targetCell
+                  set end of output to {sheetName, tableName, rowCount as text, columnCount as text, "\(row)", "\(column)", cellText, rawCellValue, cellFormula}
                   if documentWasOpen is false then close targetDocument saving no
                   return output
                 end if
-                set cellText to ""
-                try
-                  set cellText to formatted value of cell \(column) of row \(row) of eachTable as text
-                on error
-                  try
-                    set cellText to value of cell \(column) of row \(row) of eachTable as text
-                  end try
-                end try
-                set end of output to {sheetName, tableName, rowCount as text, columnCount as text, "\(row)", "\(column)", cellText}
-                if documentWasOpen is false then close targetDocument saving no
-                return output
-              end if
-            end repeat
-          end if
-        end repeat
-        if documentWasOpen is false then close targetDocument saving no
+              end repeat
+            end if
+          end repeat
+          if documentWasOpen is false then close targetDocument saving no
+        on error failureMessage number failureNumber
+          try
+            if documentWasOpen is false then close targetDocument saving no
+          end try
+          error "Numbers cell read failed." number failureNumber
+        end try
       end tell
       return output
       """)
 
-    guard
-      let first = rows.first,
-      let rowCount = Int(first[safe: 2] ?? ""),
-      let columnCount = Int(first[safe: 3] ?? ""),
-      let row = Int(first[safe: 4] ?? ""),
-      let column = Int(first[safe: 5] ?? "")
-    else {
-      return nil
+    guard output.descriptorType == typeAEList else {
+      throw CLIError(code: .backendUnavailable, message: "Numbers did not return a cell result list.")
     }
-
-    return NumbersCellRecord(
-      sheetName: first[safe: 0] ?? sheet,
-      tableName: first[safe: 1] ?? table,
-      row: row,
-      column: column,
-      rowCount: rowCount,
-      columnCount: columnCount,
-      value: first[safe: 6] ?? ""
-    )
+    if output.numberOfItems == 0 { return nil }
+    guard output.numberOfItems == 1, let first = output.atIndex(1) else {
+      throw CLIError(code: .backendUnavailable, message: "Numbers returned an ambiguous cell result.")
+    }
+    return try numbersCellRecord(first)
   }
 
   public func readRange(path: String, sheet: String, table: String, range: String) throws
@@ -276,6 +283,7 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
       tell application "Numbers"
         set targetDocument to missing value
         set documentWasOpen to false
+        set existingDocumentIDs to id of every document
         repeat with eachDocument in documents
           try
             set documentPath to POSIX path of (file of eachDocument as alias)
@@ -286,32 +294,45 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
             end if
           end try
         end repeat
+        if documentWasOpen then
+          error "Close the document in Numbers before writing cells." number -2701
+        end if
         if targetDocument is missing value then
           set targetDocument to open (POSIX file "\(appleScriptString(path))")
-        end if
-        repeat with eachSheet in sheets of targetDocument
-          set sheetName to name of eachSheet as text
-          if sheetName is equal to "\(appleScriptString(sheet))" then
-            repeat with eachTable in tables of eachSheet
-              set tableName to name of eachTable as text
-              if tableName is equal to "\(appleScriptString(table))" then
-                set rowCount to count of rows of eachTable
-                set columnCount to count of columns of eachTable
-                if \(row) is greater than rowCount or \(column) is greater than columnCount then
-                  if documentWasOpen is false then close targetDocument saving no
-                  error "Numbers cell was not found." number -1728
-                end if
-                set value of cell \(column) of row \(row) of eachTable to "\(appleScriptString(value))"
-                save targetDocument
-                set end of output to {"ok"}
-                if documentWasOpen is false then close targetDocument saving yes
-                return output
-              end if
-            end repeat
+          if (id of targetDocument) is in existingDocumentIDs then
+            error "Close the document in Numbers before writing cells." number -2701
           end if
-        end repeat
-        if documentWasOpen is false then close targetDocument saving no
-        error "Numbers table was not found." number -1728
+        end if
+        try
+          repeat with eachSheet in sheets of targetDocument
+            set sheetName to name of eachSheet as text
+            if sheetName is equal to "\(appleScriptString(sheet))" then
+              repeat with eachTable in tables of eachSheet
+                set tableName to name of eachTable as text
+                if tableName is equal to "\(appleScriptString(table))" then
+                  set rowCount to count of rows of eachTable
+                  set columnCount to count of columns of eachTable
+                  if \(row) is greater than rowCount or \(column) is greater than columnCount then
+                    if documentWasOpen is false then close targetDocument saving no
+                    error "Numbers cell was not found." number -1728
+                  end if
+                  set value of cell \(column) of row \(row) of eachTable to "\(appleScriptString(value))"
+                  save targetDocument
+                  set end of output to {"ok"}
+                  if documentWasOpen is false then close targetDocument saving yes
+                  return output
+                end if
+              end repeat
+            end if
+          end repeat
+          if documentWasOpen is false then close targetDocument saving no
+          error "Numbers table was not found." number -1728
+        on error failureMessage number failureNumber
+          try
+            close targetDocument saving no
+          end try
+          error "Numbers cell write failed." number failureNumber
+        end try
       end tell
       return output
       """)
@@ -348,24 +369,36 @@ public struct NumbersAppleScriptContentBackend: NumbersContentReading, NumbersCo
   }
 
   private func runRows(_ source: String) throws -> [[String]] {
-    var errorInfo: NSDictionary?
-    guard let script = NSAppleScript(source: source) else {
-      throw CLIError(code: .internalError, message: "Failed to compile Numbers automation script.")
-    }
-
-    let descriptor = script.executeAndReturnError(&errorInfo)
-    if let errorInfo {
-      throw automationError(errorInfo)
-    }
-
-    return descriptor.rows()
+    try executeScript(source).rows()
   }
 
-  private func automationError(_ errorInfo: NSDictionary) -> CLIError {
+  private static func runScript(_ source: String) throws -> NSAppleEventDescriptor {
+    var errorInfo: NSDictionary?
+    let boundedSource = """
+    with timeout of 30 seconds
+    \(source)
+    end timeout
+    """
+    guard let script = NSAppleScript(source: boundedSource) else {
+      throw CLIError(code: .internalError, message: "Failed to compile Numbers automation script.")
+    }
+    let descriptor = script.executeAndReturnError(&errorInfo)
+    if let errorInfo { throw automationError(errorInfo) }
+    return descriptor
+  }
+
+  private static func automationError(_ errorInfo: NSDictionary) -> CLIError {
     let number = errorInfo[NSAppleScript.errorNumber] as? Int
     let code: CLIErrorCode
-    if number == -1743 {
+    if number == -1712 {
+      code = .timeout
+    } else if number == -1743 || number == -1744 {
       code = .permissionDenied
+    } else if number == -2701 {
+      return CLIError(
+        code: .unsafeMutationRefused,
+        message: "Close the document in Numbers before writing cells."
+      )
     } else if number == -1728 {
       code = .notFound
     } else {

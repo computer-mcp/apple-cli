@@ -220,7 +220,7 @@ extension RemindersCommand {
     title: String,
     sourceID: String,
     criteria: ReminderSmartListCriteria
-  ) throws {
+  ) throws -> String {
     try ReminderSmartListWriter.createSmartList(
       title: title,
       sourceID: sourceID,
@@ -228,11 +228,11 @@ extension RemindersCommand {
     )
   }
 
-  public func updateSmartListCriteria(listID: String, criteria: ReminderSmartListCriteria) throws {
+  public func updateSmartListCriteria(listID: String, criteria: ReminderSmartListCriteria) throws -> Bool {
     try ReminderSmartListWriter.updateSmartListCriteria(listID: listID, criteria: criteria)
   }
 
-  public func convertListToSmartList(listID: String) throws {
+  public func convertListToSmartList(listID: String) throws -> String {
     try ReminderSmartListWriter.convertListToSmartList(listID: listID)
   }
 

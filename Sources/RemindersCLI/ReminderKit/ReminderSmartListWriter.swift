@@ -23,7 +23,7 @@ enum ReminderSmartListWriter {
     title: String,
     sourceID: String,
     criteria: ReminderSmartListCriteria
-  ) throws {
+  ) throws -> String {
     let filterData = try ReminderSmartListFilterEncoder.encode(criteria: criteria)
     try preflight(listID: nil)
 
@@ -74,14 +74,18 @@ enum ReminderSmartListWriter {
       operation: "create",
       details: details
     )
+    let id = try smartListChangeID(changeItem, operation: "create")
     try save(saveRequest, operation: "create", details: details)
+    return id
   }
 
-  static func updateSmartListCriteria(listID: String, criteria: ReminderSmartListCriteria) throws {
+  static func updateSmartListCriteria(listID: String, criteria: ReminderSmartListCriteria) throws -> Bool {
     let filterData = try ReminderSmartListFilterEncoder.encode(criteria: criteria)
     try preflight(listID: listID)
 
     let resolved = try fetchSmartList(listID: listID, operation: "update")
+    let snapshot = try reminderSmartListSnapshot(resolved.smartList, store: resolved.store, operation: "update")
+    if reminderSmartListFiltersMatch(snapshot.filterData, expected: filterData) { return false }
     let details = [
       "operation": "update",
       "list_id": listID,
@@ -92,7 +96,7 @@ enum ReminderSmartListWriter {
       operation: "update",
       details: details
     )
-    guard let saveRequest = REMSaveRequest(store: resolved.store) else {
+    guard let saveRequest = try reminderKitNewSaveRequest(store: resolved.store) else {
       throw reminderKitOperationFailed(
         capability: capability,
         operation: "update",
@@ -111,18 +115,14 @@ enum ReminderSmartListWriter {
       )
     }
 
-    try configureCustomSmartListChange(
-      changeItem,
-      title: resolved.smartList.name,
-      filterData: filterData,
-      account: resolved.smartList.account,
-      operation: "update",
-      details: details
-    )
+    try requireSmartListChangeItemSetters(changeItem, operation: "update", details: details)
+    changeItem.filterData = filterData
+    setMinimumSupportedVersion(on: changeItem)
     try save(saveRequest, operation: "update", details: details)
+    return true
   }
 
-  static func convertListToSmartList(listID: String) throws {
+  static func convertListToSmartList(listID: String) throws -> String {
     try preflight(listID: nil)
 
     let resolved = try fetchList(listID: listID, operation: "convert")
@@ -159,7 +159,7 @@ enum ReminderSmartListWriter {
       )
     }
     guard
-      !objectIDsMatch(
+      !coreObjectIDsMatch(
         source.remObjectID ?? source.objectID, defaultList.remObjectID ?? defaultList.objectID)
     else {
       throw CLIError(
@@ -168,7 +168,7 @@ enum ReminderSmartListWriter {
         details: details
       )
     }
-    guard objectIDsMatch(source.accountID, defaultList.accountID) else {
+    guard coreObjectIDsMatch(source.accountID, defaultList.accountID) else {
       throw CLIError(
         code: .validationError,
         message: "Smart List conversion requires the default list to be in the same account.",
@@ -218,9 +218,11 @@ enum ReminderSmartListWriter {
       if reminderChange.isSubtask() || reminderChange.parentReminderID != nil {
         reminderChange.removeFromParentReminder()
       }
-      if let hashtagContext = reminderChange.hashtagContext {
-        addTag(tagName, to: hashtagContext)
+      guard let hashtagContext = reminderChange.hashtagContext else {
+        throw reminderKitOperationFailed(capability: capability, operation: "convert",
+          message: "ReminderKit tag context is unavailable for Smart List conversion.", details: details)
       }
+      addTag(tagName, to: hashtagContext)
       defaultChange.addReminderChangeItem(reminderChange)
     }
 
@@ -239,7 +241,7 @@ enum ReminderSmartListWriter {
       details: details
     )
     sourceChange.removeFromParent(withAccountChangeItem: accountChange)
-
+    let id = try smartListChangeID(smartChange, operation: "convert")
     try save(
       saveRequest,
       operation: "convert",
@@ -252,6 +254,7 @@ enum ReminderSmartListWriter {
         uniquingKeysWith: { _, new in new }
       )
     )
+    return id
   }
 
   static func deleteSmartList(listID: String) throws {

@@ -7640,6 +7640,8 @@ public struct NotesBodyColorHashCount: Codable, Equatable, Sendable {
 
 public struct NotesBodyInlineFormatRunRecord: Codable, Equatable, Sendable {
   public var ordinal: Int
+  public var utf16Location: Int?
+  public var utf16Length: Int?
   public var paragraphIDSHA256: String?
   public var format: String
   public var fontSHA256: String?
@@ -7652,8 +7654,12 @@ public struct NotesBodyInlineFormatRunRecord: Codable, Equatable, Sendable {
     format: String,
     fontSHA256: String? = nil,
     textByteCount: Int,
-    textSHA256: String
+    textSHA256: String,
+    utf16Location: Int? = nil,
+    utf16Length: Int? = nil
   ) {
+    self.utf16Location = utf16Location
+    self.utf16Length = utf16Length
     self.ordinal = ordinal
     self.paragraphIDSHA256 = paragraphIDSHA256
     self.format = format
@@ -7665,6 +7671,8 @@ public struct NotesBodyInlineFormatRunRecord: Codable, Equatable, Sendable {
 
 public struct NotesBodyInlineColorRunRecord: Codable, Equatable, Sendable {
   public var ordinal: Int
+  public var utf16Location: Int?
+  public var utf16Length: Int?
   public var paragraphIDSHA256: String?
   public var role: String
   public var colorSHA256: String
@@ -7677,8 +7685,12 @@ public struct NotesBodyInlineColorRunRecord: Codable, Equatable, Sendable {
     role: String,
     colorSHA256: String,
     textByteCount: Int,
-    textSHA256: String
+    textSHA256: String,
+    utf16Location: Int? = nil,
+    utf16Length: Int? = nil
   ) {
+    self.utf16Location = utf16Location
+    self.utf16Length = utf16Length
     self.ordinal = ordinal
     self.paragraphIDSHA256 = paragraphIDSHA256
     self.role = role
@@ -8074,6 +8086,8 @@ public struct NotesLockedContentExportResult: Codable, Equatable, Sendable {
 
 public struct NotesBodyParagraphAnchorRecord: Codable, Equatable, Sendable {
   public var ordinal: Int
+  public var utf16Location: Int?
+  public var utf16Length: Int?
   public var idSHA256: String
   public var titleByteCount: Int?
   public var titleSHA256: String?
@@ -8102,8 +8116,12 @@ public struct NotesBodyParagraphAnchorRecord: Codable, Equatable, Sendable {
     isBlockQuote: Bool = false,
     indentationLevel: Int? = nil,
     canIndent: Bool? = nil,
-    checklistDone: Bool? = nil
+    checklistDone: Bool? = nil,
+    utf16Location: Int? = nil,
+    utf16Length: Int? = nil
   ) {
+    self.utf16Location = utf16Location
+    self.utf16Length = utf16Length
     self.ordinal = ordinal
     self.idSHA256 = idSHA256
     self.titleByteCount = titleByteCount
@@ -8653,6 +8671,9 @@ public struct NotesBodyInlineMutationEvidence: Equatable, Sendable {
   public var textByteCount: Int
   public var textSHA256: String
   public var occurrence: Int
+  public var utf16Location: Int?
+  public var utf16Length: Int?
+  public var richTextSHA256: String?
   public var role: String
   public var colorSHA256: String?
   public var fontSHA256: String?
@@ -8664,8 +8685,14 @@ public struct NotesBodyInlineMutationEvidence: Equatable, Sendable {
     occurrence: Int,
     role: String,
     colorSHA256: String? = nil,
-    fontSHA256: String? = nil
+    fontSHA256: String? = nil,
+    utf16Location: Int? = nil,
+    utf16Length: Int? = nil,
+    richTextSHA256: String? = nil
   ) {
+    self.utf16Location = utf16Location
+    self.utf16Length = utf16Length
+    self.richTextSHA256 = richTextSHA256
     self.paragraphIDSHA256 = paragraphIDSHA256
     self.textByteCount = textByteCount
     self.textSHA256 = textSHA256
@@ -8828,40 +8855,42 @@ public struct NotesBodyStructureRecord: Codable, Equatable, Sendable {
   public var plainTextByteCount: Int?
   public var plainTextSHA256: String?
   public var richTextLength: Int?
+  public var richTextSHA256: String?
   public var paragraphCount: Int?
-  public var paragraphStyleRunCount: Int
-  public var headingCount: Int
-  public var listItemCount: Int
-  public var checklistItemCount: Int
-  public var checklistDoneCount: Int
-  public var checklistOpenCount: Int
-  public var blockQuoteCount: Int
-  public var tableCount: Int
-  public var collapsibleSectionCount: Int
-  public var collapsedSectionCount: Int
-  public var inlineAttachmentCount: Int
-  public var linkCount: Int
-  public var attachmentCount: Int
-  public var mathAttachmentCount: Int
-  public var inlineFormatRunCount: Int
-  public var boldRunCount: Int
-  public var italicRunCount: Int
-  public var underlineRunCount: Int
-  public var strikethroughRunCount: Int
-  public var fontRunCount: Int
-  public var foregroundColorRunCount: Int
-  public var highlightRunCount: Int
-  public var hasChecklist: Bool
-  public var hasChecklistInProgress: Bool
-  public var isMathNote: Bool
-  public var styleCounts: [NotesBodyStyleCount]
-  public var attachmentKindCounts: [NotesBodyAttachmentKindCount]
-  public var inlineFormatCounts: [NotesBodyInlineFormatCount]
-  public var colorHashCounts: [NotesBodyColorHashCount]
-  public var inlineFormatRuns: [NotesBodyInlineFormatRunRecord]
-  public var colorRuns: [NotesBodyInlineColorRunRecord]
-  public var mentionUserIDSHA256s: [String]
-  public var paragraphAnchors: [NotesBodyParagraphAnchorRecord]
+  public var paragraphStyleRunCount: Int?
+  public var headingCount: Int?
+  public var listItemCount: Int?
+  public var checklistItemCount: Int?
+  public var checklistDoneCount: Int?
+  public var checklistOpenCount: Int?
+  public var blockQuoteCount: Int?
+  public var tableCount: Int?
+  public var collapsibleSectionCount: Int?
+  public var collapsedSectionCount: Int?
+  public var inlineAttachmentCount: Int?
+  public var linkCount: Int?
+  public var attachmentCount: Int?
+  public var mathAttachmentCount: Int?
+  // Missing attributed-text evidence is unknown; known empty formatting has zero counts and empty arrays.
+  public var inlineFormatRunCount: Int?
+  public var boldRunCount: Int?
+  public var italicRunCount: Int?
+  public var underlineRunCount: Int?
+  public var strikethroughRunCount: Int?
+  public var fontRunCount: Int?
+  public var foregroundColorRunCount: Int?
+  public var highlightRunCount: Int?
+  public var hasChecklist: Bool?
+  public var hasChecklistInProgress: Bool?
+  public var isMathNote: Bool?
+  public var styleCounts: [NotesBodyStyleCount]?
+  public var attachmentKindCounts: [NotesBodyAttachmentKindCount]?
+  public var inlineFormatCounts: [NotesBodyInlineFormatCount]?
+  public var colorHashCounts: [NotesBodyColorHashCount]?
+  public var inlineFormatRuns: [NotesBodyInlineFormatRunRecord]?
+  public var colorRuns: [NotesBodyInlineColorRunRecord]?
+  public var mentionUserIDSHA256s: [String]?
+  public var paragraphAnchors: [NotesBodyParagraphAnchorRecord]?
 
   public init(
     noteID: String,
@@ -8869,46 +8898,48 @@ public struct NotesBodyStructureRecord: Codable, Equatable, Sendable {
     plainTextByteCount: Int? = nil,
     plainTextSHA256: String? = nil,
     richTextLength: Int? = nil,
+    richTextSHA256: String? = nil,
     paragraphCount: Int? = nil,
-    paragraphStyleRunCount: Int = 0,
-    headingCount: Int = 0,
-    listItemCount: Int = 0,
-    checklistItemCount: Int = 0,
-    checklistDoneCount: Int = 0,
-    checklistOpenCount: Int = 0,
-    blockQuoteCount: Int = 0,
-    tableCount: Int = 0,
-    collapsibleSectionCount: Int = 0,
-    collapsedSectionCount: Int = 0,
-    inlineAttachmentCount: Int = 0,
-    linkCount: Int = 0,
-    attachmentCount: Int = 0,
-    mathAttachmentCount: Int = 0,
-    inlineFormatRunCount: Int = 0,
-    boldRunCount: Int = 0,
-    italicRunCount: Int = 0,
-    underlineRunCount: Int = 0,
-    strikethroughRunCount: Int = 0,
-    fontRunCount: Int = 0,
-    foregroundColorRunCount: Int = 0,
-    highlightRunCount: Int = 0,
-    hasChecklist: Bool = false,
-    hasChecklistInProgress: Bool = false,
-    isMathNote: Bool = false,
-    styleCounts: [NotesBodyStyleCount] = [],
-    attachmentKindCounts: [NotesBodyAttachmentKindCount] = [],
-    inlineFormatCounts: [NotesBodyInlineFormatCount] = [],
-    colorHashCounts: [NotesBodyColorHashCount] = [],
-    inlineFormatRuns: [NotesBodyInlineFormatRunRecord] = [],
-    colorRuns: [NotesBodyInlineColorRunRecord] = [],
-    mentionUserIDSHA256s: [String] = [],
-    paragraphAnchors: [NotesBodyParagraphAnchorRecord] = []
+    paragraphStyleRunCount: Int? = nil,
+    headingCount: Int? = nil,
+    listItemCount: Int? = nil,
+    checklistItemCount: Int? = nil,
+    checklistDoneCount: Int? = nil,
+    checklistOpenCount: Int? = nil,
+    blockQuoteCount: Int? = nil,
+    tableCount: Int? = nil,
+    collapsibleSectionCount: Int? = nil,
+    collapsedSectionCount: Int? = nil,
+    inlineAttachmentCount: Int? = nil,
+    linkCount: Int? = nil,
+    attachmentCount: Int? = nil,
+    mathAttachmentCount: Int? = nil,
+    inlineFormatRunCount: Int? = nil,
+    boldRunCount: Int? = nil,
+    italicRunCount: Int? = nil,
+    underlineRunCount: Int? = nil,
+    strikethroughRunCount: Int? = nil,
+    fontRunCount: Int? = nil,
+    foregroundColorRunCount: Int? = nil,
+    highlightRunCount: Int? = nil,
+    hasChecklist: Bool? = nil,
+    hasChecklistInProgress: Bool? = nil,
+    isMathNote: Bool? = nil,
+    styleCounts: [NotesBodyStyleCount]? = nil,
+    attachmentKindCounts: [NotesBodyAttachmentKindCount]? = nil,
+    inlineFormatCounts: [NotesBodyInlineFormatCount]? = nil,
+    colorHashCounts: [NotesBodyColorHashCount]? = nil,
+    inlineFormatRuns: [NotesBodyInlineFormatRunRecord]? = nil,
+    colorRuns: [NotesBodyInlineColorRunRecord]? = nil,
+    mentionUserIDSHA256s: [String]? = nil,
+    paragraphAnchors: [NotesBodyParagraphAnchorRecord]? = nil
   ) {
     self.noteID = noteID
     self.isPasswordProtected = isPasswordProtected
     self.plainTextByteCount = plainTextByteCount
     self.plainTextSHA256 = plainTextSHA256
     self.richTextLength = richTextLength
+    self.richTextSHA256 = richTextSHA256
     self.paragraphCount = paragraphCount
     self.paragraphStyleRunCount = paragraphStyleRunCount
     self.headingCount = headingCount
@@ -10810,24 +10841,24 @@ public struct NotesBodyStructureResponse: Codable, Equatable, Sendable {
 }
 
 public struct NotesBodySurfaceSummary: Codable, Equatable, Sendable {
-  public var tableCount: Int
-  public var collapsibleSectionCount: Int
-  public var collapsedSectionCount: Int
-  public var mathAttachmentCount: Int
-  public var inlineAttachmentCount: Int
-  public var isMathNote: Bool
+  public var tableCount: Int?
+  public var collapsibleSectionCount: Int?
+  public var collapsedSectionCount: Int?
+  public var mathAttachmentCount: Int?
+  public var inlineAttachmentCount: Int?
+  public var isMathNote: Bool?
   public var supportedReadFamilies: [String]
   public var supportedMutationFamilies: [String]
   public var gatedReadFamilies: [String]
   public var gatedMutationFamilies: [String]
 
   public init(
-    tableCount: Int,
-    collapsibleSectionCount: Int,
-    collapsedSectionCount: Int,
-    mathAttachmentCount: Int,
-    inlineAttachmentCount: Int,
-    isMathNote: Bool,
+    tableCount: Int?,
+    collapsibleSectionCount: Int?,
+    collapsedSectionCount: Int?,
+    mathAttachmentCount: Int?,
+    inlineAttachmentCount: Int?,
+    isMathNote: Bool?,
     supportedReadFamilies: [String],
     supportedMutationFamilies: [String] = [],
     gatedReadFamilies: [String],
@@ -16047,6 +16078,7 @@ public struct NotesStoreObjectRecord: Codable, Equatable, Sendable {
   public var entity: String?
   public var primaryKey: Int64?
   public var matched: Bool
+  public var lookupSucceeded: Bool?
   public var markedForDeletion: Bool?
   public var passwordProtected: Bool?
   public var pinned: Bool?
@@ -16083,7 +16115,8 @@ public struct NotesStoreObjectRecord: Codable, Equatable, Sendable {
     noteCount: Int? = nil,
     folderCount: Int? = nil,
     childFolderCount: Int? = nil,
-    searchIndexStateCounts: [NotesStoreSearchIndexStateRecord] = []
+    searchIndexStateCounts: [NotesStoreSearchIndexStateRecord] = [],
+    lookupSucceeded: Bool? = nil
   ) {
     self.entity = entity
     self.primaryKey = primaryKey
@@ -16104,6 +16137,7 @@ public struct NotesStoreObjectRecord: Codable, Equatable, Sendable {
     self.folderCount = folderCount
     self.childFolderCount = childFolderCount
     self.searchIndexStateCounts = searchIndexStateCounts
+    self.lookupSucceeded = lookupSucceeded
   }
 }
 

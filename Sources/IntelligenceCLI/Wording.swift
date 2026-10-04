@@ -18,6 +18,12 @@ public enum IntelligenceFailure: String, Codable, CaseIterable, Sendable {
   case rollbackTargetEscapesRoot = "rollback_target_escapes_root"
   case rollbackBackupEscapesStateDir = "rollback_backup_escapes_state_dir"
   case plistRootNotDictionary = "plist_root_not_dictionary"
+  case countryCacheInvalid = "country_cache_invalid"
+  case countryCacheMissing = "country_cache_missing"
+  case countryCacheVerificationFailed = "country_cache_verification_failed"
+  case cacheChangedSincePreflight = "cache_changed_since_preflight"
+  case cacheVerificationFailed = "cache_verification_failed"
+  case backupDigestMismatch = "backup_digest_mismatch"
   case lldbPathNotExecutable = "lldb_path_not_executable"
   case lldbNotFound = "lldb_not_found"
   case rootRequiredForSystemWrite = "root_required_for_system_write"
@@ -68,6 +74,18 @@ public enum IntelligenceWording {
       return "Intelligence rollback backup escapes state-dir."
     case .plistRootNotDictionary:
       return "Plist root is not a dictionary."
+    case .countryCacheInvalid:
+      return "The country cache has an unsupported or invalid archive structure."
+    case .countryCacheMissing:
+      return "The requested country cache is missing."
+    case .countryCacheVerificationFailed:
+      return "The country cache could not be confirmed by readback."
+    case .cacheChangedSincePreflight:
+      return "An eligibility cache changed since preflight; the prepared change was refused."
+    case .cacheVerificationFailed:
+      return "An eligibility cache could not be confirmed by readback."
+    case .backupDigestMismatch:
+      return "An eligibility backup does not match its saved digest; rollback was refused."
     case .lldbPathNotExecutable:
       return "Explicit lldb path is not executable."
     case .lldbNotFound:

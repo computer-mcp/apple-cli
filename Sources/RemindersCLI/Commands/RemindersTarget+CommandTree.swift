@@ -579,10 +579,34 @@ extension RemindersTarget {
     public struct Items: ParsableCommand {
       public static let configuration = CommandConfiguration(
         commandName: "items",
-        abstract: "Edit saved reminder items inside a Reminders template.",
-        subcommands: [Add.self, Update.self, Delete.self, Attachments.self, Subtasks.self]
+        abstract: "Read and edit saved reminder items inside a Reminders template.",
+        subcommands: [List.self, Read.self, Add.self, Update.self, Delete.self, Attachments.self, Subtasks.self]
       )
       public init() {}
+
+      public struct List: Leaf {
+        public static let configuration = CommandConfiguration(
+          commandName: "list",
+          abstract: "List saved reminder items inside a Reminders template."
+        )
+        public static let positionals = ["templates", "items", "list"]
+        @OptionGroup public var shared: CLISharedOptions
+        @OptionGroup var options: RemindersTemplateOptions
+        public var targetOptions: RemindersTargetOptions { options.targetOptions }
+        public init() {}
+      }
+
+      public struct Read: Leaf {
+        public static let configuration = CommandConfiguration(
+          commandName: "read",
+          abstract: "Read a saved reminder item inside a Reminders template."
+        )
+        public static let positionals = ["templates", "items", "read"]
+        @OptionGroup public var shared: CLISharedOptions
+        @OptionGroup var options: RemindersTemplateItemOptions
+        public var targetOptions: RemindersTargetOptions { options.targetOptions }
+        public init() {}
+      }
 
       public struct Add: Leaf {
         public static let configuration = CommandConfiguration(

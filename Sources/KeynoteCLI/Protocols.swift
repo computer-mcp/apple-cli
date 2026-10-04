@@ -9,6 +9,7 @@ public protocol KeynoteReading: Sendable {
     -> [KeynotePresentationRecord]
   func readPresentation(path: String) throws -> KeynotePresentationRecord?
   func listSlides(path: String, limit: Int) throws -> KeynoteSlidesResponse?
+  func listPreviews(path: String, limit: Int) throws -> KeynotePreviewsResponse?
 }
 
 public protocol KeynoteExporting: Sendable {

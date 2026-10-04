@@ -425,7 +425,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.body.math.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "capability_accounting+privacy_boundary+no_backend_calls",
       targetIDSHA256: sha256Hex("notes.body.math.audit"),
       checks: checks
@@ -442,7 +442,7 @@ extension NotesCommand {
       verificationBoolCheck(
         name: "math_result_count_within_structure_count",
         expected: true,
-        actual: results.count <= structure.mathAttachmentCount
+        actual: structure.mathAttachmentCount.map { results.count <= $0 }
       ),
       verificationBoolCheck(
         name: "math_result_ordinals_contiguous",
@@ -468,7 +468,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.body.math.list",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_body_math_result_attachment_readback",
       targetIDSHA256: sha256Hex(structure.noteID),
       checks: checks
@@ -515,7 +515,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_body_math_expression_scan_v1",
       operation: operation,
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_calculate_string_scanner+hash_only_expression_matrix",
       targetIDSHA256: sha256Hex(
         [

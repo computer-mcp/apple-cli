@@ -115,11 +115,11 @@ extension NotesCommand {
   func verificationBoolCheck(
     name: String,
     expected: Bool,
-    actual: Bool
+    actual: Bool?
   ) -> NotesVerificationCheckRecord {
     NotesVerificationCheckRecord(
       name: name,
-      status: expected == actual ? "passed" : "failed",
+      status: actual.map { expected == $0 ? "passed" : "failed" } ?? "unavailable",
       expectedBool: expected,
       actualBool: actual
     )

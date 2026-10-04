@@ -540,7 +540,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.search.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "capability_accounting+privacy_boundary+no_backend_calls",
       targetIDSHA256: sha256Hex("notes.search.audit"),
       checks: checks
@@ -803,7 +803,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.search.natural-language",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "typed_private_ICSearchQueryOperation+natural_language_query_readback+note_summary_mapping",
       targetIDSHA256: evidence.querySHA256,
       checks: checks

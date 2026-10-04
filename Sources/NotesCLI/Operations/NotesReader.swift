@@ -1512,7 +1512,16 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
   }
 
   func readNote(id: String) throws -> NotesNoteDetail? {
-    try frameworkNote(id: id).map(noteDetail)
+    let context = try managedObjectContext()
+    return try context.performAndWait {
+      guard let note = try frameworkNote(id: id, context: context) else { return nil }
+      try notesRequireDateAccessors(note, operation: "notes.read")
+      if !note.isPasswordProtected {
+        try NotesRuntimeMethod(owner: "ICNote", selector: "noteAsPlainTextWithoutTitle", returnType: "@")
+          .require(operation: "notes.read", receiver: note)
+      }
+      return noteDetail(note)
+    }
   }
 
   func readRestorableNote(id: String) throws -> NotesNoteDetail? {
@@ -1540,7 +1549,8 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     try visibleNotes()
       .filter { note in
         matchesFolder(note, selector: selector)
-          && string(note.title).localizedCaseInsensitiveCompare(title) == .orderedSame
+          && (string(note.title).localizedCaseInsensitiveCompare(title) == .orderedSame
+            || noteTextTitle(note).localizedCaseInsensitiveCompare(title) == .orderedSame)
       }
       .map(noteDetail)
       .sorted(by: compareNoteDetails)
@@ -2009,6 +2019,33 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     return bodyStructureRecord(note)
   }
 
+  func readInlineSelection(noteID: String, paragraphIDSHA256: String?, ordinal: Int?,
+    text: String, occurrence: Int?) throws -> NotesBodyInlineSelectionReadback {
+    guard let note = try frameworkNote(id: noteID) else {
+      throw CLIError(code: .notFound, message: "Note was not found.")
+    }
+    guard !note.isPasswordProtected else {
+      throw CLIError(code: .permissionDenied, message: "Password-protected Notes inline selection is not exposed.")
+    }
+    guard let attributed = note.attributedString() as? NSAttributedString else {
+      throw CLIError(code: .backendUnavailable, message: "Notes inline selection readback is unavailable.")
+    }
+    let anchors = paragraphAnchorResolutions(note, attributedString: attributed).map(\.anchor)
+    let paragraph = try notesInlineParagraph(noteID: noteID, in: attributed.string as NSString,
+      nativeAnchors: anchors.map { NotesInlineParagraph(
+        range: NSRange(location: $0.utf16Location ?? NSNotFound, length: $0.utf16Length ?? 0),
+        idSHA256: $0.idSHA256) }, paragraphIDSHA256: paragraphIDSHA256,
+      ordinal: ordinal, operation: "notes.body.inline.readback")
+    let selection = try notesInlineTextSelection(in: attributed.string as NSString,
+      text: text, paragraphRange: paragraph.range, occurrence: occurrence, operation: "notes.body.inline.readback")
+    let selectedText = attributed.attributedSubstring(from: selection.range).string
+    return NotesBodyInlineSelectionReadback(paragraphIDSHA256: paragraph.idSHA256,
+      utf16Location: selection.range.location, utf16Length: selection.range.length,
+      textByteCount: selectedText.utf8.count, textSHA256: sha256Hex(selectedText),
+      richTextSHA256: sha256Hex(attributed.string), occurrence: selection.occurrence,
+      paragraphUTF16Location: paragraph.range.location, paragraphUTF16Length: paragraph.range.length)
+  }
+
   func listTables(noteID id: String) throws -> [NotesBodyTableRecord] {
     guard let note = try frameworkNote(id: id) else {
       throw CLIError(code: .notFound, message: "Note was not found.", details: ["id": id])
@@ -2021,7 +2058,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
       )
     }
 
-    return bodyTableRecords(note)
+    return try bodyTableRecords(note)
   }
 
   func listMathResults(noteID id: String) throws -> [NotesBodyMathResultRecord] {
@@ -2036,7 +2073,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
       )
     }
 
-    return bodyMathResultRecords(note)
+    return try bodyMathResultRecords(note)
   }
 
   func readMathResultsPreference(noteID id: String) throws -> NotesBodyMathResultsPreferenceRecord {
@@ -2149,7 +2186,13 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
         details: ["id_sha256": sha256Hex(id)]
       )
     }
-    return collapsibleSections(note: note, paragraphs: paragraphAnchorResolutions(note))
+    guard let attributedString = note.attributedString() as? NSAttributedString,
+      let sections = collapsibleSections(
+        note: note, paragraphs: paragraphAnchorResolutions(note, attributedString: attributedString))
+    else {
+      throw CLIError(code: .backendUnavailable, message: "Notes collapsible section readback is unavailable.")
+    }
+    return sections
   }
 
   func resolveParagraphAnchor(noteID id: String, paragraphIDSHA256: String) throws -> NotesParagraphAnchorResolution {
@@ -2696,7 +2739,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     return (
       isPasswordProtected: state.isPasswordProtected,
       isPasswordProtectedAndLocked: state.isPasswordProtectedAndLocked,
-      title: state.isPasswordProtected ? nil : nonEmpty(string(note.title))
+      title: state.isPasswordProtected ? nil : nonEmpty(noteTextTitle(note))
     )
   }
 
@@ -2776,10 +2819,12 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     )
   }
 
-  private func frameworkNote(id: String, includeDeleted: Bool = false) throws -> ICNote? {
-    let managedObjectContext = try managedObjectContext()
+  private func frameworkNote(
+    id: String, includeDeleted: Bool = false, context: NSManagedObjectContext? = nil
+  ) throws -> ICNote? {
+    let managedObjectContext = try context ?? managedObjectContext()
     if includeDeleted,
-      let note = try managedObject(id: id, context: managedObjectContext) as? ICNote
+      let note = try NotesManagedObjectLookup.resolve(id: id, context: managedObjectContext) as? ICNote
     {
       return note
     }
@@ -2810,7 +2855,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
 
   private func frameworkFolder(id: String) throws -> ICFolder? {
     let managedObjectContext = try managedObjectContext()
-    if let folder = try managedObject(id: id, context: managedObjectContext) as? ICFolder {
+    if let folder = try NotesManagedObjectLookup.resolve(id: id, context: managedObjectContext) as? ICFolder {
       return folder
     }
 
@@ -2832,16 +2877,6 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     return matches.first
   }
 
-  private func managedObject(id: String, context: NSManagedObjectContext) throws -> NSManagedObject? {
-    guard id.hasPrefix("x-coredata://"),
-      let url = URL(string: id),
-      let objectID = context.persistentStoreCoordinator?.managedObjectID(forURIRepresentation: url)
-    else {
-      return nil
-    }
-    return try context.existingObject(with: objectID)
-  }
-
   private func visibleNotes() throws -> [ICNote] {
     let managedObjectContext = try managedObjectContext()
     return objects(ICNote.visibleNotes(inContext: managedObjectContext))
@@ -2859,6 +2894,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
   }
 
   private func save(context: ICNoteContext, operation: String) throws {
+    try NotesNativeContext.preflightSave(context, operation: operation)
     var error: AnyObject?
     guard context.save(&error) else {
       throw CLIError(
@@ -2871,19 +2907,23 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
         ]
       )
     }
-    if let managedObjectContext = context.managedObjectContext, !managedObjectContext.ic_save() {
-      throw CLIError(
-        code: .internalError,
-        message: "Notes private framework managed object context save failed.",
-        details: [
-          "operation": operation,
-          "reason": "NSManagedObjectContext.ic_save returned false.",
-        ]
-      )
+    if let managedObjectContext = context.managedObjectContext {
+      try NotesNativeContext.managedSave.require(operation: operation, receiver: managedObjectContext)
+      guard managedObjectContext.ic_save() else {
+        throw CLIError(
+          code: .internalError,
+          message: "Notes private framework managed object context save failed.",
+          details: [
+            "operation": operation,
+            "reason": "NSManagedObjectContext.ic_save returned false.",
+          ]
+        )
+      }
     }
   }
 
   private func save(managedObjectContext: NSManagedObjectContext, operation: String) throws {
+    try NotesNativeContext.managedSave.require(operation: operation, receiver: managedObjectContext)
     guard managedObjectContext.ic_save() else {
       throw CLIError(
         code: .internalError,
@@ -2897,23 +2937,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
   }
 
   private func noteContext() throws -> ICNoteContext {
-    if let context = ICNoteContext.sharedContext() as? ICNoteContext {
-      return context
-    }
-
-    ICNoteContext.startSharedContext(withOptions: 0)
-    if let context = ICNoteContext.sharedContext() as? ICNoteContext {
-      return context
-    }
-
-    if let context = ICNoteContext(options: 0) {
-      return context
-    }
-
-    throw CLIError(
-      code: .backendUnavailable,
-      message: "Notes private framework context could not be started."
-    )
+    try NotesNativeContext.open()
   }
 
   private func localAccountVisibleNoteCountIncludingTrash(_ account: ICAccount) -> Int? {
@@ -3383,7 +3407,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
   private func noteSummary(_ note: ICNote) -> NotesNoteSummary {
     NotesNoteSummary(
       id: noteIdentifier(note),
-      title: nonEmpty(note.title) ?? "Untitled",
+      title: nonEmpty(noteTextTitle(note)) ?? "Untitled",
       folderName: noteFolderDisplayName(note),
       accountName: nonEmpty(note.accountName) ?? "Notes",
       createdAt: note.creationDate,
@@ -3444,7 +3468,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
   private func noteDetail(_ note: ICNote) -> NotesNoteDetail {
     NotesNoteDetail(
       id: noteIdentifier(note),
-      title: nonEmpty(note.title) ?? "Untitled",
+      title: nonEmpty(noteTextTitle(note)) ?? "Untitled",
       folderName: noteFolderDisplayName(note),
       accountName: nonEmpty(note.accountName) ?? "Notes",
       body: note.isPasswordProtected ? nil : plainTextBody(note),
@@ -3455,7 +3479,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
   }
 
   private func noteSearchTextMatches(_ note: ICNote, normalizedQuery: String) -> Bool {
-    if string(note.title).localizedLowercase.contains(normalizedQuery) {
+    if noteTextTitle(note).localizedLowercase.contains(normalizedQuery) {
       return true
     }
     guard note.isPasswordProtected == false,
@@ -3559,11 +3583,11 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
   }
 
   private func markdownPackageMainFilename(_ note: ICNote) -> String {
-    "\(sanitizedMarkdownPackageFilename(nonEmpty(string(note.title)) ?? "Note", fallback: "Note")).md"
+    "\(sanitizedMarkdownPackageFilename(nonEmpty(noteTextTitle(note)) ?? "Note", fallback: "Note")).md"
   }
 
   private func htmlPackageMainFilename(_ note: ICNote) -> String {
-    "\(sanitizedMarkdownPackageFilename(nonEmpty(string(note.title)) ?? "Note", fallback: "Note")).html"
+    "\(sanitizedMarkdownPackageFilename(nonEmpty(noteTextTitle(note)) ?? "Note", fallback: "Note")).html"
   }
 
   private func markdownResourceFiles(from attachments: [AnyObject]) throws -> [NotesNoteMarkdownExportFile] {
@@ -4449,69 +4473,90 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     let passwordProtected = note.isPasswordProtected
     let plainText = passwordProtected ? nil : plainTextBody(note)
     let attributedString = passwordProtected ? nil : note.attributedString() as? NSAttributedString
-    let attributeSummary = attributedString.map(bodyAttributeSummary) ?? BodyAttributeSummary()
-    let inlineAttachments = passwordProtected ? [] : anyObjects(note.allNoteTextInlineAttachments())
-    let attachmentKindCounts = mergedAttachmentKindCounts(
-      attributeSummary.attachmentKindCounts,
-      inlineAttachments: inlineAttachments
-    )
-    let tableCount = max(attributeSummary.tableCount, attachmentKindCounts["table"] ?? 0)
-    let mathAttachmentCount = max(
-      attributeSummary.mathAttachmentCount,
-      inlineAttachments.filter(isMathAttachmentObject).count
-    )
-
-    let paragraphAnchors = passwordProtected ? [] : paragraphAnchorResolutions(note)
-    let collapsibleSections = passwordProtected
-      ? (collapsible: 0, collapsed: 0)
-      : collapsibleSectionCounts(note: note, paragraphs: paragraphAnchors)
-
-    return NotesBodyStructureRecord(
-      noteID: noteIdentifier(note),
-      isPasswordProtected: passwordProtected,
-      plainTextByteCount: plainText?.utf8.count,
-      plainTextSHA256: plainText.map(sha256Hex),
-      richTextLength: attributedString?.length,
-      paragraphCount: plainText.map(paragraphCount),
-      paragraphStyleRunCount: attributeSummary.paragraphStyleRunCount,
-      headingCount: attributeSummary.headingCount,
-      listItemCount: attributeSummary.listItemCount,
-      checklistItemCount: attributeSummary.checklistItemCount,
-      checklistDoneCount: attributeSummary.checklistDoneCount,
-      checklistOpenCount: attributeSummary.checklistOpenCount,
-      blockQuoteCount: attributeSummary.blockQuoteCount,
-      tableCount: tableCount,
-      collapsibleSectionCount: collapsibleSections.collapsible,
-      collapsedSectionCount: collapsibleSections.collapsed,
-      inlineAttachmentCount: max(attributeSummary.inlineAttachmentCount, inlineAttachments.count),
-      linkCount: linkObjects(note).count,
-      attachmentCount: attachmentObjects(note).count,
-      mathAttachmentCount: mathAttachmentCount,
-      inlineFormatRunCount: attributeSummary.inlineFormatRunCount,
-      boldRunCount: attributeSummary.boldRunCount,
-      italicRunCount: attributeSummary.italicRunCount,
-      underlineRunCount: attributeSummary.underlineRunCount,
-      strikethroughRunCount: attributeSummary.strikethroughRunCount,
-      fontRunCount: attributeSummary.fontRunCount,
-      foregroundColorRunCount: attributeSummary.foregroundColorRunCount,
-      highlightRunCount: attributeSummary.highlightRunCount,
-      hasChecklist: optionalBool(note, key: "hasChecklist") ?? false,
-      hasChecklistInProgress: optionalBool(note, key: "hasChecklistInProgress") ?? false,
-      isMathNote: optionalBool(note, key: "isMathNote") ?? false,
-      styleCounts: styleCountRecords(attributeSummary.styleCounts),
-      attachmentKindCounts: attachmentKindCountRecords(attachmentKindCounts),
-      inlineFormatCounts: inlineFormatCountRecords(attributeSummary.inlineFormatCounts),
-      colorHashCounts: colorHashCountRecords(attributeSummary.colorHashCounts),
-      inlineFormatRuns: attributeSummary.inlineFormatRuns,
-      colorRuns: attributeSummary.colorRuns,
-      mentionUserIDSHA256s: mentionUserIDSHA256s(inlineAttachments),
-      paragraphAnchors: paragraphAnchors.map(\.anchor)
-    )
+    var record = bodyAttributeStructureRecord(
+      noteID: noteIdentifier(note), isPasswordProtected: passwordProtected,
+      plainText: plainText, attributedString: attributedString)
+    let inlineAttachments = passwordProtected
+      ? nil : availableObjects(note.allNoteTextInlineAttachments())
+    record.inlineAttachmentCount = record.inlineAttachmentCount.flatMap { count in
+      inlineAttachments.map { max(count, $0.count) }
+    }
+    record.mathAttachmentCount = record.mathAttachmentCount.flatMap { count in
+      inlineAttachments.map { max(count, $0.filter(isMathAttachmentObject).count) }
+    }
+    record.attachmentKindCounts = record.attachmentKindCounts.flatMap { counts in
+      inlineAttachments.map { attachments in
+        attachmentKindCountRecords(mergedAttachmentKindCounts(
+          Dictionary(uniqueKeysWithValues: counts.map { ($0.kind, $0.count) }),
+          inlineAttachments: attachments))
+      }
+    }
+    record.linkCount = inlineAttachments.map { $0.filter(isLinkObject).count }
+    record.mentionUserIDSHA256s = inlineAttachments.map(mentionUserIDSHA256s)
+    let orderedAttachments = availableObjects(note.attachmentsInOrder())
+    let visibleAttachments = availableObjects(note.visibleAttachments())
+    record.attachmentCount = (orderedAttachments?.isEmpty == false
+      ? orderedAttachments : (visibleAttachments ?? orderedAttachments))?.count
+    record.hasChecklist = optionalBool(note, key: "hasChecklist")
+    record.hasChecklistInProgress = optionalBool(note, key: "hasChecklistInProgress")
+    record.isMathNote = optionalBool(note, key: "isMathNote")
+    let paragraphAnchors = attributedString.map { paragraphAnchorResolutions(note, attributedString: $0) }
+    record.paragraphAnchors = paragraphAnchors.map { $0.map(\.anchor) }
+    let sections = paragraphAnchors.flatMap { collapsibleSections(note: note, paragraphs: $0) }
+    record.collapsibleSectionCount = sections?.count
+    record.collapsedSectionCount = sections.map { $0.filter { $0.collapsed }.count }
+    return record
   }
 
-  private func bodyTableRecords(_ note: ICNote) -> [NotesBodyTableRecord] {
+  func bodyAttributeStructureRecord(
+    noteID: String, isPasswordProtected: Bool,
+    plainText: String?, attributedString: NSAttributedString?
+  ) -> NotesBodyStructureRecord {
+    let plainText = isPasswordProtected ? nil : plainText
+    let attributedString = isPasswordProtected ? nil : attributedString
+    let summary = attributedString.map(bodyAttributeSummary)
+    var record = NotesBodyStructureRecord(
+      noteID: noteID, isPasswordProtected: isPasswordProtected,
+      plainTextByteCount: plainText?.utf8.count,
+      plainTextSHA256: plainText.map(sha256Hex), richTextLength: attributedString?.length,
+      richTextSHA256: attributedString.map { sha256Hex($0.string) },
+      paragraphCount: plainText.map(paragraphCount),
+      paragraphStyleRunCount: summary?.paragraphs.styleRunCount,
+      headingCount: summary?.paragraphs.headingCount, listItemCount: summary?.paragraphs.listItemCount,
+      checklistItemCount: summary?.paragraphs.checklistItemCount,
+      checklistDoneCount: summary?.paragraphs.checklistDoneCount,
+      checklistOpenCount: summary?.paragraphs.checklistOpenCount,
+      blockQuoteCount: summary?.paragraphs.blockQuoteCount, tableCount: summary?.tableCount,
+      inlineAttachmentCount: summary?.inlineAttachmentCount,
+      mathAttachmentCount: summary?.mathAttachmentCount,
+      styleCounts: summary.flatMap { $0.paragraphs.styleCounts.map(styleCountRecords) },
+      attachmentKindCounts: summary.map { attachmentKindCountRecords($0.attachmentKindCounts) })
+    applyInlineFormatReadback(summary, to: &record)
+    return record
+  }
+
+  func applyInlineFormatReadback(
+    _ summary: BodyAttributeSummary?, to record: inout NotesBodyStructureRecord
+  ) {
+    let summary = summary.flatMap { $0.inlineReadbackAvailable ? $0 : nil }
+    record.inlineFormatRunCount = summary?.inlineFormatRunCount
+    record.boldRunCount = summary?.boldRunCount
+    record.italicRunCount = summary?.italicRunCount
+    record.underlineRunCount = summary?.underlineRunCount
+    record.strikethroughRunCount = summary?.strikethroughRunCount
+    record.fontRunCount = summary?.fontRunCount
+    record.foregroundColorRunCount = summary?.foregroundColorRunCount
+    record.highlightRunCount = summary?.highlightRunCount
+    record.inlineFormatRuns = summary?.inlineFormatRuns
+    record.colorRuns = summary?.colorRuns
+    record.inlineFormatCounts = summary.map { inlineFormatCountRecords($0.inlineFormatCounts) }
+    record.colorHashCounts = summary.map { colorHashCountRecords($0.colorHashCounts) }
+  }
+
+  private func bodyTableRecords(_ note: ICNote) throws -> [NotesBodyTableRecord] {
     guard let attributedString = note.attributedString() as? NSAttributedString else {
-      return []
+      throw CLIError(code: .backendUnavailable, message: "Notes body table readback is unavailable.",
+        details: ["id_sha256": sha256Hex(noteIdentifier(note))])
     }
 
     var records: [NotesBodyTableRecord] = []
@@ -4536,10 +4581,14 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     return records
   }
 
-  private func bodyMathResultRecords(_ note: ICNote) -> [NotesBodyMathResultRecord] {
+  private func bodyMathResultRecords(_ note: ICNote) throws -> [NotesBodyMathResultRecord] {
+    guard let attachments = availableObjects(note.allNoteTextInlineAttachments()) else {
+      throw CLIError(code: .backendUnavailable, message: "Notes math result readback is unavailable.",
+        details: ["id_sha256": sha256Hex(noteIdentifier(note))])
+    }
     var records: [NotesBodyMathResultRecord] = []
     var seen = Set<String>()
-    for attachment in anyObjects(note.allNoteTextInlineAttachments()) {
+    for attachment in attachments {
       guard isMathResultAttachmentObject(attachment) else {
         continue
       }
@@ -4592,9 +4641,9 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     }
     guard let attributedString = note.attributedString() as? NSAttributedString else {
       throw CLIError(
-        code: .notFound,
-        message: "Notes body table selector did not match any table.",
-        details: ["operation": operation, "ordinal": "\(ordinal)", "table_count": "0"]
+        code: .backendUnavailable,
+        message: "Notes body table readback is unavailable.",
+        details: ["operation": operation, "ordinal": "\(ordinal)"]
       )
     }
 
@@ -5217,25 +5266,42 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     }
   }
 
-  private func bodyAttributeSummary(_ attributedString: NSAttributedString) -> BodyAttributeSummary {
+  func bodyAttributeSummary(_ attributedString: NSAttributedString) -> BodyAttributeSummary {
     var summary = BodyAttributeSummary()
+    summary.paragraphs = notesParagraphStructure(in: attributedString) { value in
+      let object = value as AnyObject
+      guard let kind = bodyParagraphStyleKind(object) else { return nil }
+      return NotesParagraphStyleEvidence(kind: kind,
+        isHeader: optionalBool(object, key: "isHeader"), isList: optionalBool(object, key: "isList"),
+        isChecklist: optionalBool(object, key: "isChecklist"),
+        checked: optionalObject(object, key: "todo").flatMap { optionalBool($0, key: "done") },
+        isBlockQuote: optionalBool(object, key: "isBlockQuote"))
+    }
     let fullRange = NSRange(location: 0, length: attributedString.length)
     guard fullRange.length > 0 else {
       return summary
     }
+    let usesModel = notesHasModelAttributes(attributedString)
+    let converter = usesModel ? try? NotesNativeInlineStyle(operation: "notes.body.structure") : nil
+    summary.inlineReadbackAvailable = !usesModel || converter != nil
 
     attributedString.enumerateAttributes(in: fullRange, options: []) { attributes, range, _ in
       let runText = attributedString.attributedSubstring(from: range).string
       let runTextByteCount = runText.utf8.count
       let runTextSHA256 = sha256Hex(runText)
       let paragraphIDSHA256 = paragraphIDSHA256(attributes)
-      let inlineFormats = inlineFormatKinds(attributes)
+      var inlineAttributes = attributes
+      if let converter {
+        do { inlineAttributes = try converter.presentation(attributes) }
+        catch { summary.inlineReadbackAvailable = false }
+      }
+      let inlineFormats = inlineFormatKinds(inlineAttributes)
       if inlineFormats.isEmpty == false {
         summary.inlineFormatRunCount += 1
         for format in inlineFormats {
           summary.inlineFormatCounts[format, default: 0] += 1
           let fontSHA256 = format == "font"
-            ? (attributes[.font] as? NSFont).map(notesFontSHA256)
+            ? (inlineAttributes[.font] as? NSFont).map(notesFontSHA256)
             : nil
           summary.inlineFormatRuns.append(
             NotesBodyInlineFormatRunRecord(
@@ -5244,7 +5310,8 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
               format: format,
               fontSHA256: fontSHA256,
               textByteCount: runTextByteCount,
-              textSHA256: runTextSHA256
+              textSHA256: runTextSHA256,
+            utf16Location: range.location, utf16Length: range.length
             ))
         }
       }
@@ -5269,7 +5336,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
       if inlineFormats.contains("highlight") {
         summary.highlightRunCount += 1
       }
-      for (role, hash) in inlineColorHashes(attributes) {
+      for (role, hash) in inlineColorHashes(inlineAttributes) {
         summary.colorHashCounts[BodyColorHashKey(role: role, colorSHA256: hash), default: 0] += 1
         summary.colorRuns.append(
           NotesBodyInlineColorRunRecord(
@@ -5278,7 +5345,8 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
             role: role,
             colorSHA256: hash,
             textByteCount: runTextByteCount,
-            textSHA256: runTextSHA256
+            textSHA256: runTextSHA256,
+            utf16Location: range.location, utf16Length: range.length
           ))
       }
 
@@ -5286,28 +5354,6 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
         guard let object = value as AnyObject? else {
           continue
         }
-        if let style = bodyParagraphStyleKind(object) {
-          summary.paragraphStyleRunCount += 1
-          summary.styleCounts[style, default: 0] += 1
-          if optionalBool(object, key: "isHeader") == true {
-            summary.headingCount += 1
-          }
-          if optionalBool(object, key: "isList") == true {
-            summary.listItemCount += 1
-          }
-          if optionalBool(object, key: "isChecklist") == true {
-            summary.checklistItemCount += 1
-            if optionalObject(object, key: "todo").flatMap({ optionalBool($0, key: "done") }) == true {
-              summary.checklistDoneCount += 1
-            } else {
-              summary.checklistOpenCount += 1
-            }
-          }
-          if optionalBool(object, key: "isBlockQuote") == true {
-            summary.blockQuoteCount += 1
-          }
-        }
-
         if let kind = bodyAttachmentKind(object) {
           summary.attachmentKindCounts[kind, default: 0] += 1
           summary.inlineAttachmentCount += 1
@@ -5432,33 +5478,31 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
   }
 
   private func paragraphAnchorResolutions(_ note: ICNote) -> [NotesParagraphAnchorResolution] {
-    guard let attributedString = note.attributedString() as? NSAttributedString else {
-      return []
-    }
+    guard let attributedString = note.attributedString() as? NSAttributedString else { return [] }
+    return paragraphAnchorResolutions(note, attributedString: attributedString)
+  }
 
-    var anchors: [NotesParagraphAnchorResolution] = []
-    var seenIDs = Set<String>()
-    let fullRange = NSRange(location: 0, length: attributedString.length)
-    guard fullRange.length > 0 else {
-      return anchors
-    }
+  private func paragraphAnchorResolutions(
+    _ note: ICNote, attributedString: NSAttributedString
+  ) -> [NotesParagraphAnchorResolution] {
 
-    attributedString.enumerateAttributes(in: fullRange, options: []) { attributes, _, _ in
-      for value in attributes.values {
-        guard let object = value as AnyObject?,
-          let style = bodyParagraphStyleKind(object),
-          let paragraphID = paragraphStyleUUIDString(object),
-          seenIDs.insert(paragraphID).inserted
-        else {
-          continue
-        }
+    let paragraphs = notesStyledParagraphs(in: attributedString) { value
+      -> (id: String, style: (object: AnyObject, kind: String))? in
+      let object = value as AnyObject
+      guard let kind = bodyParagraphStyleKind(object), let id = paragraphStyleUUIDString(object) else { return nil }
+      return (id, (object, kind))
+    }
+    return paragraphs.enumerated().map { index, paragraph in
+        let object = paragraph.style.object
+        let paragraphID = paragraph.id
         let title = paragraphTitle(note, paragraphID: paragraphID)
+        let paragraphRange = paragraph.range
         let anchor = NotesBodyParagraphAnchorRecord(
-          ordinal: anchors.count + 1,
+          ordinal: index + 1,
           idSHA256: sha256Hex(paragraphID),
           titleByteCount: title?.utf8.count,
           titleSHA256: title.map(sha256Hex),
-          style: style,
+          style: paragraph.style.kind,
           listStyle: bodyParagraphListStyle(object),
           alignment: bodyParagraphAlignment(object),
           isHeader: optionalBool(object, key: "isHeader") == true,
@@ -5467,39 +5511,26 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
           isBlockQuote: optionalBool(object, key: "isBlockQuote") == true,
           indentationLevel: optionalInt(object, key: "indent"),
           canIndent: optionalBool(object, key: "canIndent"),
-          checklistDone: optionalObject(object, key: "todo").flatMap { optionalBool($0, key: "done") }
+          checklistDone: optionalObject(object, key: "todo").flatMap { optionalBool($0, key: "done") },
+          utf16Location: paragraphRange.location, utf16Length: paragraphRange.length
         )
-        anchors.append(NotesParagraphAnchorResolution(anchor: anchor, paragraphID: paragraphID, title: title))
-      }
+        return NotesParagraphAnchorResolution(anchor: anchor, paragraphID: paragraphID, title: title)
     }
-
-    return anchors
-  }
-
-  private func collapsibleSectionCounts(
-    note: ICNote,
-    paragraphs: [NotesParagraphAnchorResolution]
-  ) -> (collapsible: Int, collapsed: Int) {
-    let sections = collapsibleSections(note: note, paragraphs: paragraphs)
-    return (sections.count, sections.filter { $0.collapsed }.count)
   }
 
   private func collapsibleSections(
     note: ICNote,
     paragraphs: [NotesParagraphAnchorResolution]
-  ) -> [NotesBodyCollapsibleSectionRecord] {
-    guard paragraphs.isEmpty == false,
-      let textStorage = note.textStorage() as? ICTTTextStorage
-    else {
-      return []
-    }
+  ) -> [NotesBodyCollapsibleSectionRecord]? {
+    if paragraphs.isEmpty { return [] }
+    guard let textStorage = note.textStorage() as? ICTTTextStorage else { return nil }
     let collapsedUUIDs = note.outlineState?.collapsedUUIDs ?? Set<AnyHashable>()
     guard let outlineController = ICOutlineController(
       textStorage: textStorage,
       collapsedUUIDs: collapsedUUIDs,
       asynchronous: false
     ) else {
-      return []
+      return nil
     }
     var sections: [NotesBodyCollapsibleSectionRecord] = []
     for paragraph in paragraphs {
@@ -5815,8 +5846,24 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
     }
   }
 
+  private func noteTextTitle(_ note: ICNote) -> String {
+    let metadata = note.title ?? ""
+    guard !note.isPasswordProtected, metadata.hasSuffix("…"),
+      (try? NotesRuntimeMethod(owner: "ICNote", selector: "rangeForTitle:",
+        returnType: "{_NSRange=QQ}", argumentTypes: ["^B"]).require(operation: "notes.title-projection", receiver: note)) != nil,
+      let text = note.attributedString() as? NSAttributedString else { return metadata }
+    var truncated = false
+    let range = note.range(forTitle: &truncated)
+    return notesNativeTitleText(in: text.string as NSString, metadataTitle: metadata,
+      nativeRange: range, truncated: truncated) ?? metadata
+  }
+
   private func plainTextBody(_ note: ICNote) -> String {
-    string(note.noteAsPlainTextWithoutTitle)
+    let nativeBody = string(note.noteAsPlainTextWithoutTitle)
+    let method = NotesRuntimeMethod(owner: "ICNote", selector: "noteAsPlainText", returnType: "@")
+    guard (try? method.require(operation: "notes.body-projection", receiver: note)) != nil else { return nativeBody }
+    return notesPlainTextBody(title: noteTextTitle(note), fullText: note.noteAsPlainText() as? String,
+      nativeBody: nativeBody)
   }
 
   private func compareNotes(_ lhs: NotesNoteSummary, _ rhs: NotesNoteSummary) -> Bool {
@@ -5867,6 +5914,16 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
       return values.allObjects.compactMap { $0 as? T }
     }
     return []
+  }
+
+  private func availableObjects(_ value: Any?) -> [AnyObject]? {
+    switch value {
+    case let values as [AnyObject]: return values
+    case let values as NSArray: return values.map { $0 as AnyObject }
+    case let values as NSSet: return values.allObjects.map { $0 as AnyObject }
+    case let values as NSOrderedSet: return values.array.map { $0 as AnyObject }
+    default: return nil
+    }
   }
 
   private func anyObjects(_ value: Any?) -> [AnyObject] {
@@ -6090,14 +6147,9 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
   }
 }
 
-private struct BodyAttributeSummary {
-  var paragraphStyleRunCount = 0
-  var headingCount = 0
-  var listItemCount = 0
-  var checklistItemCount = 0
-  var checklistDoneCount = 0
-  var checklistOpenCount = 0
-  var blockQuoteCount = 0
+struct BodyAttributeSummary {
+  var inlineReadbackAvailable = true
+  var paragraphs = NotesParagraphStructure()
   var tableCount = 0
   var inlineAttachmentCount = 0
   var mathAttachmentCount = 0
@@ -6109,7 +6161,6 @@ private struct BodyAttributeSummary {
   var fontRunCount = 0
   var foregroundColorRunCount = 0
   var highlightRunCount = 0
-  var styleCounts: [String: Int] = [:]
   var attachmentKindCounts: [String: Int] = [:]
   var inlineFormatCounts: [String: Int] = [:]
   var colorHashCounts: [BodyColorHashKey: Int] = [:]
@@ -6117,7 +6168,7 @@ private struct BodyAttributeSummary {
   var colorRuns: [NotesBodyInlineColorRunRecord] = []
 }
 
-private struct BodyColorHashKey: Hashable {
+struct BodyColorHashKey: Hashable {
   var role: String
   var colorSHA256: String
 }

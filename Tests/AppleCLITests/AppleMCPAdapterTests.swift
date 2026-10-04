@@ -32,6 +32,12 @@ struct AppleMCPAdapterTests {
   }
 
   @Test func mcpAdapterToolSchemasUseCanonicalTargetEnum() async throws {
+    let delay = CLICommandCatalogOption(
+      names: ["--delay-seconds"], valueName: "<delay-seconds>", description: "One-time delay.")
+    #expect(delay.valueType == "integer")
+    let offset = CLICommandCatalogOption(
+      names: ["--offset"], valueName: "offset", description: "Number of items to skip.")
+    #expect(offset.valueType == "integer")
     let adapter = AppleMCPAdapter(runner: FakeMCPRunner())
     let tools = adapter.tools()
     let runTool = try #require(tools.first { $0.name == "apple_cli_run" })
@@ -70,14 +76,15 @@ struct AppleMCPAdapterTests {
     let targetEnumValues = try #require(target["enum"]?.arrayValue)
     let targetEnum = targetEnumValues.compactMap { $0.stringValue }
 
-    #expect(toolNames == [
-      "apple_cli_list_targets",
-      "apple_cli_doctor",
-      "apple_cli_status",
-      "apple_cli_help",
-      "apple_cli_command_catalog",
-      "apple_cli_run",
-    ])
+    #expect(
+      toolNames == [
+        "apple_cli_list_targets",
+        "apple_cli_doctor",
+        "apple_cli_status",
+        "apple_cli_help",
+        "apple_cli_command_catalog",
+        "apple_cli_run",
+      ])
     #expect(targetEnum.contains("reminders"))
     #expect(properties["arguments"] != nil)
 
@@ -104,7 +111,8 @@ struct AppleMCPAdapterTests {
 
     #expect(
       runner.calls == [
-        FakeMCPRunner.Call(target: "reminders", arguments: ["doctor", "--json"], timeoutSeconds: 30)
+        FakeMCPRunner.Call(
+          target: "reminders", arguments: ["doctor", "--json"], timeoutSeconds: 30)
       ])
   }
 
@@ -175,7 +183,8 @@ struct AppleMCPAdapterTests {
 
     #expect(
       runner.calls == [
-        FakeMCPRunner.Call(target: "notes", arguments: ["restore-all", "--help"], timeoutSeconds: 30)
+        FakeMCPRunner.Call(
+          target: "notes", arguments: ["restore-all", "--help"], timeoutSeconds: 30)
       ])
   }
 
@@ -183,59 +192,60 @@ struct AppleMCPAdapterTests {
     let runner = FakeMCPRunner()
     runner.helpOutputs = [
       "notes --help": """
-        USAGE: apple notes <subcommand>
+      USAGE: apple notes <subcommand>
 
-        OPTIONS:
-          -h, --help
+      OPTIONS:
+        -h, --help
 
-        SUBCOMMANDS:
-          state
-          settings
-          smart-folders
+      SUBCOMMANDS:
+        state
+        settings                Read and update the app's settings,
+                                including notification preferences.
+        smart-folders
 
-          See 'apple help notes <subcommand>' for detailed help.
-        """,
+        See 'apple help notes <subcommand>' for detailed help.
+      """,
       "notes state --help": """
-        USAGE: apple notes state <subcommand>
+      USAGE: apple notes state <subcommand>
 
-        SUBCOMMANDS:
-          read
-          audit
-          activity
-          change-password
-        """,
+      SUBCOMMANDS:
+        read
+        audit
+        activity
+        change-password
+      """,
       "notes settings --help": """
-        USAGE: apple notes settings <subcommand>
+      USAGE: apple notes settings <subcommand>
 
-        SUBCOMMANDS:
-          read
-          audit
-          sort
-          new-note-style
-          default-account
-          group-by-date
-          quick-note-resume
-          checklist-sort
-          mention-notifications
-          on-my-mac
-          text-size
-          locked-notes
-          change-password
-          reset-password
-          touch-id
-          view-layout
-          link-highlight-color
-          notifications
-          widgets
-          password
-        """,
+      SUBCOMMANDS:
+        read
+        audit
+        sort
+        new-note-style
+        default-account
+        group-by-date
+        quick-note-resume
+        checklist-sort
+        mention-notifications
+        on-my-mac
+        text-size
+        locked-notes
+        change-password
+        reset-password
+        touch-id
+        view-layout
+        link-highlight-color
+        notifications
+        widgets
+        password
+      """,
       "notes smart-folders --help": """
-        USAGE: apple notes smart-folders <subcommand>
+      USAGE: apple notes smart-folders <subcommand>
 
-        SUBCOMMANDS:
-          list
-          reasoning
-        """,
+      SUBCOMMANDS:
+        list
+        reasoning
+      """,
     ]
     let adapter = AppleMCPAdapter(runner: runner)
 
@@ -258,7 +268,9 @@ struct AppleMCPAdapterTests {
 
     let root = try #require(commands[0].objectValue)
     let rootPath = try #require(root["path"]?.arrayValue).compactMap { $0.stringValue }
-    let rootSubcommands = try #require(root["subcommands"]?.arrayValue).compactMap { $0.stringValue }
+    let rootSubcommands = try #require(root["subcommands"]?.arrayValue).compactMap {
+      $0.stringValue
+    }
     #expect(rootPath.isEmpty)
     #expect(rootSubcommands == ["state", "settings", "smart-folders"])
     let rootOptions = try #require(root["options"]?.arrayValue)
@@ -268,17 +280,23 @@ struct AppleMCPAdapterTests {
 
     let settings = try #require(commands[2].objectValue)
     let settingsPath = try #require(settings["path"]?.arrayValue).compactMap { $0.stringValue }
-    let settingsSubcommands = try #require(settings["subcommands"]?.arrayValue).compactMap { $0.stringValue }
+    let settingsSubcommands = try #require(settings["subcommands"]?.arrayValue).compactMap {
+      $0.stringValue
+    }
     #expect(settingsPath == ["settings"])
-    #expect(settingsSubcommands == [
-      "read", "audit", "sort", "new-note-style", "default-account", "group-by-date", "quick-note-resume",
-      "checklist-sort", "mention-notifications", "on-my-mac", "text-size", "locked-notes",
-      "change-password", "reset-password", "touch-id", "view-layout", "link-highlight-color",
-      "notifications", "widgets", "password",
-    ])
+    #expect(
+      settingsSubcommands == [
+        "read", "audit", "sort", "new-note-style", "default-account", "group-by-date",
+        "quick-note-resume",
+        "checklist-sort", "mention-notifications", "on-my-mac", "text-size", "locked-notes",
+        "change-password", "reset-password", "touch-id", "view-layout", "link-highlight-color",
+        "notifications", "widgets", "password",
+      ])
 
     let state = try #require(commands[1].objectValue)
-    let stateSubcommands = try #require(state["subcommands"]?.arrayValue).compactMap { $0.stringValue }
+    let stateSubcommands = try #require(state["subcommands"]?.arrayValue).compactMap {
+      $0.stringValue
+    }
     #expect(stateSubcommands.contains("activity"))
     #expect(stateSubcommands.contains("change-password"))
     #expect(
@@ -286,7 +304,8 @@ struct AppleMCPAdapterTests {
         FakeMCPRunner.Call(target: "notes", arguments: ["--help"], timeoutSeconds: 19),
         FakeMCPRunner.Call(target: "notes", arguments: ["state", "--help"], timeoutSeconds: 19),
         FakeMCPRunner.Call(target: "notes", arguments: ["settings", "--help"], timeoutSeconds: 19),
-        FakeMCPRunner.Call(target: "notes", arguments: ["smart-folders", "--help"], timeoutSeconds: 19),
+        FakeMCPRunner.Call(
+          target: "notes", arguments: ["smart-folders", "--help"], timeoutSeconds: 19),
       ])
   }
 
@@ -294,37 +313,39 @@ struct AppleMCPAdapterTests {
     let runner = FakeMCPRunner()
     runner.helpOutputs = [
       "notes --help": """
-        USAGE: apple notes <subcommand>
+      USAGE: apple notes <subcommand>
 
-        SUBCOMMANDS:
-          attachments
-        """,
+      SUBCOMMANDS:
+        attachments
+      """,
       "notes attachments --help": """
-        USAGE: apple notes attachments <subcommand>
+      USAGE: apple notes attachments <subcommand>
 
-        SUBCOMMANDS:
-          audio
-        """,
+      SUBCOMMANDS:
+        audio
+      """,
       "notes attachments audio --help": """
-        USAGE: apple notes attachments audio <subcommand>
+      USAGE: apple notes attachments audio <subcommand>
 
-        SUBCOMMANDS:
-          save
-        """,
+      SUBCOMMANDS:
+        save
+      """,
       "notes attachments audio save --help": """
-        USAGE: apple notes attachments audio save --id <id> --attachment <attachment> --output <output>
+      USAGE: apple notes attachments audio save --id <id> --attachment <attachment> --output <output>
 
-        OPTIONS:
-          --id <id>                 Note identifier.
-          --attachment <attachment> Audio attachment selector.
-          --output <output>         Destination audio file path.
-          --allow-artifact-action Allow a command to create, overwrite, move, or remove
-                                  filesystem artifacts.
-          --dry-run Run validation and resolution for a mutation, then
-                    stop before side effects.
-          --json                    Emit JSON output.
-          -h, --help                Show help information.
-        """,
+      OPTIONS:
+        --id <id>                 Note identifier.
+        --attachment <attachment> Audio attachment selector.
+        --output <output>         Destination audio file path.
+                                  Negative values such as
+                                  -1 are description text.
+        --allow-artifact-action Allow a command to create, overwrite, move, or remove
+                                filesystem artifacts.
+        --dry-run Run validation and resolution for a mutation, then
+                  stop before side effects.
+        --json                    Emit JSON output.
+        -h, --help                Show help information.
+      """,
     ]
     let adapter = AppleMCPAdapter(runner: runner)
 
@@ -357,19 +378,21 @@ struct AppleMCPAdapterTests {
     #expect(inputSchema["type"]?.stringValue == "object")
     #expect(inputSchema["additionalProperties"]?.boolValue == false)
     #expect(schemaRequired == ["id", "attachment", "output"])
-    #expect(schemaOrder == [
-      "id",
-      "attachment",
-      "output",
-      "allow-artifact-action",
-      "dry-run",
-      "json",
-      "help",
-    ])
+    #expect(
+      schemaOrder == [
+        "id",
+        "attachment",
+        "output",
+        "allow-artifact-action",
+        "dry-run",
+        "json",
+        "help",
+      ])
 
-    let idOption = try #require(options.first {
-      $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["--id"]
-    })
+    let idOption = try #require(
+      options.first {
+        $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["--id"]
+      })
     #expect(idOption["valueName"]?.stringValue == "id")
     #expect(idOption["valueRequired"]?.boolValue == true)
     #expect(idOption["valueType"]?.stringValue == "string")
@@ -379,15 +402,19 @@ struct AppleMCPAdapterTests {
     #expect(idProperty["cliArgumentKind"]?.stringValue == "option")
     #expect(idProperty["cliNames"]?.arrayValue?.compactMap { $0.stringValue } == ["--id"])
 
-    let outputOption = try #require(options.first {
-      $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["--output"]
-    })
+    let outputOption = try #require(
+      options.first {
+        $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["--output"]
+      })
     #expect(outputOption["valueName"]?.stringValue == "output")
-    #expect(outputOption["description"]?.stringValue == "Destination audio file path.")
+    #expect(
+      outputOption["description"]?.stringValue
+        == "Destination audio file path. Negative values such as -1 are description text.")
 
-    let allowOption = try #require(options.first {
-      $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["--allow-artifact-action"]
-    })
+    let allowOption = try #require(
+      options.first {
+        $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["--allow-artifact-action"]
+      })
     #expect(allowOption["valueName"] == nil)
     #expect(allowOption["valueRequired"]?.boolValue == false)
     #expect(allowOption["valueType"]?.stringValue == "boolean")
@@ -399,25 +426,29 @@ struct AppleMCPAdapterTests {
         == "Allow a command to create, overwrite, move, or remove filesystem artifacts."
     )
 
-    let dryRunOption = try #require(options.first {
-      $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["--dry-run"]
-    })
+    let dryRunOption = try #require(
+      options.first {
+        $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["--dry-run"]
+      })
     #expect(
       dryRunOption["description"]?.stringValue
         == "Run validation and resolution for a mutation, then stop before side effects."
     )
 
-    let helpOption = try #require(options.first {
-      $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["-h", "--help"]
-    })
+    let helpOption = try #require(
+      options.first {
+        $0["names"]?.arrayValue?.compactMap { $0.stringValue } == ["-h", "--help"]
+      })
     #expect(helpOption["description"]?.stringValue == "Show help information.")
     let helpProperty = try #require(schemaProperties["help"]?.objectValue)
     #expect(helpProperty["type"]?.stringValue == "boolean")
-    #expect(helpProperty["cliNames"]?.arrayValue?.compactMap { $0.stringValue } == ["-h", "--help"])
+    #expect(
+      helpProperty["cliNames"]?.arrayValue?.compactMap { $0.stringValue } == ["-h", "--help"])
     #expect(
       runner.calls == [
         FakeMCPRunner.Call(target: "notes", arguments: ["--help"], timeoutSeconds: 30),
-        FakeMCPRunner.Call(target: "notes", arguments: ["attachments", "--help"], timeoutSeconds: 30),
+        FakeMCPRunner.Call(
+          target: "notes", arguments: ["attachments", "--help"], timeoutSeconds: 30),
         FakeMCPRunner.Call(
           target: "notes",
           arguments: ["attachments", "audio", "--help"],
@@ -436,37 +467,37 @@ struct AppleMCPAdapterTests {
     let runner = FakeMCPRunner()
     runner.helpOutputs = [
       "notes --help": """
-        USAGE: apple notes <subcommand>
+      USAGE: apple notes <subcommand>
 
-        SUBCOMMANDS:
-          attachments
-        """,
+      SUBCOMMANDS:
+        attachments
+      """,
       "notes attachments --help": """
-        USAGE: apple notes attachments <subcommand>
+      USAGE: apple notes attachments <subcommand>
 
-        SUBCOMMANDS:
-          audio
-        """,
+      SUBCOMMANDS:
+        audio
+      """,
       "notes attachments audio --help": """
-        USAGE: apple notes attachments audio <subcommand>
+      USAGE: apple notes attachments audio <subcommand>
 
-        SUBCOMMANDS:
-          save
-        """,
+      SUBCOMMANDS:
+        save
+      """,
       "notes attachments audio save --help": """
-        USAGE: apple notes attachments audio save --id <id> --attachment <attachment> --output <output> [--dry-run]
+      USAGE: apple notes attachments audio save --id <id> --attachment <attachment> --output <output> [--dry-run]
 
-        OPTIONS:
-          --id <id>                 Note identifier.
-          --attachment <attachment> Audio attachment selector.
-          --output <output>         Destination audio file path.
-          --allow-artifact-action Allow a command to create, overwrite, move, or remove
-                                  filesystem artifacts.
-          --dry-run Run validation and resolution for a mutation, then
-                    stop before side effects.
-          --json                    Emit JSON output.
-          -h, --help                Show help information.
-        """,
+      OPTIONS:
+        --id <id>                 Note identifier.
+        --attachment <attachment> Audio attachment selector.
+        --output <output>         Destination audio file path.
+        --allow-artifact-action Allow a command to create, overwrite, move, or remove
+                                filesystem artifacts.
+        --dry-run Run validation and resolution for a mutation, then
+                  stop before side effects.
+        --json                    Emit JSON output.
+        -h, --help                Show help information.
+      """,
     ]
     let adapter = AppleMCPAdapter(runner: runner)
     let server = await AppleMCPServerFactory.makeServer(adapter: adapter)
@@ -480,14 +511,15 @@ struct AppleMCPAdapterTests {
     #expect(initializeResult.capabilities.tools != nil)
 
     let (tools, _) = try await client.listTools()
-    #expect(tools.map(\.name) == [
-      "apple_cli_list_targets",
-      "apple_cli_doctor",
-      "apple_cli_status",
-      "apple_cli_help",
-      "apple_cli_command_catalog",
-      "apple_cli_run",
-    ])
+    #expect(
+      tools.map(\.name) == [
+        "apple_cli_list_targets",
+        "apple_cli_doctor",
+        "apple_cli_status",
+        "apple_cli_help",
+        "apple_cli_command_catalog",
+        "apple_cli_run",
+      ])
 
     let catalogContext: RequestContext<CallTool.Result> = try await client.callTool(
       name: "apple_cli_command_catalog",
@@ -609,14 +641,15 @@ struct AppleMCPAdapterTests {
     #expect(initializeResult.capabilities.tools != nil)
 
     let (tools, _) = try await client.listTools()
-    #expect(tools.map(\.name) == [
-      "apple_cli_list_targets",
-      "apple_cli_doctor",
-      "apple_cli_status",
-      "apple_cli_help",
-      "apple_cli_command_catalog",
-      "apple_cli_run",
-    ])
+    #expect(
+      tools.map(\.name) == [
+        "apple_cli_list_targets",
+        "apple_cli_doctor",
+        "apple_cli_status",
+        "apple_cli_help",
+        "apple_cli_command_catalog",
+        "apple_cli_run",
+      ])
 
     let listTargets: RequestContext<CallTool.Result> = try await client.callTool(
       name: "apple_cli_list_targets",
@@ -640,9 +673,14 @@ struct AppleMCPAdapterTests {
     #expect(helpPayload["stdout"]?.stringValue?.contains("USAGE: apple notes") == true)
 
     let preview: RequestContext<CallTool.Result> = try await client.callTool(
-      name: "apple_cli_run", arguments: ["target": .string("notifications"),
-        "arguments": .array([.string("preview"), .string("--title"), .string("release-test"),
-          .string("--body"), .string("preview")])]
+      name: "apple_cli_run",
+      arguments: [
+        "target": .string("notifications"),
+        "arguments": .array([
+          .string("preview"), .string("--title"), .string("release-test"),
+          .string("--body"), .string("preview"),
+        ]),
+      ]
     )
     let previewResult = try await preview.value
     #expect(previewResult.isError == false)
@@ -714,14 +752,15 @@ struct AppleMCPAdapterTests {
     #expect(initializeResult.capabilities.tools != nil)
 
     let (tools, _) = try await client.listTools()
-    #expect(tools.map(\.name) == [
-      "apple_cli_list_targets",
-      "apple_cli_doctor",
-      "apple_cli_status",
-      "apple_cli_help",
-      "apple_cli_command_catalog",
-      "apple_cli_run",
-    ])
+    #expect(
+      tools.map(\.name) == [
+        "apple_cli_list_targets",
+        "apple_cli_doctor",
+        "apple_cli_status",
+        "apple_cli_help",
+        "apple_cli_command_catalog",
+        "apple_cli_run",
+      ])
 
     let listTargets: RequestContext<CallTool.Result> = try await client.callTool(
       name: "apple_cli_list_targets",
@@ -745,9 +784,14 @@ struct AppleMCPAdapterTests {
     #expect(helpPayload["stdout"]?.stringValue?.contains("USAGE: apple notes") == true)
 
     let preview: RequestContext<CallTool.Result> = try await client.callTool(
-      name: "apple_cli_run", arguments: ["target": .string("notifications"),
-        "arguments": .array([.string("preview"), .string("--title"), .string("release-test"),
-          .string("--body"), .string("preview")])]
+      name: "apple_cli_run",
+      arguments: [
+        "target": .string("notifications"),
+        "arguments": .array([
+          .string("preview"), .string("--title"), .string("release-test"),
+          .string("--body"), .string("preview"),
+        ]),
+      ]
     )
     let previewResult = try await preview.value
     #expect(previewResult.isError == false)
@@ -832,12 +876,12 @@ struct AppleMCPAdapterTests {
     let runner = FakeMCPRunner()
     runner.helpOutputs = [
       "notes --help": """
-        USAGE: apple notes <subcommand>
+      USAGE: apple notes <subcommand>
 
-        SUBCOMMANDS:
-          state
-          settings
-        """,
+      SUBCOMMANDS:
+        state
+        settings
+      """
     ]
     let adapter = AppleMCPAdapter(runner: runner)
 
@@ -1402,21 +1446,28 @@ private func stopTestProcess(_ process: Process) {
   #expect(!process.isRunning, "Test process did not stop within the cleanup deadline.")
 }
 
-private func stagedMCPInstallation(separateCLI: Bool) throws -> (root: URL, server: URL, cliDirectory: URL) {
+private func stagedMCPInstallation(separateCLI: Bool) throws -> (
+  root: URL, server: URL, cliDirectory: URL
+) {
   let source = try appleMCPExecutablePath().resolvingSymlinksInPath()
   let manager = FileManager.default
-  let root = manager.temporaryDirectory.appendingPathComponent("apple-cli-install-test-\(UUID().uuidString)")
+  let root = manager.temporaryDirectory.appendingPathComponent(
+    "apple-cli-install-test-\(UUID().uuidString)")
   let bin = root.appendingPathComponent("bin")
   let cliDirectory = separateCLI ? root.appendingPathComponent("cli-bin") : bin
   do {
     try manager.createDirectory(at: bin, withIntermediateDirectories: true)
-    if separateCLI { try manager.createDirectory(at: cliDirectory, withIntermediateDirectories: true) }
+    if separateCLI {
+      try manager.createDirectory(at: cliDirectory, withIntermediateDirectories: true)
+    }
     let server = bin.appendingPathComponent("apple-cli-mcp")
     try manager.copyItem(at: source, to: server)
-    let cli = ProcessInfo.processInfo.environment["APPLE_CLI_BIN"].map { URL(fileURLWithPath: $0) }
+    let cli =
+      ProcessInfo.processInfo.environment["APPLE_CLI_BIN"].map { URL(fileURLWithPath: $0) }
       ?? source.deletingLastPathComponent().appendingPathComponent("apple")
     try manager.copyItem(at: cli, to: cliDirectory.appendingPathComponent("apple"))
-    for (executable, destination) in [(source, bin), (cli.resolvingSymlinksInPath(), cliDirectory)] {
+    for (executable, destination) in [(source, bin), (cli.resolvingSymlinksInPath(), cliDirectory)]
+    {
       let libraries = try manager.contentsOfDirectory(
         at: executable.deletingLastPathComponent(), includingPropertiesForKeys: nil
       ).filter { $0.lastPathComponent.hasPrefix("libswift") && $0.pathExtension == "dylib" }
@@ -1627,7 +1678,9 @@ private func waitForHTTPServer(endpoint: URL, process: Process, timeoutSeconds: 
       throw CLIError(
         code: .backendUnavailable,
         message: "apple-cli-mcp HTTP process exited before accepting connections.",
-        details: ["endpoint": endpoint.absoluteString, "exitStatus": "\(process.terminationStatus)"]
+        details: [
+          "endpoint": endpoint.absoluteString, "exitStatus": "\(process.terminationStatus)",
+        ]
       )
     }
 
@@ -1661,7 +1714,9 @@ private func waitForHTTPServer(endpoint: URL, process: Process, timeoutSeconds: 
 private struct FailingMCPRunner: CLIProcessRunning {
   var error: any Error
 
-  func run(target: String, arguments: [String], timeoutSeconds: Int) async throws -> CLIProcessResult {
+  func run(target: String, arguments: [String], timeoutSeconds: Int) async throws
+    -> CLIProcessResult
+  {
     throw error
   }
 }
@@ -1684,11 +1739,14 @@ private final class FakeMCPRunner: CLIProcessRunning, @unchecked Sendable {
     set { lock.withLock { configuredHelp = newValue } }
   }
 
-  func run(target: String, arguments: [String], timeoutSeconds: Int) async throws -> CLIProcessResult {
+  func run(target: String, arguments: [String], timeoutSeconds: Int) async throws
+    -> CLIProcessResult
+  {
     lock.withLock { result(target: target, arguments: arguments, timeoutSeconds: timeoutSeconds) }
   }
 
-  private func result(target: String, arguments: [String], timeoutSeconds: Int) -> CLIProcessResult {
+  private func result(target: String, arguments: [String], timeoutSeconds: Int) -> CLIProcessResult
+  {
     recordedCalls.append(Call(target: target, arguments: arguments, timeoutSeconds: timeoutSeconds))
     if arguments.contains("--help") || arguments.contains("-h") {
       let key = ([target] + arguments).joined(separator: " ")

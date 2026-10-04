@@ -38,10 +38,8 @@ public struct FileManagerFinderBackend: FinderReading, FinderMutating {
   {
     let root = try directoryURL(path)
     let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    return try directoryItems(root: root, includeHidden: includeHidden, limit: limit)
-      .filter { $0.name.localizedCaseInsensitiveContains(normalizedQuery) }
-      .prefix(limit)
-      .map { $0 }
+    return try directoryItems(
+      root: root, includeHidden: includeHidden, limit: limit, query: normalizedQuery)
   }
 
   public func readMetadata(path: String) throws -> FinderItemRecord? {
@@ -188,7 +186,7 @@ public struct FileManagerFinderBackend: FinderReading, FinderMutating {
     return try itemRecord(url)
   }
 
-  private func directoryItems(root: URL, includeHidden: Bool, limit: Int) throws
+  private func directoryItems(root: URL, includeHidden: Bool, limit: Int, query: String? = nil) throws
     -> [FinderItemRecord]
   {
     let options: FileManager.DirectoryEnumerationOptions = includeHidden ? [] : [.skipsHiddenFiles]
@@ -201,6 +199,9 @@ public struct FileManagerFinderBackend: FinderReading, FinderMutating {
     .sorted {
       $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent)
         == .orderedAscending
+    }
+    .filter { url in
+      query.map { url.lastPathComponent.localizedCaseInsensitiveContains($0) } ?? true
     }
     .prefix(limit)
 

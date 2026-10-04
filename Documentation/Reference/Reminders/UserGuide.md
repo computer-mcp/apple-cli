@@ -112,6 +112,8 @@ apple reminders templates sections add --template "Trip Checklist" --title "Docu
 apple reminders templates sections rename --template "Trip Checklist" --section "Documents" --title "Entry Documents" --dry-run --json
 apple reminders templates sections reorder --template "Trip Checklist" --section "Entry Documents" --before "Packing" --dry-run --json
 apple reminders templates sections delete --template "Trip Checklist" --section "Entry Documents" --dry-run --json
+apple reminders templates items list --template "Trip Checklist" --limit 20 --json
+apple reminders templates items read --id TEMPLATE_ITEM_ID --json
 apple reminders templates items add --template "Trip Checklist" --title "Passport" --notes "Check expiration date" --dry-run --json
 apple reminders templates items add --template "Trip Checklist" --title "Flight check-in" --due 2026-07-01T09:00:00Z --alarm-at 2026-06-30T20:00:00Z --section "Travel Day" --dry-run --json
 apple reminders templates items update --id TEMPLATE_ITEM_ID --title "Passport and visa" --dry-run --json
@@ -128,10 +130,11 @@ apple reminders templates delete --template "Trip Checklist" --dry-run --json
 `templates create-list` creates a new Reminders list from a saved template.
 `templates update` edits template title and appearance fields. `templates
 replace` replaces template content from a normal Reminders list. `templates
-sections` edits saved template sections directly. `templates items` edits saved
-template reminder items directly; `items add` returns the `REMCDSavedReminder`
-ID used by later `items update`, `items attachments`, `items subtasks`, and
-`items delete` calls. Template item add and
+sections` edits saved template sections directly. `templates items list` reads
+saved items, including subtasks, with a default limit
+of 50. `items read` reads one saved item. The item IDs from `items list` and
+`items add` can be used by `items read`, `items update`, `items attachments`,
+`items subtasks`, and `items delete`. Template item add and
 update support title, notes, visible URL, due date, priority, repeat, location,
 absolute alarm, flag, tags, and section membership. Template item attachments
 support file/image add and remove. Template item subtasks support one-level
@@ -156,8 +159,29 @@ apple reminders lists smart convert --list LIST_ID_OR_TITLE --dry-run --json
 apple reminders lists smart delete --list LIST_ID_OR_TITLE --dry-run --json
 ```
 
-Supported criteria use bounded semantic selectors such as tags, priority, flag,
-date, and boolean state.
+Combine criteria with whitespace inside a quoted value and choose `--match all`
+or `--match any`. Specify each filter once: use comma-separated tags or
+priorities, and `date-range:YYYY-MM-DD..YYYY-MM-DD` for a date range.
+Absolute dates must be valid `YYYY-MM-DD` calendar dates; a range's start must
+be on or before its end. Flag and any-tag filters accept `true`.
+
+Read or search a custom Smart List by native ID or unique title:
+
+```bash
+apple reminders list --list SMART_LIST_ID --status all --limit 50 --json
+apple reminders search --list SMART_LIST_ID --query "Travel" --limit 20 --json
+```
+
+These commands use the saved rules in Reminders. Results keep each reminder's
+physical `listId` and `parentReminderId`. A matching parent can bring contextual
+subtasks that do not independently match the rules. Each reminder appears once,
+even when it also matches on its own. Status, date, and search filters apply
+before the limit. With no list selector, reads cover physical lists once.
+
+`lists list` includes native Smart List IDs and account IDs. Creation and
+updates check the saved rules against the request. Repeating the same rules
+returns `changed: false`. If verification is unconfirmed, inspect the list
+before retrying: the save may already have occurred.
 
 ## Reminder Fields And Triggers
 
@@ -201,6 +225,36 @@ apple reminders create --list LIST_ID_OR_TITLE --title "Prepare report" --alarm-
 apple reminders update --id REMINDER_ID --early-reminder-minutes-before 10,30 --dry-run --json
 apple reminders update --id REMINDER_ID --clear-alarms --clear-early-reminders --dry-run --json
 ```
+
+## Notes Formatting
+
+Read structured notes, including plain text, UTF-16 formatting ranges, links,
+and recognized paragraph list styles:
+
+```bash
+apple reminders notes read --id REMINDER_ID --json
+```
+
+Set one inline format with `--format bold|italic|underline|strikethrough` and
+`--state on|off`. `--text` selects literal text; repeated matches require a
+one-based `--occurrence`. Omit `--text` to select all notes.
+
+```bash
+apple reminders notes format --id REMINDER_ID --text "Bring passport" --format bold --state on --dry-run --json
+apple reminders notes format --id REMINDER_ID --text "Check" --occurrence 2 --format underline --state off --dry-run --json
+apple reminders notes list-style --id REMINDER_ID --text "Packing" --style bulleted --dry-run --json
+```
+
+List styles are `plain`, `bulleted`, `dashed`, and `numbered`. They apply to the
+whole paragraphs containing the selected text. Plain clears those paragraphs'
+list layout. Inline formatting preserves other formatting and links; notes
+formatting preserves the text and other reminder fields. Empty notes cannot be
+formatted. Repeat requests that already match return `changed: false`.
+
+Create/update `--notes` supplies a plain-text replacement. Use the formatting
+commands when changing only appearance. Preview with `--dry-run`, then omit it
+to apply the same request. If a save reports unconfirmed verification, inspect
+notes before retrying.
 
 ## Tags, Sections, Subtasks, Attachments, And Assignments
 

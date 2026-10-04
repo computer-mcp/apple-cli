@@ -9,10 +9,18 @@ public struct MailActionPreviewResponse: Codable, Equatable, Sendable {
 }
 
 public struct MailAppleScriptBackend: MailReading, MailDrafting, MailSending, MailMessageMutating {
-  public init() {}
+  private let executeRows: @Sendable (String) throws -> [[String]]
+
+  public init() {
+    executeRows = runRows
+  }
+
+  init(executeRows: @escaping @Sendable (String) throws -> [[String]]) {
+    self.executeRows = executeRows
+  }
 
   public func listAccounts() throws -> [MailAccountRecord] {
-    try runRows(
+    try executeRows(
       """
       set output to {}
       tell application "Mail"
@@ -26,7 +34,7 @@ public struct MailAppleScriptBackend: MailReading, MailDrafting, MailSending, Ma
   }
 
   public func listMailboxes(account: String?, limit: Int) throws -> [MailboxRecord] {
-    try runRows(
+    try executeRows(
       """
       set output to {}
       tell application "Mail"
@@ -46,7 +54,7 @@ public struct MailAppleScriptBackend: MailReading, MailDrafting, MailSending, Ma
   }
 
   public func readMailbox(account: String?, mailbox: String) throws -> MailboxRecord? {
-    try runRows(
+    try executeRows(
       """
       set output to {}
       tell application "Mail"
@@ -85,7 +93,11 @@ public struct MailAppleScriptBackend: MailReading, MailDrafting, MailSending, Ma
     mailbox: String,
     maxBytes: Int
   ) throws -> MailBodyPreviewResponse? {
-    let rows = try runRows(
+    guard (1...100_000).contains(maxBytes) else {
+      throw CLIError(code: .validationError, message: "`--max-bytes` must be between 1 and 100000.")
+    }
+    let characterLimit = maxBytes + 1
+    let rows = try executeRows(
       """
       set output to {}
       tell application "Mail"
@@ -106,8 +118,8 @@ public struct MailAppleScriptBackend: MailReading, MailDrafting, MailSending, Ma
                     if readValue then set readFlagValue to "true"
                     set bodyValue to content of eachMessage as text
                     set truncatedFlagValue to "false"
-                    if (count characters of bodyValue) is greater than \(maxBytes) then
-                      set bodyValue to text 1 thru \(maxBytes) of bodyValue
+                    if (count characters of bodyValue) is greater than \(characterLimit) then
+                      set bodyValue to text 1 thru \(characterLimit) of bodyValue
                       set truncatedFlagValue to "true"
                     end if
                     set end of output to {stableId, accountName, mailboxName, subjectValue, senderValue, receivedValue, readFlagValue, bodyValue, truncatedFlagValue}
@@ -122,11 +134,11 @@ public struct MailAppleScriptBackend: MailReading, MailDrafting, MailSending, Ma
       return output
       """)
 
-    return rows.first.map(mailBodyPreview)
+    return rows.first.map { mailBodyPreview($0, maxBytes: maxBytes) }
   }
 
   public func createDraft(_ draft: MailDraftRequest) throws -> MailDraftRecord {
-    let rows = try runRows(
+    let rows = try executeRows(
       """
       set output to {}
       tell application "Mail"
@@ -154,23 +166,50 @@ public struct MailAppleScriptBackend: MailReading, MailDrafting, MailSending, Ma
   }
 
   public func sendMail(_ draft: MailDraftRequest) throws -> MailSendRecord {
-    _ = try runRows(
-      """
-      set output to {}
-      tell application "Mail"
-        set newMessage to make new outgoing message with properties {subject:"\(appleScriptString(draft.subject))", content:"\(appleScriptString(draft.body))", visible:false}
-        \(recipientStatements(draft))
-        send newMessage
-        set end of output to {subject of newMessage as text}
-      end tell
-      return output
-      """)
+    let rows: [[String]]
+    do {
+      rows = try executeRows(
+        """
+        set output to {}
+        tell application "Mail"
+          set newMessage to make new outgoing message with properties {subject:"\(appleScriptString(draft.subject))", content:"\(appleScriptString(draft.body))", visible:false}
+          \(recipientStatements(draft))
+          set acceptedSubmission to send newMessage
+          set submissionFlag to "false"
+          if acceptedSubmission then set submissionFlag to "true"
+          set end of output to {submissionFlag}
+        end tell
+        return output
+        """)
+    } catch let error as CLIError {
+      var failure = error
+      failure.details["submission_status"] = "unknown"
+      failure.details["retry_guidance"] = "inspect_mail_before_retrying"
+      throw failure
+    } catch {
+      throw CLIError(
+        code: .backendUnavailable,
+        message: "Mail submission could not be confirmed. Inspect Mail before retrying.",
+        details: ["submission_status": "unknown", "retry_guidance": "inspect_mail_before_retrying"]
+      )
+    }
+    guard rows == [["true"]] else {
+      let status = rows == [["false"]] ? "rejected" : "unknown"
+      throw CLIError(
+        code: .backendUnavailable,
+        message: status == "rejected"
+          ? "Mail rejected the send request. Inspect outgoing drafts before retrying."
+          : "Mail submission could not be confirmed. Inspect Mail before retrying.",
+        details: ["submission_status": status, "retry_guidance": "inspect_mail_before_retrying"]
+      )
+    }
 
     return MailSendRecord(
       to: draft.to,
       cc: draft.cc,
       bcc: draft.bcc,
       subject: draft.subject,
+      submitted: true,
       bodyIncluded: false
     )
   }
@@ -213,7 +252,7 @@ public struct MailAppleScriptBackend: MailReading, MailDrafting, MailSending, Ma
       ? "set bodyText to content of eachMessage as text"
       : "set bodyText to \"\""
 
-    return try runRows(
+    return try executeRows(
       """
       set output to {}
       set scannedCount to 0
@@ -272,7 +311,7 @@ public struct MailAppleScriptBackend: MailReading, MailDrafting, MailSending, Ma
       actionStatement = "delete eachMessage"
     }
 
-    let rows = try runRows(
+    let rows = try executeRows(
       """
       set output to {}
       tell application "Mail"

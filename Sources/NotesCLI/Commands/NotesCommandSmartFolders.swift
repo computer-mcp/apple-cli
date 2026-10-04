@@ -1170,7 +1170,7 @@ extension NotesCommand {
     ]
     return NotesMutationVerificationReport(
       operation: "notes.smart-folders.filters.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "filter_catalog_accounting+privacy_boundary+no_backend_calls",
       targetIDSHA256: sha256Hex("notes.smart-folders.filters.audit"),
       checks: checks
@@ -1671,7 +1671,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.smart-folders.workflow.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "capability_accounting+privacy_boundary+no_backend_calls",
       targetIDSHA256: sha256Hex("notes.smart-folders.workflow.audit"),
       checks: checks
@@ -1722,7 +1722,7 @@ extension NotesCommand {
     return NotesMutationVerificationReport(
       verifier: "notes_read_v1",
       operation: "notes.smart-folders.audit",
-      verified: checks.allSatisfy { $0.status != "failed" },
+      verified: checks.allSatisfy { $0.status == "passed" || $0.status == "not_applicable" },
       evidenceLevel: "private_framework_smart_folder_criteria_audit",
       targetIDSHA256: sha256Hex(records.map(\.smartFolder.id).joined(separator: "\n")),
       checks: checks,
