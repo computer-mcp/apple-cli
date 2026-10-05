@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
   "authority": "https://github.com/computer-mcp/.github",
-  "revision": "9042c987ef8b3482f63e3a037ae0d0d2fdeffb9a7768c03295c9a6a6c5a43ae2",
+  "revision": "2d9913a442afcb22faca90f5272d3988eb961be6e858b71c5067303cf7c627d6",
   "consumer": "apple-cli",
   "files": {
-    "Documentation/Brand/header-light.png": "b444099bff55964716df590a49681763dd681eb750baea9e9bf053303b58978f",
-    "Documentation/Brand/header-dark.png": "9311a9d29c431d8b425b920c6fdcf8b1317aac4a639ca8dd8d6a75bfba583bde",
-    ".github/brand/social.png": "366973793e6c0acaebb17e220584debbe0e30c1becad46840907a0a9f6760ad9"
+    "Documentation/Brand/header-light.png": "eb39f3783529e1d74d1f5d7ed95fd008014b8a6af27369aa2cffbd5976935edb",
+    "Documentation/Brand/header-dark.png": "ad3fcc36c67496bf610c918fceb171f95f268f42f6dfefccea7991b6a1a0fee6",
+    ".github/brand/social.png": "159a4e33130225d3feab7a6a7560ad932d4046c3d2c301e38d5cb9532b9bd5a1"
   },
   "entries": {
     "README.md": [
