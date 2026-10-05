@@ -1,3 +1,3 @@
 public enum CLIVersion {
-  public static let current = "0.1.0-alpha.3"
+  public static let current = "0.1.0-alpha.4"
 }

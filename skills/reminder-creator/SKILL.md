@@ -1,6 +1,6 @@
 ---
 name: reminder-creator
-description: Use when the intended output or mutation is Apple Reminders content: creating, updating, reorganizing, migrating, auditing, or polishing reminder items, lists, sections, and templates through apple reminders. Owns Reminders content modeling, item wording, source-to-reminder extraction, classification, field preservation, list and section information architecture, appearance hygiene, and scenario references such as shopping and wishlist work. This skill is not a CLI manual, implementation guide, standalone shopping or web research workflow, medical advice, financial advice, or product recommendation system.
+description: "Use when the intended output or mutation is Apple Reminders content: creating, updating, reorganizing, migrating, auditing, or polishing reminder items, lists, sections, and templates through apple reminders. Owns Reminders content modeling, item wording, source-to-reminder extraction, classification, field preservation, list and section information architecture, appearance hygiene, and scenario references such as shopping and wishlist work. This skill is not a CLI manual, implementation guide, standalone shopping or web research workflow, medical advice, financial advice, or product recommendation system."
 ---
 
 # Reminder Creator
