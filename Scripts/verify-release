@@ -18,7 +18,7 @@ from urllib.parse import unquote, urlsplit
 
 REPOSITORY = "computer-mcp/apple-cli"
 BUILD_CHECKS = {
-    "build-tests", "default-concurrent-tests", "release-build",
+    "build-tests", "default-concurrent-tests", "mcp-executable-tests", "release-build",
     "installed-release-content", "installed-release-cli-and-mcp",
 }
 ARCHIVE_CHECKS = {
@@ -199,7 +199,7 @@ def accept_executables(source, manifest, archive, manifest_path, checksum, verif
         environment["APPLE_CLI_BIN"] = str(package / "bin/apple")
         environment["APPLE_CLI_MCP_BIN"] = str(package / "bin/apple-cli-mcp")
         with log.open("w") as output:
-            task = subprocess.Popen(["xcrun", "swift", "test", "--skip-build", "--force-resolved-versions", "--filter", "CLIExecutableTests|AppleMCPAdapterTests"], cwd=source, env=environment, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+            task = subprocess.Popen(["xcrun", "swift", "test", "--skip-build", "--force-resolved-versions", "--filter", "CLIExecutableTests|AppleMCPAdapterTests|MCPExecutableTests"], cwd=source, env=environment, stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
             try:
                 code = task.wait(timeout=120)
             except subprocess.TimeoutExpired:

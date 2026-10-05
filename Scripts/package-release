@@ -226,7 +226,13 @@ func main() throws {
   try validate(
     "build-tests", ["swift", "build", "--build-tests", "--force-resolved-versions"] + buildJobs)
   try validate(
-    "default-concurrent-tests", ["swift", "test", "--skip-build", "--force-resolved-versions"],
+    "default-concurrent-tests",
+    ["swift", "test", "--skip-build", "--force-resolved-versions", "--skip", "MCPExecutableTests"],
+    environment: testEnvironment)
+  // Network deadlines require an executor without the suite's synchronous saturation fixtures.
+  try validate(
+    "mcp-executable-tests",
+    ["swift", "test", "--skip-build", "--force-resolved-versions", "--filter", "MCPExecutableTests"],
     environment: testEnvironment)
   try validate(
     "release-build", ["swift", "build", "-c", "release", "--force-resolved-versions"] + buildJobs)
@@ -314,7 +320,7 @@ func main() throws {
     "installed-release-cli-and-mcp",
     [
       "swift", "test", "--skip-build", "--force-resolved-versions", "--filter",
-      "CLIExecutableTests|AppleMCPAdapterTests",
+      "CLIExecutableTests|AppleMCPAdapterTests|MCPExecutableTests",
     ], environment: testEnvironment)
   guard try requireCleanCommit() == revision else {
     throw ReleaseError.invalid("The source candidate changed during validation.")
