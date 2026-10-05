@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-alpha.4 — Unreleased
+## 0.1.0-alpha.4 — 2026-10-05
 
 ### Breaking
 
@@ -33,6 +33,8 @@
 - Notes and Reminders edits preserve content, titles, lifecycle and subtask and
   template data, with native readback verification.
 - Result fidelity for Numbers cells, Mail, Finder and TCC.
+- The bundled `reminder-creator` skill has valid YAML metadata, so strict skill
+  loaders accept it.
 
 ### Development
 
