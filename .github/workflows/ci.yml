@@ -35,14 +35,14 @@ jobs:
           python3 -B -m unittest discover -s Tests/ReleaseTools
           Scripts/package-release --jobs 2
           Scripts/verify-release --run-tests
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: apple-cli-macos-arm64-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: .build/releases/*
           if-no-files-found: error
       - name: Preserve validation logs
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: validation-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: .build/release-validation
