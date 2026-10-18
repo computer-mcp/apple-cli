@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Debug apple",
+            "target": "apple",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug apple"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Release apple",
+            "target": "apple",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release apple"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Debug apple-cli-mcp",
+            "target": "apple-cli-mcp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug apple-cli-mcp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Release apple-cli-mcp",
+            "target": "apple-cli-mcp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release apple-cli-mcp"
+        }
+    ]
+}

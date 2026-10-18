@@ -1,0 +1,4 @@
+module NotesUI [system] {
+  umbrella header "NotesUI.h"
+  export *
+}

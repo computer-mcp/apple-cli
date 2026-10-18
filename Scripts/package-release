@@ -1,0 +1,435 @@
+#!/usr/bin/xcrun swift
+import CryptoKit
+import Darwin
+import Foundation
+
+enum ReleaseError: Error, CustomStringConvertible {
+  case invalid(String)
+  var description: String {
+    switch self {
+    case .invalid(let text): text
+    }
+  }
+}
+
+let manager = FileManager.default
+let root = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
+  .resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent()
+
+func message(_ text: String) {
+  FileHandle.standardOutput.write(Data((text + "\n").utf8))
+}
+
+@discardableResult
+func run(
+  _ executable: String, _ arguments: [String], directory: URL = root,
+  environment: [String: String]? = nil, log: URL? = nil
+) throws -> String {
+  let process = Process()
+  process.executableURL = URL(fileURLWithPath: executable)
+  process.arguments = arguments
+  process.currentDirectoryURL = directory
+  if let environment { process.environment = environment }
+  let pipe = Pipe()
+  var handle: FileHandle?
+  if let log {
+    manager.createFile(atPath: log.path, contents: nil)
+    handle = try FileHandle(forWritingTo: log)
+    process.standardOutput = handle
+    process.standardError = handle
+  } else {
+    process.standardOutput = pipe
+    process.standardError = pipe
+  }
+  defer {
+    try? handle?.close()
+    try? pipe.fileHandleForReading.close()
+    try? pipe.fileHandleForWriting.close()
+  }
+  try process.run()
+  if log == nil { try? pipe.fileHandleForWriting.close() }
+  let data = log == nil ? pipe.fileHandleForReading.readDataToEndOfFile() : Data()
+  process.waitUntilExit()
+  let output = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+  guard process.terminationReason == .exit, process.terminationStatus == 0 else {
+    throw ReleaseError.invalid(
+      "\(arguments.joined(separator: " ")) failed (\(process.terminationStatus)). \(log.map { "See \($0.path)." } ?? output)"
+    )
+  }
+  return output
+}
+
+func digest(_ url: URL) throws -> String {
+  SHA256.hash(data: try Data(contentsOf: url)).map { String(format: "%02x", $0) }.joined()
+}
+
+func requireCleanCommit() throws -> String {
+  let revision = try run("/usr/bin/git", ["rev-parse", "--verify", "HEAD"])
+  guard try run("/usr/bin/git", ["status", "--porcelain", "--untracked-files=all"]).isEmpty else {
+    throw ReleaseError.invalid(
+      "Commit the complete release source before packaging; the checkout contains changes.")
+  }
+  return revision
+}
+
+func writeJSON(_ value: [String: Any], to url: URL) throws {
+  let bytes = try JSONSerialization.data(
+    withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
+  try (bytes + Data([10])).write(to: url, options: .atomic)
+}
+
+func linkedLibraries(_ executable: URL) throws -> [String] {
+  try run("/usr/bin/otool", ["-L", executable.path]).split(separator: "\n")
+    .dropFirst().map {
+      $0.trimmingCharacters(in: .whitespaces)
+        .components(separatedBy: " (compatibility version")[0]
+    }
+}
+
+func runPaths(_ executable: URL) throws -> [String] {
+  let lines = try run("/usr/bin/otool", ["-l", executable.path]).split(separator: "\n")
+    .map { $0.trimmingCharacters(in: .whitespaces) }
+  return lines.indices.compactMap { index in
+    guard lines[index] == "cmd LC_RPATH", index + 2 < lines.count,
+      lines[index + 2].hasPrefix("path ")
+    else { return nil }
+    return String(lines[index + 2].dropFirst(5)).components(separatedBy: " (offset ")[0]
+  }
+}
+
+func isSystemLibrary(_ path: String) -> Bool {
+  path.hasPrefix("/System/Library/") || path.hasPrefix("/usr/lib/")
+}
+
+func relocate(_ executable: URL) throws {
+  try run("/usr/bin/xcrun", ["strip", "-S", executable.path])
+  let paths = try runPaths(executable)
+  for path in paths where path != "/usr/lib/swift" && path != "@loader_path" {
+    try run("/usr/bin/install_name_tool", ["-delete_rpath", path, executable.path])
+  }
+  if !paths.contains("@loader_path") {
+    try run("/usr/bin/install_name_tool", ["-add_rpath", "@loader_path", executable.path])
+  }
+  try run("/usr/bin/codesign", ["--force", "--sign", "-", executable.path])
+}
+
+func requireStandalone(_ executable: URL, runtimeNames: Set<String>) throws -> [String] {
+  let libraries = try linkedLibraries(executable)
+  guard
+    libraries.allSatisfy({ path in
+      if isSystemLibrary(path) { return true }
+      guard path.hasPrefix("@rpath/") else { return false }
+      return runtimeNames.contains(String(path.dropFirst("@rpath/".count)))
+    }), try runPaths(executable).allSatisfy({ $0 == "/usr/lib/swift" || $0 == "@loader_path" })
+  else {
+    throw ReleaseError.invalid(
+      "\(executable.lastPathComponent) has an unresolved library or external run path.")
+  }
+  try run("/usr/bin/codesign", ["--verify", "--strict", executable.path])
+  return libraries
+}
+
+func main() throws {
+  var output = root.appendingPathComponent(".build/releases", isDirectory: true)
+  var tag: String?
+  var jobs: Int?
+  var iterator = CommandLine.arguments.dropFirst().makeIterator()
+  while let option = iterator.next() {
+    if option == "--help" || option == "-h" {
+      message(
+        """
+        Usage: Scripts/package-release [--output DIRECTORY] [--tag TAG] [--jobs COUNT]
+        Build and test a clean, committed source candidate and create a
+        macOS arm64 archive, SHA-256 checksum, and provenance manifest.
+        --tag verifies an existing tag at HEAD against the source version.
+        --jobs limits concurrent SwiftPM build jobs to a positive integer.
+        No tag, GitHub release, repository, or remote upload is created.
+        """)
+      return
+    }
+    guard ["--output", "--tag", "--jobs"].contains(option),
+      let value = iterator.next(), !value.isEmpty
+    else {
+      throw ReleaseError.invalid("Unknown or incomplete option: \(option). Use --help.")
+    }
+    if option == "--output" {
+      output = URL(fileURLWithPath: value, relativeTo: root).standardizedFileURL
+    } else if option == "--tag" {
+      tag = value
+    } else {
+      guard let count = Int(value), count > 0 else {
+        throw ReleaseError.invalid("--jobs requires a positive integer.")
+      }
+      jobs = count
+    }
+  }
+  let revision = try requireCleanCommit()
+  for file in [
+    "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md", "Package.resolved",
+    "Documentation/Reference/ReleaseGuide.md", "Documentation/Architecture/VersioningAndRelease.md",
+    "Documentation/Reference/NativeFixtureValidation.md", "Documentation/Reference/NativeFixtureManifest.schema.json",
+    "Documentation/Reference/ThirdPartyLicenses/swift-runtime/LICENSE.txt",
+  ] {
+    guard manager.fileExists(atPath: root.appendingPathComponent(file).path) else {
+      throw ReleaseError.invalid("Missing release input: \(file).")
+    }
+  }
+  var versionArguments = ["python3", root.appendingPathComponent("Scripts/validate-version").path]
+  if let tag { versionArguments += ["--tag", tag] }
+  let version = try run("/usr/bin/env", versionArguments)
+  let architecture = try run("/usr/bin/uname", ["-m"])
+  guard architecture == "arm64" else {
+    throw ReleaseError.invalid(
+      "The current release candidate is validated for native macOS arm64 builds.")
+  }
+  let tree = try run("/usr/bin/git", ["rev-parse", "HEAD^{tree}"])
+  let archiveName = "apple-cli-\(version)-macos-\(architecture)"
+  let archive = output.appendingPathComponent(archiveName + ".tar.gz")
+  let manifest = output.appendingPathComponent(archiveName + ".provenance.json")
+  let checksum = output.appendingPathComponent(archiveName + ".tar.gz.sha256")
+  for destination in [archive, manifest, checksum] {
+    guard !manager.fileExists(atPath: destination.path) else {
+      throw ReleaseError.invalid(
+        "Release output already exists: \(destination.path). Select a new output directory.")
+    }
+  }
+  try manager.createDirectory(at: output, withIntermediateDirectories: true)
+  let staging = root.appendingPathComponent(
+    ".build/release-staging/" + UUID().uuidString, isDirectory: true)
+  try manager.createDirectory(at: staging, withIntermediateDirectories: true)
+  defer { try? manager.removeItem(at: staging) }
+  let package = staging.appendingPathComponent(archiveName, isDirectory: true)
+  let bin = package.appendingPathComponent("bin", isDirectory: true)
+  try manager.createDirectory(at: bin, withIntermediateDirectories: true)
+  let logs = root.appendingPathComponent(
+    ".build/release-validation/" + UUID().uuidString, isDirectory: true)
+  try manager.createDirectory(at: logs, withIntermediateDirectories: true)
+  var validation: [[String: String]] = []
+  func validate(_ label: String, _ arguments: [String], environment: [String: String]? = nil) throws
+  {
+    message(label)
+    let log = logs.appendingPathComponent(label + ".log")
+    try run("/usr/bin/xcrun", arguments, environment: environment, log: log)
+    validation.append(["check": label, "result": "passed", "log_sha256": try digest(log)])
+  }
+  message("Bootstrap selected SDK inputs")
+  try run(root.appendingPathComponent("Scripts/bootstrap").path, [])
+  var testEnvironment = ProcessInfo.processInfo.environment
+  testEnvironment.removeValue(forKey: "APPLE_CLI_RUN_NOTES_INTEGRATION_TESTS")
+  testEnvironment.removeValue(forKey: "APPLE_CLI_BIN")
+  testEnvironment.removeValue(forKey: "APPLE_CLI_MCP_BIN")
+  testEnvironment.removeValue(forKey: "APPLE_CLI_BIN_DIR")
+  for key in testEnvironment.keys.filter({ $0.hasPrefix("DYLD_") }) {
+    testEnvironment.removeValue(forKey: key)
+  }
+  let buildJobs = jobs.map { ["--jobs", String($0)] } ?? []
+  try validate(
+    "build-tests", ["swift", "build", "--build-tests", "--force-resolved-versions"] + buildJobs)
+  try validate(
+    "default-concurrent-tests",
+    ["swift", "test", "--skip-build", "--force-resolved-versions", "--skip", "MCPExecutableTests"],
+    environment: testEnvironment)
+  // Network deadlines require an executor without the suite's synchronous saturation fixtures.
+  try validate(
+    "mcp-executable-tests",
+    ["swift", "test", "--skip-build", "--force-resolved-versions", "--filter", "MCPExecutableTests"],
+    environment: testEnvironment)
+  try validate(
+    "release-build", ["swift", "build", "-c", "release", "--force-resolved-versions"] + buildJobs)
+  let releaseBin = URL(
+    fileURLWithPath: try run(
+      "/usr/bin/xcrun",
+      ["swift", "build", "-c", "release", "--show-bin-path", "--force-resolved-versions"]))
+  for name in ["apple", "apple-cli-mcp"] {
+    let executable = releaseBin.appendingPathComponent(name)
+    guard try run("/usr/bin/lipo", ["-archs", executable.path]) == architecture else {
+      throw ReleaseError.invalid("Unexpected architecture in \(name).")
+    }
+    let destination = bin.appendingPathComponent(name)
+    try manager.copyItem(at: executable, to: destination)
+    guard try digest(executable) == digest(destination) else {
+      throw ReleaseError.invalid("Binary copy changed bytes.")
+    }
+  }
+  message("Collect Swift runtime libraries and prepare staged executables")
+  var scanArguments = ["--platform", "macosx"]
+  for name in ["apple", "apple-cli-mcp"] {
+    scanArguments += ["--scan-executable", bin.appendingPathComponent(name).path]
+  }
+  let toolchain = URL(fileURLWithPath: try run("/usr/bin/xcrun", ["--find", "swift"]))
+    .resolvingSymlinksInPath().deletingLastPathComponent().deletingLastPathComponent()
+  let runtimeSources = try run("/usr/bin/xcrun", ["swift-stdlib-tool", "--print"] + scanArguments)
+    .split(separator: "\n").map { URL(fileURLWithPath: String($0)).resolvingSymlinksInPath() }
+  let runtimeNames = Set(runtimeSources.map(\.lastPathComponent))
+  guard runtimeNames.count == runtimeSources.count,
+    runtimeSources.allSatisfy({
+      $0.path.hasPrefix(toolchain.appendingPathComponent("lib").path + "/")
+        && $0.lastPathComponent.hasPrefix("libswift") && $0.pathExtension == "dylib"
+    })
+  else {
+    throw ReleaseError.invalid("Swift runtime inputs must come from the selected toolchain.")
+  }
+  try run(
+    "/usr/bin/xcrun",
+    ["swift-stdlib-tool", "--copy"] + scanArguments + ["--destination", bin.path])
+  guard
+    Set(try manager.contentsOfDirectory(atPath: bin.path))
+      == runtimeNames.union(["apple", "apple-cli-mcp"])
+  else { throw ReleaseError.invalid("Unexpected Swift runtime copy contents.") }
+  var runtimes: [[String: Any]] = []
+  for source in runtimeSources.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+    let destination = bin.appendingPathComponent(source.lastPathComponent)
+    guard try digest(source) == digest(destination) else {
+      throw ReleaseError.invalid("Swift runtime copy changed bytes.")
+    }
+    let architectures = try run("/usr/bin/lipo", ["-archs", destination.path])
+      .split(separator: " ").map(String.init)
+    guard architectures.contains(architecture) else {
+      throw ReleaseError.invalid("Swift runtime does not include \(architecture).")
+    }
+    let libraries = try requireStandalone(destination, runtimeNames: runtimeNames)
+    runtimes.append([
+      "path": "bin/" + destination.lastPathComponent, "sha256": try digest(destination),
+      "architectures": architectures, "dynamic_libraries": libraries,
+    ])
+  }
+  var binaries: [[String: Any]] = []
+  for name in ["apple", "apple-cli-mcp"] {
+    let executable = bin.appendingPathComponent(name)
+    try relocate(executable)
+    let libraries = try requireStandalone(executable, runtimeNames: runtimeNames)
+    guard
+      try run(
+        executable.path, ["--version"], directory: staging, environment: testEnvironment) == version
+    else { throw ReleaseError.invalid("\(name) does not match the source version.") }
+    binaries.append([
+      "path": "bin/" + name, "sha256": try digest(executable), "dynamic_libraries": libraries,
+      "run_paths": try runPaths(executable),
+      "build_sha256": try digest(releaseBin.appendingPathComponent(name)),
+    ])
+  }
+  try validate(
+    "installed-release-content",
+    ["swift", root.appendingPathComponent("Scripts/validate-public-content").path]
+      + (["apple", "apple-cli-mcp"] + runtimeNames.sorted()).flatMap {
+        ["--artifact", bin.appendingPathComponent($0).path]
+      }, environment: testEnvironment)
+  testEnvironment["APPLE_CLI_BIN"] = bin.appendingPathComponent("apple").path
+  testEnvironment["APPLE_CLI_MCP_BIN"] = bin.appendingPathComponent("apple-cli-mcp").path
+  try validate(
+    "installed-release-cli-and-mcp",
+    [
+      "swift", "test", "--skip-build", "--force-resolved-versions", "--filter",
+      "CLIExecutableTests|AppleMCPAdapterTests|MCPExecutableTests",
+    ], environment: testEnvironment)
+  guard try requireCleanCommit() == revision else {
+    throw ReleaseError.invalid("The source candidate changed during validation.")
+  }
+  for name in ["LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md"] {
+    try manager.copyItem(
+      at: root.appendingPathComponent(name), to: package.appendingPathComponent(name))
+  }
+  let licenses = package.appendingPathComponent(
+    "Documentation/Reference/ThirdPartyLicenses", isDirectory: true)
+  try manager.createDirectory(
+    at: licenses.deletingLastPathComponent(), withIntermediateDirectories: true)
+  try manager.copyItem(
+    at: root.appendingPathComponent("Documentation/Reference/ThirdPartyLicenses"), to: licenses)
+  for name in ["ReleaseGuide.md", "NativeFixtureValidation.md", "NativeFixtureManifest.schema.json"] {
+    try manager.copyItem(
+      at: root.appendingPathComponent("Documentation/Reference/\(name)"),
+      to: licenses.deletingLastPathComponent().appendingPathComponent(name))
+  }
+  let architectureDocs = package.appendingPathComponent(
+    "Documentation/Architecture", isDirectory: true)
+  try manager.createDirectory(at: architectureDocs, withIntermediateDirectories: true)
+  try manager.copyItem(
+    at: root.appendingPathComponent("Documentation/Architecture/VersioningAndRelease.md"),
+    to: architectureDocs.appendingPathComponent("VersioningAndRelease.md"))
+  let readme = """
+    # apple-cli \(version)
+
+    This preview contains the apple CLI and its apple-cli-mcp adapter for macOS arm64.
+    Build and test environment details are in provenance.json. The macOS 13
+    deployment declaration is not a tested runtime compatibility claim.
+
+    Copyright (c) 2026 Xudong Xu. Licensed under the Apache License, Version 2.0.
+    See LICENSE for the full terms. Third-party components retain their own licenses.
+
+    Add the extracted bin directory to PATH, keeping its complete contents together:
+
+        export PATH="$PWD/bin:$PATH"
+        apple --version
+        apple --help
+        apple notes doctor --json
+        apple-cli-mcp stdio
+
+    Read Documentation/Reference/ReleaseGuide.md for installation, compatibility,
+    signature and permission guidance. Per-target doctor and help commands
+    explain the available behavior.
+    Executables have stripped debug symbols and ad-hoc signatures after
+    relocation. Required Swift runtime libraries are included alongside them
+    with their original signatures.
+    Project Developer ID signing and notarization are not part of this package.
+
+    Documentation: https://github.com/computer-mcp/apple-cli
+    License: LICENSE. Dependency notices: THIRD_PARTY_NOTICES.md and Documentation/Reference/ThirdPartyLicenses/.
+    Source commit: \(revision)
+    """
+  try (readme + "\n").write(
+    to: package.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+  let stubPath =
+    ProcessInfo.processInfo.environment["APPLE_CLI_NOTES_PRIVATE_FRAMEWORK_STUBS"]
+    ?? ".build/notes-private-framework-link-stubs/current"
+  let stubManifest = URL(fileURLWithPath: stubPath, relativeTo: root).appendingPathComponent(
+    "provenance.json")
+  let stubProvenance = try JSONSerialization.jsonObject(with: Data(contentsOf: stubManifest))
+  let lock = root.appendingPathComponent("Package.resolved")
+  let pins =
+    (try JSONSerialization.jsonObject(with: Data(contentsOf: lock)) as? [String: Any])?["pins"]
+    ?? []
+  let provenance: [String: Any] = [
+    "schema_version": 1, "repository": "computer-mcp/apple-cli", "version": version,
+    "source_commit": revision, "source_tree": tree, "tag": tag as Any? ?? NSNull(),
+    "built_at": ISO8601DateFormatter().string(from: Date()),
+    "architecture": architecture, "tested_macos": try run("/usr/bin/sw_vers", ["-productVersion"]),
+    "tested_macos_build": try run("/usr/bin/sw_vers", ["-buildVersion"]),
+    "swift": try run("/usr/bin/xcrun", ["swift", "--version"]),
+    "xcode": try run("/usr/bin/xcodebuild", ["-version"]),
+    "sdk_version": try run("/usr/bin/xcrun", ["--sdk", "macosx", "--show-sdk-version"]),
+    "sdk_build": try run("/usr/bin/xcrun", ["--sdk", "macosx", "--show-sdk-build-version"]),
+    "package_resolved_sha256": try digest(lock), "dependencies": pins,
+    "notes_link_inputs": stubProvenance, "binaries": binaries, "swift_runtime_libraries": runtimes,
+    "validation": validation,
+    "signing":
+      "debug symbols stripped before ad-hoc executable signatures; original Swift runtime signatures; no project Developer ID or notarization",
+    "compatibility":
+      "Validated on the recorded macOS/architecture. Individual private-framework capabilities and permissions require target-specific doctor checks.",
+  ]
+  try writeJSON(provenance, to: package.appendingPathComponent("provenance.json"))
+  let temporaryArchive = staging.appendingPathComponent(archiveName + ".tar.gz")
+  var archiveEnvironment = ProcessInfo.processInfo.environment
+  archiveEnvironment["COPYFILE_DISABLE"] = "1"
+  try run(
+    "/usr/bin/tar", ["-czf", temporaryArchive.path, "-C", staging.path, archiveName],
+    environment: archiveEnvironment)
+  var finalProvenance = provenance
+  finalProvenance["archive"] = [
+    "filename": archive.lastPathComponent, "sha256": try digest(temporaryArchive),
+  ]
+  let temporaryManifest = staging.appendingPathComponent("provenance.json")
+  let temporaryChecksum = staging.appendingPathComponent("checksum.txt")
+  try writeJSON(finalProvenance, to: temporaryManifest)
+  try ("\(try digest(temporaryArchive))  \(archive.lastPathComponent)\n").write(
+    to: temporaryChecksum, atomically: true, encoding: .utf8)
+  try manager.moveItem(at: temporaryArchive, to: archive)
+  try manager.moveItem(at: temporaryManifest, to: manifest)
+  try manager.moveItem(at: temporaryChecksum, to: checksum)
+  message("Release candidate: \(archive.path)")
+  message("SHA-256: \(try digest(archive))")
+}
+
+do { try main() } catch {
+  FileHandle.standardError.write(Data(("package-release: \(error)\n").utf8))
+  exit(1)
+}

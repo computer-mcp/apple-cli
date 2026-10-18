@@ -1,0 +1,4 @@
+module NotesPreviewKit [system] {
+  umbrella header "NotesPreviewKit.h"
+  export *
+}

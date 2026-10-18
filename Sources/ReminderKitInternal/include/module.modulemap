@@ -1,0 +1,4 @@
+module ReminderKitInternal [system] {
+  umbrella header "ReminderKitInternal.h"
+  export *
+}

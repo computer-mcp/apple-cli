@@ -1,0 +1,1197 @@
+#!/usr/bin/xcrun swift
+
+import CryptoKit
+import Darwin
+import Foundation
+
+struct ModuleConfig {
+  let name: String
+  let imports: [String]
+  let definesSwiftObject: Bool
+  let importsModuleNames: [String]
+}
+
+struct ParsedModule {
+  var classes: [String: String] = [:]
+  var protocols: [String: String] = [:]
+  var categories: [(base: String, text: String)] = []
+  var forwardClasses: Set<String> = []
+  var forwardProtocols: Set<String> = []
+  var structNames: Set<String> = []
+  var externalSupers: Set<String> = []
+  var externalCategoryBases: Set<String> = []
+  var orderedClasses: [String] = []
+}
+
+let foundationClasses: Set<String> = [
+  "NSArray", "NSMutableArray", "NSDictionary", "NSMutableDictionary", "NSSet",
+  "NSMutableSet", "NSOrderedSet", "NSMutableOrderedSet", "NSString",
+  "NSMutableString", "NSData", "NSMutableData", "NSDate", "NSDateComponents",
+  "NSDateInterval", "NSURL", "NSURLComponents", "NSUUID", "NSNumber", "NSError",
+  "NSCache", "NSObject", "NSValue", "NSCalendar", "NSTimeZone", "NSLocale", "NSUserDefaults",
+  "NSAttributedString", "NSMutableAttributedString", "NSCharacterSet",
+  "NSISO8601DateFormatter", "NSFileManager", "NSFileVersion", "NSIndexSet",
+  "NSIndexPath", "NSOperation", "NSOperationQueue", "NSProgress", "NSPredicate",
+  "NSSortDescriptor", "NSBundle", "NSFormatter", "NSMeasurement", "NSUnitDuration",
+  "NSUndoManager", "NSPersonNameComponents", "NSRegularExpression",
+]
+
+let importedExternalClasses: Set<String> = foundationClasses.union([
+  "INIntent", "INIntentResponse", "INObject", "INObjectResolutionResult", "CKAllowedSharingOptions", "ACAccount", "AVAsset", "AVAudioEngine", "AVURLAsset", "CALayer", "CKAsset",
+  "CKDatabaseOperation", "CKFetchDatabaseChangesOperation", "CKFetchRecordZoneChangesOperation",
+  "CKFetchRecordsOperation", "CKModifyRecordsOperation", "CKOperation", "CKOperationGroup",
+  "CKRecord", "CKRecordID", "CKRecordZoneID", "CKServerChangeToken", "CKShare",
+  "CKShareParticipant", "CLLocation", "CNContact", "CNContactStore", "CSSearchableItem",
+  "CSSearchableItemAttributeSet", "LPLinkMetadata", "MKMapItem", "NSAlert", "NSAppearance",
+  "NSApplication", "NSArrayController", "NSBezierPath", "NSButton", "NSCollectionView",
+  "NSColor", "NSControl", "NSFont", "NSGestureRecognizer", "NSImage", "NSImageView",
+  "NSLayoutConstraint", "NSLayoutManager", "NSManagedObject", "NSManagedObjectContext",
+  "NSManagedObjectID", "NSManagedObjectModel", "NSMenu", "NSMenuItem", "NSOpenPanel",
+  "NSCoreDataCoreSpotlightDelegate", "NSParagraphStyle", "NSPersistentContainer", "NSPersistentStoreCoordinator", "NSPopover",
+  "NSPrintPanel", "NSScreen", "NSScrollView", "NSTableView", "NSTextAttachment",
+  "NSTextContainer", "NSTextContentManager", "NSTextContentStorage", "NSTextField",
+  "NSTextLayoutManager", "NSTextStorage", "NSTextView", "NSTokenField", "NSToolbar",
+  "NSTouchBar", "NSView", "NSViewController", "NSWindow", "PDFDocument", "PKDrawing",
+  "QLPreviewPanel", "TUTranscriptionModelAvailability", "WKWebView", "WKUserContentController",
+])
+
+let importedExternalClassPrefixes: [String] = [
+  "AV", "CA", "CK", "CL", "CN", "CS", "LP", "MK", "NS", "PDF", "PK", "QL", "TU", "UN", "VN", "WK",
+]
+
+let forcedExternalClassStubs: Set<String> = [
+  "NSTokenAttachmentCell", "PKTextAttachmentDrawingView", "PKTitleQuery",
+]
+
+let importedExternalProtocols: Set<String> = [
+  "MLFeatureProvider", "AVAudioPlayerDelegate", "CLLocationManagerDelegate", "CNKeyDescriptor",
+  "HTMLConverterProtocol", "MKAnnotation", "NSAlertDelegate", "NSMachPortDelegate",
+  "NSAccessibility", "NSAccessibilityButton", "NSAccessibilityElement", "NSAccessibilityGroup",
+  "NSAccessibilityImage", "NSAccessibilityRow", "NSAccessibilityTable",
+  "NSCollectionViewDataSource", "NSCollectionViewDelegate", "NSControlTextEditingDelegate",
+  "NSFetchedResultsControllerDelegate", "NSFilePromiseProviderDelegate",
+  "NSGestureRecognizerDelegate", "NSLayoutManagerDelegate", "NSMenuDelegate",
+  "NSMenuItemValidation", "NSOpenSavePanelDelegate", "NSPasteboardWriting",
+  "NSPopoverDelegate", "NSPortDelegate", "NSPrintPanelAccessorizing",
+  "NSSharingServiceDelegate", "NSSharingServicePickerDelegate", "NSTableViewDataSource",
+  "NSTableViewDelegate", "NSTextAttachmentCell", "NSTextContentManagerDelegate",
+  "NSTextContentStorageDelegate", "NSTextDelegate", "NSTextFieldDelegate",
+  "NSTextFinderClient", "NSTextLayoutManagerDelegate", "NSTextLocation",
+  "NSTextStorageDelegate", "NSTextViewDelegate",
+  "NSTextViewportRenderingSurface", "NSTokenFieldDelegate", "NSTouchBarDelegate",
+  "NSTouchBarProvider", "NSURLDownloadDelegate", "NSURLSessionDownloadDelegate",
+  "NSUserActivityDelegate", "NSUserInterfaceValidations",
+  "NSWindowRestoration", "OS_dispatch_queue", "PKDrawingUUID",
+  "WKNavigationDelegate", "WKScriptMessageHandler",
+  "WKUIDelegate", "WKURLSchemeHandler",
+]
+
+func stderr(_ message: String) {
+  FileHandle.standardError.write(Data((message + "\n").utf8))
+}
+
+func firstCapture(_ text: String, pattern: String) -> String? {
+  guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+  let ns = text as NSString
+  let range = NSRange(location: 0, length: ns.length)
+  guard let match = regex.firstMatch(in: text, range: range),
+    match.numberOfRanges > 1,
+    match.range(at: 1).location != NSNotFound
+  else {
+    return nil
+  }
+  return ns.substring(with: match.range(at: 1))
+}
+
+func replaceRegex(_ text: String, pattern: String, with replacement: String) -> String {
+  guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+  let ns = text as NSString
+  return regex.stringByReplacingMatches(
+    in: text,
+    range: NSRange(location: 0, length: ns.length),
+    withTemplate: replacement
+  )
+}
+
+func isIdentifier(_ value: String) -> Bool {
+  firstCapture(value, pattern: #"^([A-Za-z_][A-Za-z0-9_]*)$"#) != nil
+}
+
+func matchingBraceEnd(in text: NSString, openBraceLocation: Int) -> Int? {
+  var depth = 0
+  var index = openBraceLocation
+  while index < text.length {
+    let scalar = text.character(at: index)
+    if scalar == Character("{").utf16.first! {
+      depth += 1
+    } else if scalar == Character("}").utf16.first! {
+      depth -= 1
+      if depth == 0 {
+        return index + 1
+      }
+    }
+    index += 1
+  }
+  return nil
+}
+
+func replaceCPPStructs(_ input: String) -> String {
+  var text = input
+  let prefixes = ["struct basic_string", "struct vector", "struct map", "struct pair"]
+  for prefix in prefixes {
+    while let prefixRange = text.range(of: prefix) {
+      let ns = text as NSString
+      let start = ns.range(of: prefix).location
+      let searchRange = NSRange(location: start, length: ns.length - start)
+      let brace = ns.range(of: "{", range: searchRange)
+      guard brace.location != NSNotFound,
+        let end = matchingBraceEnd(in: ns, openBraceLocation: brace.location)
+      else {
+        text.replaceSubrange(prefixRange, with: "void *")
+        continue
+      }
+      let before = ns.substring(to: start)
+      let after = ns.substring(from: end)
+      text = before + "void *" + after
+    }
+  }
+  return text
+}
+
+func stripInlineStructs(_ input: String, structNames: inout Set<String>) -> String {
+  var text = replaceCPPStructs(input)
+  guard let regex = try? NSRegularExpression(pattern: #"\bstruct\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{"#) else {
+    return text
+  }
+
+  while true {
+    let ns = text as NSString
+    let range = NSRange(location: 0, length: ns.length)
+    guard let match = regex.firstMatch(in: text, range: range) else { return text }
+    let name = ns.substring(with: match.range(at: 1))
+    let openBrace = match.range.location + match.range.length - 1
+    guard let end = matchingBraceEnd(in: ns, openBraceLocation: openBrace) else {
+      return text
+    }
+    structNames.insert(name)
+    let before = ns.substring(to: match.range.location)
+    let after = ns.substring(from: end)
+    text = before + "struct \(name)" + after
+  }
+}
+
+func headerFiles(in directory: URL) throws -> [URL] {
+  let contents = try FileManager.default.contentsOfDirectory(
+    at: directory,
+    includingPropertiesForKeys: nil,
+    options: [.skipsHiddenFiles]
+  )
+  return contents.filter { $0.pathExtension == "h" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+}
+
+func lineIsImporterNoise(_ line: String) -> Bool {
+  if line.contains("@?<") || line.contains("v48@0:8") {
+    return true
+  }
+  if line.contains("out inout") || line.contains("$__lazy_storage_$_") {
+    return true
+  }
+  if line.contains(" -> ") {
+    return true
+  }
+  if line.contains("Swift.") || line.contains("SwiftUI.") || line.contains("Combine.") {
+    return true
+  }
+  if line.contains("CoreGraphics.") || line.contains("__C.") || line.contains("etwork.") {
+    return true
+  }
+  if line.contains("tesShared.") || line.contains("tesSupport.") || line.contains("tesUI.")
+    || line.contains("tesEditor.") || line.contains("tesPreviewKit.")
+  {
+    return true
+  }
+  if line == "@protocol v@?;" {
+    return true
+  }
+  return false
+}
+
+func normalizeLine(_ input: String, structNames: inout Set<String>) -> String? {
+  var line = input.trimmingCharacters(in: .whitespacesAndNewlines)
+  guard !line.isEmpty else { return "" }
+  if line.hasPrefix("//") || line.hasPrefix("#") || line.hasPrefix("@import") || line.hasPrefix("#include") {
+    return nil
+  }
+  if lineIsImporterNoise(line) {
+    return nil
+  }
+  line = stripInlineStructs(line, structNames: &structNames)
+  line = replaceRegex(
+    line,
+    pattern: #"NSObject<OS_dispatch_[A-Za-z_]+>\s*\*"#,
+    with: "NSObject *"
+  )
+  line = replaceRegex(
+    line,
+    pattern: #"\bstruct\s+CGColor\s*\*"#,
+    with: "CGColorRef"
+  )
+  line = line.replacingOccurrences(
+    of: "@property (retain, nonatomic) CGColorRef",
+    with: "@property (nonatomic) CGColorRef"
+  )
+  line = line.replacingOccurrences(
+    of: "@property (strong, nonatomic) CGColorRef",
+    with: "@property (nonatomic) CGColorRef"
+  )
+  line = replaceRegex(
+    line,
+    pattern: #"(\([^)]*\))\s*(nil|Nil|YES|NO|NULL)\b"#,
+    with: "$1value"
+  )
+  if lineIsImporterNoise(line) {
+    return nil
+  }
+  return line
+}
+
+func isImportedExternalClass(_ name: String, importedKnownTypes: Set<String>) -> Bool {
+  if forcedExternalClassStubs.contains(name) {
+    return false
+  }
+  if importedExternalClasses.contains(name) || importedKnownTypes.contains(name) {
+    return true
+  }
+  return importedExternalClassPrefixes.contains { name.hasPrefix($0) }
+}
+
+func writeModule(
+  _ parsed: ParsedModule,
+  config: ModuleConfig,
+  sourcesRoot: URL
+) throws {
+  let moduleDirectory = sourcesRoot.appendingPathComponent(config.name, isDirectory: true)
+  let includeDirectory = moduleDirectory
+    .appendingPathComponent("include", isDirectory: true)
+  try FileManager.default.createDirectory(at: includeDirectory, withIntermediateDirectories: true)
+
+  var lines: [String] = [
+    "// Normalized full dump import surface for \(config.name).",
+    "// Input observations: .framework-normalization/\(profileName).json.",
+    "#ifndef \(config.name)_h",
+    "#define \(config.name)_h",
+    "",
+    "#import <Foundation/Foundation.h>",
+  ]
+  lines.append(contentsOf: config.imports)
+  lines.append("")
+
+  if config.definesSwiftObject {
+    lines.append("@interface _TtCs12_SwiftObject : NSObject")
+    lines.append("@end")
+    lines.append("")
+  }
+
+  for name in parsed.externalSupers.union(parsed.externalCategoryBases).sorted()
+  where name != "NSObject" && name != "_TtCs12_SwiftObject" {
+    lines.append("@interface \(name) : NSObject")
+    lines.append("@end")
+  }
+  lines.append("")
+
+  for name in parsed.structNames.sorted() {
+    lines.append("struct \(name);")
+  }
+  lines.append("")
+
+  let forwardClasses = parsed.forwardClasses
+    .filter { $0 != "NSObject" && $0 != "_TtCs12_SwiftObject" }
+    .sorted()
+  for chunkStart in stride(from: 0, to: forwardClasses.count, by: 12) {
+    let chunkEnd = min(chunkStart + 12, forwardClasses.count)
+    lines.append("@class " + forwardClasses[chunkStart..<chunkEnd].joined(separator: ", ") + ";")
+  }
+
+  let forwardProtocols = parsed.forwardProtocols.filter(isIdentifier).sorted()
+  for chunkStart in stride(from: 0, to: forwardProtocols.count, by: 12) {
+    let chunkEnd = min(chunkStart + 12, forwardProtocols.count)
+    lines.append("@protocol " + forwardProtocols[chunkStart..<chunkEnd].joined(separator: ", ") + ";")
+  }
+  lines.append("")
+
+  for name in parsed.protocols.keys.sorted() {
+    if let text = parsed.protocols[name] {
+      lines.append(text)
+    }
+  }
+  for name in parsed.orderedClasses {
+    if let text = parsed.classes[name] {
+      lines.append(text)
+    }
+  }
+  for category in parsed.categories.sorted(by: { $0.text < $1.text }) {
+    lines.append(category.text)
+  }
+  lines.append("#endif /* \(config.name)_h */")
+
+  let headerURL = includeDirectory.appendingPathComponent("\(config.name).h")
+  try (lines.joined(separator: "\n\n") + "\n").write(to: headerURL, atomically: true, encoding: .utf8)
+
+  let moduleMap = """
+    module \(config.name) [system] {
+      umbrella header "\(config.name).h"
+      export *
+    }
+
+    """
+  try moduleMap.write(
+    to: includeDirectory.appendingPathComponent("module.modulemap"),
+    atomically: true,
+    encoding: .utf8
+  )
+
+  let shim = """
+    /* Keeps this header-only Clang target materialized for product/test linking. */
+
+    """
+  try shim.write(
+    to: moduleDirectory.appendingPathComponent("shim.c"),
+    atomically: true,
+    encoding: .utf8
+  )
+}
+
+let publicImports = [
+  "@import Accounts;",
+  "@import AppKit;",
+  "@import AVFoundation;",
+  "@import CloudKit;",
+  "@import CoreData;",
+  "@import CoreGraphics;",
+  "@import CoreLocation;",
+  "@import CoreMedia;",
+  "@import CoreSpotlight;",
+  "@import Contacts;",
+  "@import Dispatch;",
+  "@import MapKit;",
+  "@import PDFKit;",
+  "@import PencilKit;",
+  "@import QuartzCore;",
+  "@import Speech;",
+  "@import UniformTypeIdentifiers;",
+  "@import UserNotifications;",
+  "@import WebKit;",
+]
+
+let notesModules = [
+  ModuleConfig(
+    name: "NotesSupport",
+    imports: publicImports,
+    definesSwiftObject: true,
+    importsModuleNames: []
+  ),
+  ModuleConfig(
+    name: "NotesHTML",
+    imports: publicImports + ["@import NotesSupport;"],
+    definesSwiftObject: false,
+    importsModuleNames: ["NotesSupport"]
+  ),
+  ModuleConfig(
+    name: "NotesShared",
+    imports: publicImports + ["@import NotesSupport;", "@import NotesHTML;"],
+    definesSwiftObject: false,
+    importsModuleNames: ["NotesSupport", "NotesHTML"]
+  ),
+  ModuleConfig(
+    name: "NotesUI",
+    imports: publicImports + [
+      "@import NotesSupport;",
+      "@import NotesHTML;",
+      "@import NotesShared;",
+    ],
+    definesSwiftObject: false,
+    importsModuleNames: ["NotesSupport", "NotesHTML", "NotesShared"]
+  ),
+  ModuleConfig(
+    name: "NotesEditor",
+    imports: publicImports + [
+      "@import NotesSupport;",
+      "@import NotesHTML;",
+      "@import NotesShared;",
+      "@import NotesUI;",
+    ],
+    definesSwiftObject: false,
+    importsModuleNames: ["NotesSupport", "NotesHTML", "NotesShared", "NotesUI"]
+  ),
+  ModuleConfig(
+    name: "NotesPreviewKit",
+    imports: publicImports + [
+      "@import NotesSupport;",
+      "@import NotesShared;",
+    ],
+    definesSwiftObject: false,
+    importsModuleNames: ["NotesSupport", "NotesShared"]
+  ),
+]
+
+let remindersModules = [
+  ModuleConfig(name: "ReminderKit", imports: ["@import Accounts;", "@import CloudKit;"], definesSwiftObject: true, importsModuleNames: []),
+  ModuleConfig(name: "ReminderKitInternal", imports: ["@import ReminderKit;", "@import Intents;", "@import CoreML;"], definesSwiftObject: false, importsModuleNames: ["ReminderKit"]),
+]
+
+struct GenerationError: LocalizedError {
+  let errorDescription: String?
+  init(_ message: String) { errorDescription = message }
+}
+
+struct Options {
+  var profile: String
+  var dumpRoot: URL?
+  var manifest: URL?
+  var sourcesRoot: URL
+  var report: URL?
+  var sdkRoot: URL?
+}
+
+func readOptions() throws -> Options {
+  let arguments = Array(CommandLine.arguments.dropFirst())
+  if arguments.contains("--help") || arguments.contains("-h") {
+    print("Usage: framework-normalize-full-dump --profile notes|reminders (--dump-root PATH | --input-manifest FILE) --sources-root PATH [--report FILE] [--sdk-root PATH]")
+    exit(0)
+  }
+  var values: [String: String] = [:]
+  var index = 0
+  while index < arguments.count {
+    let key = arguments[index]
+    guard ["--profile", "--dump-root", "--input-manifest", "--sources-root", "--report", "--sdk-root"].contains(key),
+      index + 1 < arguments.count, values[key] == nil else { throw GenerationError("Invalid or repeated option: \(key)") }
+    values[key] = arguments[index + 1]
+    index += 2
+  }
+  guard let profile = values["--profile"], ["notes", "reminders"].contains(profile),
+    let output = values["--sources-root"], !output.isEmpty,
+    (values["--dump-root"] == nil) != (values["--input-manifest"] == nil)
+  else { throw GenerationError("Choose a profile, exactly one input mode, and --sources-root.") }
+  func url(_ key: String) throws -> URL? {
+    guard let path = values[key] else { return nil }
+    return try resolvedPath(URL(fileURLWithPath: path))
+  }
+  return Options(profile: profile, dumpRoot: try url("--dump-root"), manifest: try url("--input-manifest"),
+    sourcesRoot: try resolvedPath(URL(fileURLWithPath: output)),
+    report: try url("--report"), sdkRoot: try url("--sdk-root"))
+}
+
+struct InputManifest: Decodable {
+  let schema_version: Int
+  let inputs: [InputSource]
+}
+
+struct InputSource: Codable {
+  let id: String
+  let dump_root: String
+  let source_kind: String?
+  let macos_version: String?
+  let os_build: String?
+  let architecture: String?
+  let sdk_version: String?
+  let app_version: String?
+  let modules: [String: ModuleInput]?
+}
+
+struct ModuleInput: Codable {
+  let presence: String
+  let headers: [String: String]?
+}
+
+struct Origin: Codable, Hashable {
+  let source_id: String
+  let module: String
+  let header: String
+  let line: Int
+}
+
+struct HeaderInput {
+  let url: URL
+  let text: String
+  let source: InputSource
+  let module: String
+}
+
+struct Member {
+  let id: String
+  let signature: String
+  let declaration: String
+  let text: String
+  let optional: Bool
+  let methods: [String: String]
+  let origin: Origin
+}
+
+struct Declaration {
+  let kind: String
+  let name: String
+  let category: String?
+  let superclass: String?
+  let protocols: Set<String>
+  let origin: Origin
+  var members: [Member]
+  var identity: String { [kind, name, category ?? ""].joined(separator: ":") }
+}
+
+struct ParsedInput {
+  var declarations: [Declaration] = []
+  var forwardClasses: Set<String> = []
+  var forwardProtocols: Set<String> = []
+  var structNames: Set<String> = []
+  var excludedMembers: [[String: Any]] = []
+}
+
+func digest(_ data: Data) -> String {
+  SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+}
+
+func canonical(_ text: String) -> String {
+  let regex = try! NSRegularExpression(pattern: #"[A-Za-z_][A-Za-z_0-9]*|[0-9]+|[^\s]"#)
+  let ns = text as NSString
+  return regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+    .map { ns.substring(with: $0.range) }.joined(separator: " ")
+}
+
+func parenthesized(_ text: String, at start: String.Index) throws -> (body: String, end: String.Index) {
+  guard start < text.endIndex, text[start] == "(" else { throw GenerationError("Expected a parenthesized Objective-C type.") }
+  var depth = 0
+  var cursor = start
+  while cursor < text.endIndex {
+    if text[cursor] == "(" { depth += 1 }
+    if text[cursor] == ")" {
+      depth -= 1
+      if depth == 0 { return (String(text[text.index(after: start)..<cursor]), text.index(after: cursor)) }
+    }
+    cursor = text.index(after: cursor)
+  }
+  throw GenerationError("Unclosed Objective-C type.")
+}
+
+func methodShape(_ text: String) throws -> (id: String, signature: String) {
+  guard let scope = text.first, scope == "+" || scope == "-" else { throw GenerationError("Invalid method scope.") }
+  var cursor = text.index(after: text.startIndex)
+  func spaces() { while cursor < text.endIndex && text[cursor].isWhitespace { cursor = text.index(after: cursor) } }
+  spaces()
+  let returnType = try parenthesized(text, at: cursor)
+  cursor = returnType.end
+  var selector = ""
+  var parameters: [String] = []
+  while cursor < text.endIndex {
+    spaces()
+    let start = cursor
+    while cursor < text.endIndex && (text[cursor].isLetter || text[cursor].isNumber || text[cursor] == "_") {
+      cursor = text.index(after: cursor)
+    }
+    guard start != cursor else { break }
+    let piece = String(text[start..<cursor])
+    spaces()
+    if cursor < text.endIndex && text[cursor] == ":" {
+      selector += piece + ":"
+      cursor = text.index(after: cursor)
+      spaces()
+      let type = try parenthesized(text, at: cursor)
+      parameters.append(canonical(type.body))
+      cursor = type.end
+      spaces()
+      while cursor < text.endIndex && (text[cursor].isLetter || text[cursor].isNumber || text[cursor] == "_") {
+        cursor = text.index(after: cursor)
+      }
+    } else {
+      if parameters.isEmpty { selector += piece }
+      else { cursor = start }
+      break
+    }
+  }
+  guard !selector.isEmpty else { throw GenerationError("Missing method selector.") }
+  let tail = String(text[cursor...]).trimmingCharacters(in: .whitespacesAndNewlines)
+  let signature = canonical(returnType.body) + "(" + parameters.joined(separator: ",") + ")"
+    + (tail == ";" ? "" : " " + canonical(tail))
+  return ("method:\(scope):\(selector)", signature)
+}
+
+func parseMember(_ raw: String, normalized: String, optional: Bool, origin: Origin) throws -> Member {
+  if raw.hasPrefix("-") || raw.hasPrefix("+") {
+    let method = try methodShape(raw)
+    return Member(id: method.id, signature: "\(optional):\(method.signature)", declaration: raw, text: normalized,
+      optional: optional, methods: [method.id: method.signature], origin: origin)
+  }
+  guard raw.hasPrefix("@property") else { throw GenerationError("Unsupported declaration member at \(origin.header):\(origin.line).") }
+  var remainder = String(raw.dropFirst("@property".count)).trimmingCharacters(in: .whitespaces)
+  var attributes: Set<String> = []
+  if remainder.hasPrefix("(") {
+    let parsed = try parenthesized(remainder, at: remainder.startIndex)
+    attributes = Set(parsed.body.split(separator: ",").map { $0.filter { !$0.isWhitespace } })
+    remainder = String(remainder[parsed.end...]).trimmingCharacters(in: .whitespaces)
+  }
+  guard let name = firstCapture(remainder, pattern: #"\b([A-Za-z_][A-Za-z_0-9]*)\s*;$"#),
+    let range = remainder.range(of: name, options: .backwards)
+  else { throw GenerationError("Unsupported property at \(origin.header):\(origin.line).") }
+  let type = canonical(String(remainder[..<range.lowerBound]))
+  let scope = attributes.contains("class") ? "+" : "-"
+  let ownership = attributes.intersection(["strong", "retain", "copy", "weak", "assign", "unsafe_unretained"])
+  guard ownership.count <= 1 else {
+    throw GenerationError("Conflicting property ownership at \(origin.header):\(origin.line).")
+  }
+  if attributes.remove("strong") != nil { attributes.insert("retain") }
+  if !attributes.contains("nonatomic") { attributes.insert("atomic") }
+  if !attributes.contains("readonly") { attributes.insert("readwrite") }
+  if attributes.isDisjoint(with: ["strong", "retain", "copy", "weak", "assign", "unsafe_unretained"]) { attributes.insert("assign") }
+  let getter = attributes.first { $0.hasPrefix("getter=") }.map { String($0.dropFirst(7)) } ?? name
+  let defaultSetter = "set" + name.prefix(1).uppercased() + name.dropFirst() + ":"
+  let setter = attributes.first { $0.hasPrefix("setter=") }.map { String($0.dropFirst(7)) }
+    ?? defaultSetter
+  attributes.remove("getter=\(name)")
+  attributes.remove("setter=\(defaultSetter)")
+  var methods = ["method:\(scope):\(getter)": type + "()"]
+  if !attributes.contains("readonly") { methods["method:\(scope):\(setter)"] = "void(" + type + ")" }
+  return Member(id: "property:\(name)", signature: "\(optional):\(scope):\(type):\(attributes.sorted().joined(separator: ","))",
+    declaration: raw, text: normalized, optional: optional, methods: methods, origin: origin)
+}
+
+func parseHeader(_ input: HeaderInput) throws -> ParsedInput {
+  var parsed = ParsedInput()
+  var current: Declaration?
+  var ivars = 0
+  var optional = false
+  var pending = ""
+  var pendingLine = 0
+  let lines = try withoutComments(input.text)
+    .replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines)
+  for (offset, rawLine) in lines.enumerated() {
+    let raw = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+    if ivars > 0 {
+      ivars += raw.filter { $0 == "{" }.count - raw.filter { $0 == "}" }.count
+      continue
+    }
+    if raw.isEmpty || raw.hasPrefix("//") || raw.hasPrefix("#") || raw.hasPrefix("@import") { continue }
+    if let names = firstCapture(raw, pattern: #"^@class\s+(.+);$"#) {
+      parsed.forwardClasses.formUnion(names.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter(isIdentifier))
+      continue
+    }
+    if let names = firstCapture(raw, pattern: #"^@protocol\s+(.+);$"#) {
+      parsed.forwardProtocols.formUnion(names.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter(isIdentifier))
+      continue
+    }
+    if raw.hasPrefix("@interface") || raw.hasPrefix("@protocol") {
+      guard current == nil, pending.isEmpty else { throw GenerationError("Unclosed declaration in \(input.url.lastPathComponent):\(offset + 1).") }
+      guard let name = firstCapture(raw, pattern: #"^@(?:interface|protocol)\s+([A-Za-z_][A-Za-z_0-9]*)"#) else {
+        throw GenerationError("Invalid declaration in \(input.url.lastPathComponent):\(offset + 1).")
+      }
+      let isProtocol = raw.hasPrefix("@protocol")
+      let category = isProtocol ? nil : firstCapture(raw, pattern: #"^@interface\s+\w+\s*\(([^)]*)\)"#)
+      let head = String(raw.prefix { $0 != "{" })
+      let superclass = isProtocol || category != nil ? nil : firstCapture(head, pattern: #":\s*([A-Za-z_][A-Za-z_0-9]*)"#)
+      let adopted = firstCapture(head, pattern: #"<([^>]+)>"#)?.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } ?? []
+      current = Declaration(kind: isProtocol ? "protocol" : category != nil ? "category" : "class", name: name,
+        category: category, superclass: superclass, protocols: Set(adopted),
+        origin: Origin(source_id: input.source.id, module: input.module, header: input.url.lastPathComponent, line: offset + 1), members: [])
+      ivars = raw.filter { $0 == "{" }.count - raw.filter { $0 == "}" }.count
+      optional = false
+      continue
+    }
+    if raw == "@end" {
+      guard let declaration = current, pending.isEmpty else { throw GenerationError("Unclosed member or unmatched @end in \(input.url.lastPathComponent).") }
+      if declaration.kind != "protocol" || !importedExternalProtocols.contains(declaration.name) { parsed.declarations.append(declaration) }
+      current = nil
+      continue
+    }
+    guard current != nil else { continue }
+    if raw == "@optional" { optional = true; continue }
+    if raw == "@required" { optional = false; continue }
+    if raw.hasPrefix("@synthesize") || raw.hasPrefix("@dynamic") { continue }
+    if pending.isEmpty { pendingLine = offset + 1 }
+    pending += (pending.isEmpty ? "" : " ") + raw
+    guard pending.hasSuffix(";") else { continue }
+    let statement = pending
+    pending = ""
+    if let normalized = normalizeLine(statement, structNames: &parsed.structNames), !normalized.isEmpty {
+      let origin = Origin(source_id: input.source.id, module: input.module, header: input.url.lastPathComponent, line: pendingLine)
+      current?.members.append(try parseMember(statement, normalized: normalized, optional: optional, origin: origin))
+    } else {
+      parsed.excludedMembers.append(["source_id": input.source.id, "module": input.module,
+        "header": input.url.lastPathComponent, "line": pendingLine, "declaration": statement,
+        "reason": "not_importable_by_normalization"])
+    }
+  }
+  guard current == nil, pending.isEmpty, ivars == 0 else { throw GenerationError("Unclosed declaration in \(input.url.lastPathComponent).") }
+  return parsed
+}
+
+func withoutComments(_ text: String) throws -> String {
+  let bytes = Array(text.utf8)
+  var result = bytes
+  var index = 0
+  var quote: UInt8?
+  while index < bytes.count {
+    if let currentQuote = quote {
+      if bytes[index] == 92 { index += 2; continue }
+      if bytes[index] == currentQuote { quote = nil }
+      index += 1
+      continue
+    }
+    if bytes[index] == 34 || bytes[index] == 39 { quote = bytes[index]; index += 1; continue }
+    if index + 1 < bytes.count, bytes[index] == 47, bytes[index + 1] == 47 {
+      while index < bytes.count && bytes[index] != 10 && bytes[index] != 13 { result[index] = 32; index += 1 }
+    } else if index + 1 < bytes.count, bytes[index] == 47, bytes[index + 1] == 42 {
+      result[index] = 32; result[index + 1] = 32; index += 2
+      var closed = false
+      while index < bytes.count {
+        if index + 1 < bytes.count, bytes[index] == 42, bytes[index + 1] == 47 {
+          result[index] = 32; result[index + 1] = 32; index += 2; closed = true; break
+        }
+        if bytes[index] != 10 && bytes[index] != 13 { result[index] = 32 }
+        index += 1
+      }
+      guard closed else { throw GenerationError("Unclosed header comment.") }
+    } else { index += 1 }
+  }
+  return String(decoding: result, as: UTF8.self)
+}
+
+func originObject(_ origin: Origin) -> [String: Any] {
+  ["source_id": origin.source_id, "module": origin.module, "header": origin.header, "line": origin.line]
+}
+
+func memberVariant(_ member: Member) -> [String: Any] {
+  ["signature": member.signature, "declaration": member.declaration,
+    "import_declaration": member.text, "origin": originObject(member.origin)]
+}
+
+func mergeModule(
+  _ inputs: [ParsedInput], module: String, importedKnownTypes: Set<String>, conflicts: inout [[String: Any]],
+  observations: inout [[String: Any]]
+) throws -> ParsedModule {
+  var parsed = ParsedModule()
+  for input in inputs {
+    parsed.forwardClasses.formUnion(input.forwardClasses)
+    parsed.forwardProtocols.formUnion(input.forwardProtocols)
+    parsed.structNames.formUnion(input.structNames)
+  }
+  let grouped = Dictionary(grouping: inputs.flatMap(\.declarations), by: \.identity)
+  var effectiveMethods: [String: [(String, Origin)]] = [:]
+  var selectorScopes: [String: [String: Set<String>]] = [:]
+  for identity in grouped.keys.sorted() {
+    let versions = grouped[identity]!
+    let declaration = versions[0]
+    let superclasses = Set(versions.map { $0.superclass ?? "<root>" })
+    if superclasses.count > 1 {
+      conflicts.append(["kind": "superclass", "module": module, "identity": identity,
+        "variants": versions.map { ["signature": $0.superclass ?? "<root>", "origin": originObject($0.origin)] }])
+    }
+    let protocols = versions.reduce(into: Set<String>()) { $0.formUnion($1.protocols) }.sorted()
+    let members = Dictionary(grouping: versions.flatMap(\.members), by: \.id)
+    var lines: [String] = []
+    if declaration.kind == "protocol" { lines.append("@protocol \(declaration.name)") }
+    else if declaration.kind == "category" { lines.append("@interface \(declaration.name) (\(declaration.category ?? ""))") }
+    else { lines.append("@interface \(declaration.name)" + (declaration.superclass.map { " : " + $0 } ?? "")) }
+    if !protocols.isEmpty { lines[0] += " <" + protocols.joined(separator: ", ") + ">" }
+    var wasOptional = false
+    var memberObservations: [[String: Any]] = []
+    for memberID in members.keys.sorted() {
+      let variants = members[memberID]!
+      let signatures = Set(variants.map(\.signature))
+      if signatures.count > 1 {
+        conflicts.append(["kind": "member", "module": module, "identity": identity + ":" + memberID,
+          "variants": variants.map(memberVariant)])
+      }
+      let chosen = variants.min { $0.text < $1.text }!
+      if declaration.kind == "protocol", chosen.optional != wasOptional {
+        lines.append(chosen.optional ? "@optional" : "@required")
+        wasOptional = chosen.optional
+      }
+      lines.append(chosen.text)
+      let owner = declaration.kind == "protocol" ? "protocol:" + declaration.name : "class:" + declaration.name
+      for variant in variants {
+        for (methodID, signature) in variant.methods {
+          effectiveMethods[owner + ":" + methodID, default: []].append((signature, variant.origin))
+          let parts = methodID.split(separator: ":", maxSplits: 2).map(String.init)
+          if parts.count == 3 {
+            let key = owner + ":" + parts[2]
+            selectorScopes[key, default: [:]][variant.origin.source_id, default: []].insert(parts[1])
+          }
+        }
+      }
+      memberObservations.append(["identity": memberID, "signatures": signatures.sorted(),
+        "observed_in": Array(Set(variants.map { $0.origin.source_id })).sorted(),
+        "variants": variants.sorted { ($0.origin.source_id, $0.origin.header, $0.origin.line) < ($1.origin.source_id, $1.origin.header, $1.origin.line) }.map(memberVariant),
+        "origins": variants.map { originObject($0.origin) }.sorted { ($0["source_id"] as! String, $0["header"] as! String, $0["line"] as! Int) < ($1["source_id"] as! String, $1["header"] as! String, $1["line"] as! Int) }])
+    }
+    lines.append("@end")
+    let text = lines.joined(separator: "\n") + "\n"
+    switch declaration.kind {
+    case "class": parsed.classes[declaration.name] = text
+    case "protocol": parsed.protocols[declaration.name] = text
+    default: parsed.categories.append((base: declaration.name, text: text))
+    }
+    observations.append(["module": module, "identity": identity, "superclasses": superclasses.sorted(),
+      "protocols": protocols, "observed_in": Array(Set(versions.map { $0.origin.source_id })).sorted(),
+      "members": memberObservations])
+  }
+  for key in effectiveMethods.keys.sorted() {
+    let variants = effectiveMethods[key]!
+    if Set(variants.map(\.0)).count > 1 {
+      conflicts.append(["kind": "selector", "module": module, "identity": key,
+        "variants": variants.map { ["signature": $0.0, "origin": originObject($0.1)] }])
+    }
+  }
+  for key in selectorScopes.keys.sorted() {
+    let bySource = selectorScopes[key]!
+    let variants = Set(bySource.values.map { $0.sorted().joined() })
+    if variants.count > 1, !bySource.values.contains(where: { $0.count > 1 }) {
+      conflicts.append(["kind": "method_scope", "module": module, "identity": key, "source_scopes": bySource.mapValues { $0.sorted() }])
+    }
+  }
+  parsed.forwardClasses.formUnion(parsed.classes.keys)
+  parsed.forwardProtocols.formUnion(parsed.protocols.keys)
+  let externalSupers = Set(parsed.classes.values.compactMap { firstCapture($0.components(separatedBy: .newlines)[0], pattern: #":\s*([A-Za-z_]\w*)"#) })
+  let externalCategories = Set(parsed.categories.map(\.base))
+  parsed.externalSupers = externalSupers.filter { !parsed.classes.keys.contains($0) && $0 != "_TtCs12_SwiftObject" && !isImportedExternalClass($0, importedKnownTypes: importedKnownTypes) }
+  parsed.externalCategoryBases = externalCategories.filter { !parsed.classes.keys.contains($0) && $0 != "_TtCs12_SwiftObject" && !isImportedExternalClass($0, importedKnownTypes: importedKnownTypes) }
+  var state: [String: Int] = [:]
+  func visit(_ name: String) throws {
+    if state[name] == 2 { return }
+    guard state[name] != 1 else { throw GenerationError("Cyclic class inheritance in \(module): \(name)") }
+    state[name] = 1
+    if let superclass = firstCapture(parsed.classes[name]!.components(separatedBy: .newlines)[0], pattern: #":\s*([A-Za-z_]\w*)"#), parsed.classes[superclass] != nil {
+      try visit(superclass)
+    }
+    state[name] = 2
+    parsed.orderedClasses.append(name)
+  }
+  for name in parsed.classes.keys.sorted() { try visit(name) }
+  return parsed
+}
+
+func readInputs(_ options: Options, modules: [ModuleConfig]) throws -> (sources: [InputSource], headers: [String: [HeaderInput]], records: [[String: Any]]) {
+  let manager = FileManager.default
+  let sources: [InputSource]
+  let base: URL
+  if let manifest = options.manifest {
+    guard options.report != manifest else { throw GenerationError("Diagnostic report must not replace the input manifest.") }
+    let data = try readInputData(manifest, limit: 4 * 1_024 * 1_024)
+    let decoded = try JSONDecoder().decode(InputManifest.self, from: data)
+    guard decoded.schema_version == 1, !decoded.inputs.isEmpty, decoded.inputs.count <= 64 else { throw GenerationError("Unsupported or empty input manifest.") }
+    sources = decoded.inputs
+    base = manifest.deletingLastPathComponent()
+  } else {
+    sources = [InputSource(id: "single", dump_root: options.dumpRoot!.path, source_kind: nil,
+      macos_version: nil, os_build: nil, architecture: nil, sdk_version: nil, app_version: nil, modules: nil)]
+    base = URL(fileURLWithPath: manager.currentDirectoryPath)
+  }
+  guard Set(sources.map(\.id)).count == sources.count else { throw GenerationError("Duplicate input source identity.") }
+  var headers: [String: [HeaderInput]] = [:]
+  var records: [[String: Any]] = []
+  var totalBytes = 0
+  for source in sources.sorted(by: { $0.id < $1.id }) {
+    guard source.id.range(of: #"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$"#, options: .regularExpression) != nil,
+      !source.dump_root.isEmpty else { throw GenerationError("Invalid input source identity or dump root.") }
+    if options.manifest != nil {
+      guard let version = source.macos_version, version.range(of: #"^\d+(?:\.\d+){1,2}$"#, options: .regularExpression) != nil,
+        let build = source.os_build, !build.isEmpty,
+        source.architecture == "arm64" || source.architecture == "x86_64", source.modules != nil
+      else { throw GenerationError("Versioned inputs require macos_version, os_build, architecture, and module digests.") }
+    }
+    let dumpRoot = try resolvedPath(URL(fileURLWithPath: source.dump_root, relativeTo: base))
+    guard !isInside(options.sourcesRoot, dumpRoot), !isInside(dumpRoot, options.sourcesRoot) else {
+      throw GenerationError("Input and output trees must be separate.")
+    }
+    if let report = options.report, isInside(report, dumpRoot) {
+      throw GenerationError("Diagnostic report must be outside every input dump tree.")
+    }
+    for config in modules {
+      let directory = dumpRoot.appendingPathComponent("\(config.name)/\(config.name)")
+      let expected = source.modules?[config.name]
+      if options.manifest != nil && expected == nil { throw GenerationError("Missing module input descriptor: \(source.id)/\(config.name)") }
+      if expected?.presence == "absent" {
+        guard expected?.headers == nil, !manager.fileExists(atPath: directory.path) else { throw GenerationError("Absent module descriptor has headers or an existing directory.") }
+        records.append(["source_id": source.id, "module": config.name, "presence": "absent"])
+        continue
+      }
+      if let expected, expected.presence != "present" { throw GenerationError("Invalid module presence: \(source.id)/\(config.name)") }
+      guard manager.fileExists(atPath: directory.path) else { throw GenerationError("Missing dump directory: \(source.id)/\(config.name)") }
+      let files = try headerFiles(in: directory)
+      guard !files.isEmpty, files.count <= 20_000 else { throw GenerationError("Empty or oversized module input: \(source.id)/\(config.name)") }
+      if let expected {
+        guard let hashes = expected.headers, Set(hashes.keys) == Set(files.map(\.lastPathComponent)) else { throw GenerationError("Header set differs from manifest: \(source.id)/\(config.name)") }
+      }
+      for file in files {
+        let resolved = file.resolvingSymlinksInPath()
+        guard !isInside(resolved, options.sourcesRoot), options.report != resolved else {
+          throw GenerationError("Input header must be separate from generated output and diagnostic report: \(source.id)/\(config.name)/\(file.lastPathComponent)")
+        }
+        let data = try readInputData(resolved, limit: 8 * 1_024 * 1_024)
+        totalBytes += data.count
+        guard data.count <= 8 * 1_024 * 1_024, totalBytes <= 256 * 1_024 * 1_024,
+          let text = String(data: data, encoding: .utf8) else { throw GenerationError("Invalid or oversized header: \(source.id)/\(config.name)/\(file.lastPathComponent)") }
+        let hash = digest(data)
+        if let expected, expected.headers?[file.lastPathComponent] != hash {
+          throw GenerationError("Header digest differs from manifest: \(source.id)/\(config.name)/\(file.lastPathComponent)")
+        }
+        headers[config.name, default: []].append(HeaderInput(url: file, text: text, source: source, module: config.name))
+        records.append(["source_id": source.id, "module": config.name, "header": file.lastPathComponent, "sha256": hash, "presence": "present"])
+      }
+    }
+  }
+  for module in modules where headers[module.name] == nil { throw GenerationError("No observed declarations for required module: \(module.name)") }
+  return (sources, headers, records)
+}
+
+func readInputData(_ file: URL, limit: Int) throws -> Data {
+  let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+  guard values.isRegularFile == true, let size = values.fileSize, size <= limit else {
+    throw GenerationError("Input must be a regular file within its size limit: \(file.lastPathComponent)")
+  }
+  let handle = try FileHandle(forReadingFrom: file)
+  defer { try? handle.close() }
+  var data = Data()
+  while data.count <= limit {
+    guard let chunk = try handle.read(upToCount: min(65_536, limit + 1 - data.count)), !chunk.isEmpty else { break }
+    data.append(chunk)
+  }
+  guard data.count <= limit else { throw GenerationError("Input exceeds its size limit: \(file.lastPathComponent)") }
+  return data
+}
+
+func isInside(_ path: URL, _ root: URL) -> Bool {
+  root.path == "/" || path.path == root.path || path.path.hasPrefix(root.path + "/")
+}
+
+func isSymbolicLink(_ path: URL) -> Bool {
+  (try? FileManager.default.destinationOfSymbolicLink(atPath: path.path)) != nil
+}
+
+func resolvedPath(_ path: URL) throws -> URL {
+  var ancestor = path.standardizedFileURL
+  var missing: [String] = []
+  while !FileManager.default.fileExists(atPath: ancestor.path) {
+    guard !isSymbolicLink(ancestor) else { throw GenerationError("Path has a dangling symbolic link: \(ancestor.lastPathComponent)") }
+    let parent = ancestor.deletingLastPathComponent()
+    guard parent.path != ancestor.path else { throw GenerationError("Cannot resolve path ancestry.") }
+    missing.append(ancestor.lastPathComponent)
+    ancestor = parent
+  }
+  var result = ancestor.resolvingSymlinksInPath()
+  for component in missing.reversed() { result.appendPathComponent(component) }
+  return result
+}
+
+func command(_ arguments: [String], scratch: URL) throws -> String {
+  let log = scratch.appendingPathComponent("command-\(UUID().uuidString).log")
+  guard FileManager.default.createFile(atPath: log.path, contents: nil) else {
+    throw GenerationError("Could not create a compiler diagnostic file.")
+  }
+  let handle = try FileHandle(forWritingTo: log)
+  defer { try? handle.close(); try? FileManager.default.removeItem(at: log) }
+  let process = Process()
+  process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+  process.arguments = arguments
+  process.standardOutput = handle
+  process.standardError = handle
+  let finished = DispatchSemaphore(value: 0)
+  process.terminationHandler = { _ in finished.signal() }
+  try process.run()
+  if finished.wait(timeout: .now() + 90) == .timedOut {
+    kill(process.processIdentifier, SIGKILL)
+    process.waitUntilExit()
+    throw GenerationError("Compiler command exceeded its deadline.")
+  }
+  let data = try Data(contentsOf: log)
+  guard process.terminationStatus == 0 else {
+    let output = String(decoding: data.prefix(32_768), as: UTF8.self)
+      .replacingOccurrences(of: scratch.path, with: "<generation-staging>")
+    throw GenerationError("Compiler validation failed: \(output)")
+  }
+  return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func snapshot(_ root: URL) throws -> [String: String] {
+  let manager = FileManager.default
+  guard manager.fileExists(atPath: root.path) else { return [:] }
+  guard let enumerator = manager.enumerator(atPath: root.path) else {
+    throw GenerationError("Cannot enumerate output tree.")
+  }
+  var result: [String: String] = [:]
+  var total = 0
+  // Relative enumeration keys remain stable across Foundation's filesystem path aliases.
+  for case let key as String in enumerator {
+    guard result.count < 50_000 else { throw GenerationError("Output tree exceeds its entry limit.") }
+    let file = URL(fileURLWithPath: root.path).appendingPathComponent(key)
+    let values = try file.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey])
+    let permissions = (try manager.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber)?.stringValue ?? ""
+    if values.isSymbolicLink == true {
+      result[key] = "link:" + (try manager.destinationOfSymbolicLink(atPath: file.path))
+      enumerator.skipDescendants()
+    } else if values.isDirectory == true { result[key] = "directory:" + permissions }
+    else if values.isRegularFile == true {
+      guard (values.fileSize ?? 0) <= 1_024 * 1_024 * 1_024 - total else {
+        throw GenerationError("Output tree exceeds its byte limit.")
+      }
+      let data = try Data(contentsOf: file)
+      total += data.count
+      guard total <= 1_024 * 1_024 * 1_024 else { throw GenerationError("Output tree exceeds its byte limit.") }
+      result[key] = "file:" + permissions + ":" + digest(data)
+    } else { throw GenerationError("Output tree contains a special file.") }
+  }
+  return result
+}
+
+func ensureOwnedPaths(_ root: URL, modules: [ModuleConfig]) throws {
+  guard root.path != "/", root.path != FileManager.default.homeDirectoryForCurrentUser.path else {
+    throw GenerationError("Choose a source or generated-output directory.")
+  }
+  for config in modules {
+    for suffix in [config.name, "\(config.name)/include", "\(config.name)/include/\(config.name).h", "\(config.name)/include/module.modulemap", "\(config.name)/shim.c"] {
+      let file = root.appendingPathComponent(suffix)
+      if isSymbolicLink(file) {
+        throw GenerationError("Generated output paths must not be symbolic links: \(suffix)")
+      }
+    }
+  }
+  let metadata = root.appendingPathComponent(".framework-normalization")
+  if isSymbolicLink(metadata) {
+    throw GenerationError("Generation metadata directory must not be a symbolic link.")
+  }
+  let receipt = metadata.appendingPathComponent("\(profileName).json")
+  if isSymbolicLink(receipt) {
+    throw GenerationError("Generation metadata file must not be a symbolic link.")
+  }
+}
+
+var profileName = ""
+
+func generate(_ options: Options) throws {
+  profileName = options.profile
+  let modules = options.profile == "notes" ? notesModules : remindersModules
+  let manager = FileManager.default
+  try ensureOwnedPaths(options.sourcesRoot, modules: modules)
+  if let report = options.report, isInside(report, options.sourcesRoot) {
+    throw GenerationError("Explicit diagnostic report must be outside the generated output tree.")
+  }
+  let input = try readInputs(options, modules: modules)
+  var conflicts: [[String: Any]] = []
+  var observations: [[String: Any]] = []
+  var parsedByModule: [String: ParsedModule] = [:]
+  var excludedMembers: [[String: Any]] = []
+  for config in modules {
+    let imported = config.importsModuleNames.reduce(into: Set<String>()) { names, module in
+      names.formUnion(parsedByModule[module]?.classes.keys ?? Dictionary<String, String>().keys)
+      names.formUnion(parsedByModule[module]?.protocols.keys ?? Dictionary<String, String>().keys)
+    }
+    let parsed = try input.headers[config.name]!.map(parseHeader)
+    excludedMembers += parsed.flatMap(\.excludedMembers)
+    parsedByModule[config.name] = try mergeModule(parsed, module: config.name, importedKnownTypes: imported,
+      conflicts: &conflicts, observations: &observations)
+  }
+  let sourceRecords: [[String: Any]] = input.sources.sorted { $0.id < $1.id }.map { source in
+    var record: [String: Any] = ["id": source.id]
+    if let value = source.source_kind { record["source_kind"] = value }
+    if let value = source.macos_version { record["macos_version"] = value }
+    if let value = source.os_build { record["os_build"] = value }
+    if let value = source.architecture { record["architecture"] = value }
+    if let value = source.sdk_version { record["sdk_version"] = value }
+    if let value = source.app_version { record["app_version"] = value }
+    return record
+  }
+  var report: [String: Any] = ["schema_version": 1, "generator": "apple-cli-framework-normalizer",
+    "profile": options.profile, "sources": sourceRecords, "input_headers": input.records,
+    "declarations": observations, "excluded_members": excludedMembers, "conflicts": conflicts, "availability_basis": "observed_input_presence",
+    "runtime_compatibility": "unverified", "status": conflicts.isEmpty ? "prepared" : "conflicted"]
+  func saveDiagnostic() throws {
+    guard let path = options.report else { return }
+    try manager.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+      .write(to: path, options: .atomic)
+  }
+  guard conflicts.isEmpty else {
+    try saveDiagnostic()
+    throw GenerationError("Found \(conflicts.count) declaration conflicts; outputs were preserved. Use --report for both source signatures.")
+  }
+
+  let before = try snapshot(options.sourcesRoot)
+  let parent = options.sourcesRoot.deletingLastPathComponent()
+  try manager.createDirectory(at: parent, withIntermediateDirectories: true)
+  let workspace = parent.appendingPathComponent(".framework-generation-\(UUID().uuidString)")
+  try manager.createDirectory(at: workspace, withIntermediateDirectories: false)
+  let staging = workspace.appendingPathComponent("sources")
+  var preserveWorkspace = false
+  var exchangePending = false
+  defer { if !preserveWorkspace { try? manager.removeItem(at: workspace) } }
+  if manager.fileExists(atPath: options.sourcesRoot.path) { try manager.copyItem(at: options.sourcesRoot, to: staging) }
+  else { try manager.createDirectory(at: staging, withIntermediateDirectories: false) }
+  do {
+    for config in modules { try writeModule(parsedByModule[config.name]!, config: config, sourcesRoot: staging) }
+    let sdk = try options.sdkRoot ?? URL(fileURLWithPath: command(["--sdk", "macosx", "--show-sdk-path"], scratch: workspace))
+    let sdkVersion = try command(["--sdk", sdk.path, "--show-sdk-version"], scratch: workspace)
+    let smoke = workspace.appendingPathComponent("Smoke.swift")
+    try modules.map { "import \($0.name)" }.joined(separator: "\n").write(to: smoke, atomically: true, encoding: .utf8)
+    var architectures = Set(input.sources.compactMap(\.architecture))
+    if architectures.isEmpty {
+      #if arch(arm64)
+      architectures.insert("arm64")
+      #else
+      architectures.insert("x86_64")
+      #endif
+    }
+    var imports: [[String: Any]] = []
+    for architecture in architectures.sorted() {
+      var arguments = ["swiftc", "-typecheck", "-sdk", sdk.path, "-target", "\(architecture)-apple-macos13.0",
+        "-module-cache-path", workspace.appendingPathComponent("ModuleCache-\(architecture)").path]
+      for config in modules { arguments += ["-I", staging.appendingPathComponent("\(config.name)/include").path] }
+      arguments.append(smoke.path)
+      _ = try command(arguments, scratch: workspace)
+      imports += modules.map { ["module": $0.name, "architecture": architecture, "status": "passed"] }
+    }
+    report["import_validation"] = imports
+    report["validation_sdk_version"] = sdkVersion
+    report["status"] = "validated"
+    let metadata = staging.appendingPathComponent(".framework-normalization")
+    try manager.createDirectory(at: metadata, withIntermediateDirectories: true)
+    try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+      .write(to: metadata.appendingPathComponent("\(options.profile).json"), options: .atomic)
+    guard try snapshot(options.sourcesRoot) == before else { throw GenerationError("Output tree changed during generation; publication was refused.") }
+    if manager.fileExists(atPath: options.sourcesRoot.path) {
+      guard renamex_np(staging.path, options.sourcesRoot.path, UInt32(RENAME_SWAP)) == 0 else {
+        throw GenerationError("Atomic output-group replacement failed (errno \(errno)).")
+      }
+      exchangePending = true
+      // The exchanged old tree must still match the snapshot, including a change just before the swap.
+      let exchanged = try snapshot(staging)
+      if exchanged != before {
+        let differences = Set(exchanged.keys).union(before.keys).filter { exchanged[$0] != before[$0] }.sorted()
+        guard renamex_np(staging.path, options.sourcesRoot.path, UInt32(RENAME_SWAP)) == 0 else {
+          preserveWorkspace = true
+          throw GenerationError("Output changed concurrently and swap recovery failed; retain \(workspace.path) for recovery.")
+        }
+        exchangePending = false
+        throw GenerationError("Output changed concurrently; its bytes were restored and publication was refused. Changed entries: \(differences.prefix(8).joined(separator: ", "))")
+      }
+      exchangePending = false
+    } else {
+      try manager.moveItem(at: staging, to: options.sourcesRoot)
+    }
+    report["status"] = "published"
+    do { try saveDiagnostic() }
+    catch { stderr("warning: Output group was published, but the requested diagnostic report could not be updated.") }
+    print("Published \(modules.count) validated \(options.profile) modules as one output group.")
+  } catch {
+    if exchangePending && !preserveWorkspace {
+      if renamex_np(staging.path, options.sourcesRoot.path, UInt32(RENAME_SWAP)) == 0 {
+        exchangePending = false
+      } else {
+        preserveWorkspace = true
+        stderr("error: Output exchange recovery failed; retain \(workspace.path) for recovery.")
+      }
+    }
+    report["status"] = "failed"
+    try saveDiagnostic()
+    throw error
+  }
+}
+
+do { try generate(readOptions()) }
+catch { stderr("error: \(error.localizedDescription)"); exit(1) }

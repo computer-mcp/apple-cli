@@ -1,0 +1,4 @@
+module NotesSupport [system] {
+  umbrella header "NotesSupport.h"
+  export *
+}
