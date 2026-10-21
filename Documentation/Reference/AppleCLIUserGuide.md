@@ -110,6 +110,12 @@ The adapter exposes six CLI-derived tools:
 | `apple_cli_command_catalog` | Discover command paths and CLI-derived input schemas |
 | `apple_cli_run` | Execute a command with the CLI's validation and risk gates |
 
+MCP request integers must fit the signed 64-bit range, including values in
+`_meta`. An integer outside `-9223372036854775808` through
+`9223372036854775807` is rejected by the SDK with JSON-RPC parse error `-32700`
+before the adapter runs. In-range values still follow the tool's numeric
+bounds, such as `timeoutSeconds` from 1 through 120.
+
 ### Streamable HTTP
 
 Start the HTTP transport on loopback:

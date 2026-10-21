@@ -102,6 +102,28 @@ struct MCPExecutableTests {
     #expect(previewResult.isError == false)
     #expect(previewResult.structuredContent?.objectValue?["exitCode"]?.intValue == 0)
 
+    try await withThrowingTaskGroup(of: Void.self) { group in
+      for index in 0..<4 {
+        group.addTask {
+          let body = "concurrent-\(index)-" + String(repeating: "frame", count: 16_384)
+          let context: RequestContext<CallTool.Result> = try await client.callTool(
+            name: "apple_cli_run",
+            arguments: [
+              "target": .string("notifications"),
+              "arguments": .array([
+                .string("preview"), .string("--title"), .string("framing-test"),
+                .string("--body"), .string(body),
+              ]),
+            ])
+          let result = try await context.value
+          #expect(result.isError == false)
+          #expect(result.structuredContent?.objectValue?["exitCode"]?.intValue == 0)
+          #expect(result.structuredContent?.objectValue?["stdout"]?.stringValue?.contains(body) == true)
+        }
+      }
+      try await group.waitForAll()
+    }
+
     await client.disconnect()
   }
 

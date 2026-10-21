@@ -11,8 +11,9 @@ tools adapt to the `apple` command tree across the target catalog and inherit
 its safety constraints.
 
 The dependency direction is CLI to MCP adapter, not MCP to core behavior. MCP
-protocol and transport mechanics belong to the official MCP Swift SDK and are
-used directly in the adapter layer.
+protocol and transport mechanics belong to the MCP Swift SDK, consumed through
+the [Computer MCP fork](https://github.com/computer-mcp/swift-sdk) at
+`0.13.1-computer-mcp.1`, and are used directly in the adapter layer.
 
 ## Constraints
 
@@ -32,7 +33,7 @@ used directly in the adapter layer.
 
 ## Current Structure
 
-`apple-cli-mcp` is an official-SDK-backed MCP server executable over the
+`apple-cli-mcp` is an SDK-backed MCP server executable over the
 canonical CLI targets. It supports stdio as the default local transport and
 Streamable HTTP as an explicit `serve http` transport.
 
@@ -73,6 +74,23 @@ resources or prompts.
 
 MCP packages or executables translate tool requests into
 `apple <target> <resource?> <action> [options]` commands.
+
+### Request Integers and Errors
+
+The SDK preserves JSON integers within the platform's signed `Int` range
+exactly, including values beyond the exact integer range of `Double`. On
+supported macOS targets this is `-9223372036854775808` through
+`9223372036854775807`. Integers outside that range, including in `_meta` or
+numeric tool arguments, fail SDK decoding before adapter dispatch. The server
+returns JSON-RPC parse error `-32700` (`Invalid message format`), rather than a
+CLI error envelope. Finite fractional values retain floating-point
+representation. This is the fork's
+[JSON value contract](https://github.com/computer-mcp/swift-sdk/blob/0.13.1-computer-mcp.1/FORK.md).
+
+In-range integers reach the adapter's existing argument validation.
+`timeoutSeconds` remains bounded to 1 through 120; command catalog `maxDepth`
+and `maxCommands` remain bounded to 0 through 4 and 1 through 200 respectively.
+CLI validation failures retain their tool-result error envelopes.
 
 ## Current Tool Catalog
 

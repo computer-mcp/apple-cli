@@ -13,6 +13,67 @@ import Utility
 
 @Suite
 struct AppleMCPAdapterTests {
+  @Test(
+    .timeLimit(.minutes(1)),
+    arguments: ["9223372036854775808", "-9223372036854775809"],
+    ["_meta", "timeoutSeconds", "maxDepth", "maxCommands"]
+  )
+  func mcpServerRejectsIntegersOutsideSignedIntRange(literal: String, field: String) async throws {
+    let runner = FakeMCPRunner()
+    let numericField = field == "_meta" ? "\"_meta\":{\"sequence\":\(literal)}," : ""
+    let numericArgument = field == "_meta" ? "" : ",\"\(field)\":\(literal)"
+    let request = Data(
+      """
+      {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{\(numericField)"name":"apple_cli_command_catalog","arguments":{"target":"notes"\(numericArgument)}}}
+      """.utf8)
+
+    #expect(throws: DecodingError.self) {
+      try JSONDecoder().decode(Request<CallTool>.self, from: request)
+    }
+    let response = try await callMCPServer(request, runner: runner)
+    guard case .failure(let error) = response.result else {
+      Issue.record("Expected an SDK parse error for an unsupported integer.")
+      return
+    }
+    #expect(error == .parseError("Invalid message format"))
+    #expect(error.code == -32700)
+    #expect(runner.calls.isEmpty)
+  }
+
+  @Test(arguments: [Int.min, -9_007_199_254_740_993, 0, 9_007_199_254_740_993, Int.max])
+  func mcpRequestPreservesInRangeIntegers(integer: Int) throws {
+    let request = Data(
+      """
+      {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"apple_cli_list_targets","_meta":{"sequence":\(integer)},"arguments":{"sequence":\(integer)}}}
+      """.utf8)
+    let decoded = try JSONDecoder().decode(Request<CallTool>.self, from: request)
+    #expect(decoded.params.arguments?["sequence"] == .int(integer))
+    #expect(decoded.params._meta?.fields["sequence"] == .int(integer))
+    let encoded = try JSONEncoder().encode(decoded)
+    #expect(try JSONDecoder().decode(Request<CallTool>.self, from: encoded) == decoded)
+  }
+
+  @Test(.timeLimit(.minutes(1)), arguments: [(0, 1, 1), (4, 200, 120)])
+  func mcpServerDecodesNumericArgumentsAtTheirBounds(
+    maxDepth: Int, maxCommands: Int, timeoutSeconds: Int
+  ) async throws {
+    let runner = FakeMCPRunner()
+    let request = Data(
+      """
+      {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"apple_cli_command_catalog","_meta":{"sequence":\(Int.max)},"arguments":{"target":"notes","maxDepth":\(maxDepth),"maxCommands":\(maxCommands),"timeoutSeconds":\(timeoutSeconds)}}}
+      """.utf8)
+    let response = try await callMCPServer(request, runner: runner)
+    let result = try response.result.get()
+    #expect(response.id == .number(2))
+    #expect(result.isError == false)
+    #expect(result.structuredContent?.objectValue?["maxDepth"] == .int(maxDepth))
+    #expect(result.structuredContent?.objectValue?["maxCommands"] == .int(maxCommands))
+    #expect(
+      runner.calls == [
+        FakeMCPRunner.Call(target: "notes", arguments: ["--help"], timeoutSeconds: timeoutSeconds)
+      ])
+  }
+
   @Test func mcpAdapterListsOnlyAcceptedTargets() async throws {
     let adapter = AppleMCPAdapter(runner: FakeMCPRunner())
     let result = try await adapter.callTool(name: "apple_cli_list_targets", arguments: [:])
@@ -1154,6 +1215,34 @@ struct AppleMCPAdapterTests {
     #expect(result.isError == true)
     #expect(error["code"]?.stringValue == CLIErrorCode.validationError.rawValue)
     #expect(runner.calls.isEmpty)
+  }
+}
+
+private func callMCPServer(_ request: Data, runner: FakeMCPRunner) async throws -> Response<CallTool> {
+  let server = await AppleMCPServerFactory.makeServer(adapter: AppleMCPAdapter(runner: runner))
+  let (clientTransport, serverTransport) = await InMemoryTransport.createConnectedPair()
+  do {
+    try await server.start(transport: serverTransport)
+    try await clientTransport.connect()
+    var messages = await clientTransport.receive().makeAsyncIterator()
+    let initialize = Data(
+      """
+      {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"\(Version.latest)","capabilities":{},"clientInfo":{"name":"apple-cli-integer-tests","version":"1.0"}}}
+      """.utf8)
+    try await clientTransport.send(initialize)
+    let initialized = try #require(try await messages.next())
+    _ = try JSONDecoder().decode(Response<Initialize>.self, from: initialized).result.get()
+    try await clientTransport.send(Data(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.utf8))
+    try await clientTransport.send(request)
+    let data = try #require(try await messages.next())
+    let response = try JSONDecoder().decode(Response<CallTool>.self, from: data)
+    await server.stop()
+    await clientTransport.disconnect()
+    return response
+  } catch {
+    await server.stop()
+    await clientTransport.disconnect()
+    throw error
   }
 }
 
