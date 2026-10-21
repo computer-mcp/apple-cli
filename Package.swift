@@ -58,13 +58,13 @@ let package = Package(
     .executable(name: "apple-cli-mcp", targets: ["AppleMCPServer"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.8.2"),
+    .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.2"),
     .package(
       url: "https://github.com/hummingbird-project/hummingbird.git", .upToNextMinor(from: "2.23.0")),
     .package(url: "https://github.com/computer-mcp/swift-sdk.git", exact: "0.13.1-computer-mcp.1"),
-    .package(url: "https://github.com/apple/swift-http-types.git", from: "1.0.0"),
+    .package(url: "https://github.com/apple/swift-http-types.git", from: "1.8.0"),
     .package(
-      url: "https://github.com/swiftlang/swift-subprocess.git", .upToNextMinor(from: "1.0.0")),
+      url: "https://github.com/swiftlang/swift-subprocess.git", .upToNextMinor(from: "1.0.2")),
   ],
   targets: [
     .target(

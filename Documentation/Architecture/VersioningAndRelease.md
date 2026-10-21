@@ -65,13 +65,29 @@ they do not edit versions or infer an upgrade from changed files.
 
 ## Dependencies and Verified Combinations
 
-`Package.swift` owns dependency ranges. ArgumentParser and the MCP Swift SDK
-use exact versions; Hummingbird and Subprocess are bounded by the next minor
-version, and HTTPTypes by the next major version. `Package.resolved` owns the
-selected versions and revisions. Test and release builds use `--force-resolved-versions`,
+`Package.swift` owns dependency requirements, following the organization's
+[Swift dependency rules in VERSIONING.md](https://github.com/computer-mcp/.github/blob/master/VERSIONING.md#swift-dependencies).
+`Package.resolved` owns the selected versions and revisions and is committed
+with requirement changes. Test and release builds use `--force-resolved-versions`,
 and provenance records the lockfile digest and the resolved dependencies.
 
-When updating a dependency, confirm that its selected upstream release tag
+| Dependency kind | Requirement |
+| --- | --- |
+| Organization fork or dependency below `1.0.0` | `exact:` |
+| Dependency at `1.0.0` or later at a process, transport or security boundary | `.upToNextMinor(from:)` |
+| Other dependency at `1.0.0` or later | `from:` (up to the next major version) |
+
+The organization-fork rule takes precedence over the boundary rule. The MCP
+Swift SDK uses the [Computer MCP fork](https://github.com/computer-mcp/swift-sdk)
+at the shared baseline `exact: "0.13.1-computer-mcp.1"`. Subprocess uses the
+shared process-boundary baseline `.upToNextMinor(from: "1.0.2")`. Hummingbird
+is the HTTP transport boundary and is bounded by the next minor version.
+ArgumentParser and HTTPTypes use `from:`. Other dependency floors are their
+currently resolved versions when requirements are updated. The same boundary
+rule applies to direct declarations of swift-nio and swift-crypto; their
+transitive requirements are owned by the packages that declare them.
+
+When updating a dependency, confirm that its selected source release tag
 resolves to the locked revision, using that project's tag spelling. This is a
 maintenance review step; the release checker verifies the local lockfile and
 its provenance digest. Update the dependency notices and copied licenses with

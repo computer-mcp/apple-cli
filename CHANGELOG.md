@@ -7,3 +7,5 @@
   numeric tool arguments, now return JSON-RPC parse error `-32700` before
   adapter dispatch. In-range integers retain exact values and existing tool
   validation bounds.
+- Align Swift dependency requirement kinds with the organization versioning
+  policy and use the shared swift-subprocess `1.0.2` baseline.
