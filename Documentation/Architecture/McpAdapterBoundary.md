@@ -11,8 +11,9 @@ tools adapt to the `apple` command tree across the target catalog and inherit
 its safety constraints.
 
 The dependency direction is CLI to MCP adapter, not MCP to core behavior. MCP
-protocol and transport mechanics belong to the official MCP Swift SDK and are
-used directly in the adapter layer.
+protocol and transport mechanics belong to the MCP Swift SDK, consumed through
+the [Computer MCP fork](https://github.com/computer-mcp/swift-sdk) at
+`0.13.2-computer-mcp.1`, and are used directly in the adapter layer.
 
 ## Constraints
 
@@ -32,7 +33,7 @@ used directly in the adapter layer.
 
 ## Current Structure
 
-`apple-cli-mcp` is an official-SDK-backed MCP server executable over the
+`apple-cli-mcp` is an SDK-backed MCP server executable over the
 canonical CLI targets. It supports stdio as the default local transport and
 Streamable HTTP as an explicit `serve http` transport.
 
@@ -73,6 +74,35 @@ resources or prompts.
 
 MCP packages or executables translate tool requests into
 `apple <target> <resource?> <action> [options]` commands.
+
+### Message Decoding and Errors
+
+The SDK preserves JSON integers within the platform's signed `Int` range
+exactly, including values beyond the exact integer range of `Double`. On
+supported macOS targets this is `-9223372036854775808` through
+`9223372036854775807`. Integers outside that range, including in `_meta` or
+numeric tool arguments, fail SDK params decoding before adapter dispatch. The
+server returns JSON-RPC invalid params `-32602` with the request's own id.
+Finite fractional values retain floating-point representation.
+
+The SDK recovers the JSON-RPC envelope (`jsonrpc`, `id`, `method`) independently
+of the value decoder. Invalid JSON returns parse error `-32700` with a null id;
+undecodable params return `-32602` with the request's id. An invalid request
+object returns invalid request `-32600` with its readable id, or a null id.
+Notifications receive no reply. An undecodable response never takes a request
+route or receives an error reply; the SDK fails any matching server-to-client
+request.
+
+HTTP decode errors complete the carrying POST or request stream, with routing
+that preserves numeric and string id types. HTTP transports reject batches
+with `-32600` and a null id. An `initialize` whose params cannot decode creates
+no session or server initialization state. These behaviors follow the fork's
+[JSON-RPC and transport contract](https://github.com/computer-mcp/swift-sdk/blob/0.13.2-computer-mcp.1/FORK.md).
+
+In-range integers reach the adapter's existing argument validation.
+`timeoutSeconds` remains bounded to 1 through 120; command catalog `maxDepth`
+and `maxCommands` remain bounded to 0 through 4 and 1 through 200 respectively.
+CLI validation failures retain their tool-result error envelopes.
 
 ## Current Tool Catalog
 

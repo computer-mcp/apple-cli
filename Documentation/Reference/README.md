@@ -15,6 +15,7 @@ repository reference, and keep current architecture rules in
 - [MCP Setup](AppleCLIUserGuide.md#mcp-setup)
 - [Safety Gates](SafetyGates.md)
 - [Release Guide](ReleaseGuide.md)
+- [Release Reference](Release.md)
 - [Framework Header Generation](FrameworkGeneration.md)
 - [Native Fixture Validation](NativeFixtureValidation.md)
 

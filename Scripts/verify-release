@@ -141,7 +141,7 @@ def verify(directory, source, tag=None, require_verification=False):
         require(embedded == {key: value for key, value in manifest.items() if key != "archive"}, "Embedded provenance mismatch")
         for name in [
             "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGELOG.md",
-            "Documentation/Reference/ReleaseGuide.md", "Documentation/Architecture/VersioningAndRelease.md",
+            "Documentation/Reference/ReleaseGuide.md", "Documentation/Reference/Release.md", "VERSIONING.md",
             "Documentation/Reference/NativeFixtureValidation.md", "Documentation/Reference/NativeFixtureManifest.schema.json",
         ]:
             require((package / name).read_bytes() == (source / name).read_bytes(), f"Source input mismatch: {name}")

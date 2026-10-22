@@ -66,6 +66,6 @@ fixtures, issue reports and logs. Preserve passphrase and personal-data boundari
 Include the problem, resulting behavior and relevant validation in a pull
 request. Dependency changes must update `Package.resolved`, the copied license
 texts and `THIRD_PARTY_NOTICES.md` together. Version selection follows
-[Versioning and Release](Documentation/Architecture/VersioningAndRelease.md).
-See the [Release Guide](Documentation/Reference/ReleaseGuide.md) for candidate packaging,
+[VERSIONING](VERSIONING.md).
+See the [release reference](Documentation/Reference/Release.md) for candidate packaging,
 compatibility evidence and publishing boundaries.
