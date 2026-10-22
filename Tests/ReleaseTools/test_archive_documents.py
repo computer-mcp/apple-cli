@@ -13,7 +13,8 @@ import unittest
 SOURCE = Path(__file__).resolve().parents[2]
 checker = runpy.run_path(str(SOURCE / "Scripts/verify-release"))
 VALIDATION_DOCUMENTS = [
-    "Documentation/Architecture/VersioningAndRelease.md",
+    "Documentation/Reference/Release.md",
+    "VERSIONING.md",
     "Documentation/Reference/NativeFixtureValidation.md",
     "Documentation/Reference/NativeFixtureManifest.schema.json",
 ]

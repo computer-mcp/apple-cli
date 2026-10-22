@@ -5,8 +5,8 @@ Start with a guide for the task at hand:
 | Guide | Use it for |
 | --- | --- |
 | [Apple CLI User Guide](Reference/AppleCLIUserGuide.md) | Command discovery, JSON output, MCP and permissions |
-| [Release Guide](Reference/ReleaseGuide.md) | Installation, builds, CI publication and compatibility |
-| [Versioning and Release](Architecture/VersioningAndRelease.md) | Version authority, upgrades, tags and accepted release evidence |
+| [Release Guide](Reference/ReleaseGuide.md) | Installation, source builds and runtime requirements |
+| [Release Reference](Reference/Release.md) | Version sources, candidate acceptance, CI publication and evidence |
 | [Capability List](Architecture/CapabilityList.md) | Supported scope and target-specific limits |
 | [Safety Gates](Reference/SafetyGates.md) | Dry runs, mutations and external actions |
 

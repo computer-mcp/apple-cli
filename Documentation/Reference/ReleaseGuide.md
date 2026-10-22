@@ -3,9 +3,10 @@
 ## Candidate Scope
 
 The canonical repository identity is `computer-mcp/apple-cli`. The products are
-`apple` and `apple-cli-mcp`. [Versioning and Release](../Architecture/VersioningAndRelease.md)
-owns version authority, upgrade rules, tag identity and evidence requirements.
-This guide owns the build, installation and publication procedures.
+`apple` and `apple-cli-mcp`. This guide covers source builds, installation,
+startup requirements and target validation limits. The [release reference](Release.md)
+owns version sources, candidate acceptance, publication and evidence; it links
+the applicable VERSIONING rules.
 
 The initial preview targets native macOS arm64 builds. The package's macOS 13
 deployment floor describes compilation, not a tested runtime range. Notes and
@@ -89,104 +90,6 @@ dedicated native fixture manifest. See [Native Fixture Validation](NativeFixture
 for scope, evidence, and recovery. Default skips and successful host reads do
 not establish native mutation or multi-OS support.
 
-## GitHub Release Publication
-
-Before selecting a tag, update the canonical version and its Changelog entry
-under the version policy, then check the working tree's release inputs:
-
-```bash
-Scripts/validate-version --json
-python3 -B -m unittest discover -s Tests/ReleaseTools
-```
-
-The check is read-only and accepts an uncommitted working tree. Its optional
-`--tag TAG` check requires that existing tag at `HEAD`. The packager and archive
-checker use the same version-input validation. CI runs the gate's fixture tests
-before packaging. Use Python 3.12 or newer for the release scripts.
-
-Formal releases are built, accepted and published by
-[release.yml](https://github.com/computer-mcp/apple-cli/blob/master/.github/workflows/release.yml).
-Pushing a version tag
-`vVERSION` triggers the workflow. Its manual `tag` input accepts an existing
-version tag for a new run. The tag must agree with `CLIVersion.current` and the
-checked-out commit; `CHANGELOG.md` must contain that version's entry.
-
-The macOS build job uses read-only repository permissions. It runs source
-validation, locked test/release builds with two build jobs, default concurrent
-tests, staged binary content/signature checks and installed CLI/MCP acceptance.
-`Scripts/verify-release --run-tests` then validates the actual archive and runs
-the existing CLI/MCP tests against its safely extracted programs. This acceptance
-includes PATH/symlink startup and stdio/loopback HTTP forwarding.
-
-The workflow transfers four files to an independent publication job:
-
-- the macOS arm64 `.tar.gz` archive;
-- its `.tar.gz.sha256` checksum;
-- its `.provenance.json` source/build manifest;
-- its `.verification.json` archive/executable acceptance receipt.
-
-The publisher uses the job-scoped `GITHUB_TOKEN` with `contents: write`. It
-rechecks the source, archive, receipt and remote tag, creates a draft, uploads
-the accepted files, verifies the uploaded bytes, then publishes it. Versions
-containing a prerelease suffix are published as prereleases. No rebuild or
-re-sign occurs between acceptance and publication.
-
-For an interrupted upload, rerun the failed publication job to reuse its
-successful build's artifact. Matching draft assets are verified and missing
-assets are uploaded. A published release with the same accepted bytes is an
-idempotent success. Different draft or published bytes are refused; a new build
-candidate requires disposing of any incomplete previous draft before retrying.
-Published versions remain immutable under this workflow.
-
-## Local Packaging Validation
-
-Commit the complete intended source, including the selected project license,
-dependency notices and `Package.resolved`. Start from a clean checkout of that
-commit, then run:
-
-```bash
-Scripts/package-release --jobs 2
-Scripts/verify-release --run-tests
-```
-
-`Scripts/package-release` is the shared packaging step used by CI and local
-development checks. It bootstraps the selected SDK, builds tests with locked
-dependencies, runs default concurrent tests, builds both optimized products, and
-runs CLI/MCP black-box tests using the staged release binaries. The MCP tests execute real
-CLI help and a benign notification preview from an unrelated directory through
-stdio and loopback HTTP. They cover PATH/symlink installation and explicit
-`APPLE_CLI_BIN_DIR` selection.
-
-Output defaults to `.build/releases`. Use `--output DIRECTORY` for another
-location. Existing output names are refused. The archive includes both binaries,
-required Swift runtime libraries, installation guidance, the project license and
-dependency notices. `swift-stdlib-tool` selects runtime libraries from the same
-toolchain used to build. The packager removes toolchain run paths from staged
-executables, strips debug symbols and applies ad-hoc signatures before
-testing those bytes. Public-content validation scans every staged executable and
-Swift runtime library for machine-local directory paths before CLI/MCP acceptance.
-Every linked library must resolve through a system path or the bundled Swift
-libraries; runtime collection does not expand the tested macOS range. The adjacent
-manifest records the source commit/tree, lockfile hash, toolchain, SDK, link-input
-hashes, linked libraries, run paths, executable and runtime library hashes, and successful validation-log
-hashes. The checksum covers the actual archive bytes. Build timestamps and
-compiler output can vary; this process does not claim bit-for-bit rebuilds.
-
-For an existing version tag at the candidate commit:
-
-```bash
-Scripts/package-release --tag vVERSION
-```
-
-The tag must match the canonical source version and resolve to `HEAD`.
-The script does not create a repository, tag, remote push or GitHub release.
-`Scripts/verify-release` uses Python 3.12 or newer for archive validation. Its
-`--run-tests` mode requires the matching source checkout, build-validation logs
-and test executables. Its `--require-verification` mode checks the existing
-receipt and archive without running macOS executables, as the publication job
-does on Linux. A development-machine candidate is local validation evidence;
-formal GitHub releases use the files accepted by the release workflow.
-
 ## Install With Homebrew
 
 The [organization tap](https://github.com/computer-mcp/homebrew-tap) owns the
@@ -232,21 +135,3 @@ and notarization are not established by checksum verification, and macOS may
 apply its download-origin checks. A build from the inspected source is another
 installation route. Do not disable system security protections as an installation
 step. Inspect target help and doctor output for specific permission recovery.
-
-## CI Runner And Evidence
-
-`ci.yml` validates pushes to `master`, pull requests and manual runs, including
-actual archive extraction and executable acceptance. It uploads workflow
-artifacts and logs. `release.yml` adds the independent publication job for
-version tags. Both use the shared packaging/verification scripts and pinned
-action revisions. Only the release publication job receives repository write
-permission.
-
-The configured `xcode-27` arm64 image is a public-preview runner, with Xcode
-27.0 selected explicitly. Its availability is documented by
-[GitHub's runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
-and its toolchain by the
-[runner image inventory](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
-This infrastructure choice is not evidence that a workflow has run. Review the
-actual workflow result and artifact provenance before publishing; image updates
-require renewed validation.

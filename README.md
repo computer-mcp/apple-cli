@@ -228,8 +228,9 @@ describes the available integration checks.
 | --- | --- |
 | [User guide](Documentation/Reference/AppleCLIUserGuide.md) | Discovery, output, permissions, MCP and workflow safety |
 | [Target guides](Documentation/README.md#target-guides) | User and developer documentation for all 19 targets |
-| [Release guide](Documentation/Reference/ReleaseGuide.md) | Installation, CI publication and compatibility |
-| [Version rules](Documentation/Architecture/VersioningAndRelease.md) | Version upgrades, prereleases and release evidence |
+| [Release guide](Documentation/Reference/ReleaseGuide.md) | Installation, source builds and runtime requirements |
+| [Release reference](Documentation/Reference/Release.md) | Version sources, candidate acceptance, CI publication and evidence |
+| [Version rules](VERSIONING.md) | Organization version rules and repository acceptance requirements |
 | [Architecture](Documentation/Architecture/README.md) | CLI ownership, implementation mechanisms and MCP boundaries |
 | [Contributing](CONTRIBUTING.md) | Repository conventions and validation |
 | [Security](SECURITY.md) | Vulnerability reporting |
