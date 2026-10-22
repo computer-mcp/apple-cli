@@ -63,7 +63,7 @@ records selected versions and full revisions. The direct declarations are:
 | --- | --- | --- | --- |
 | `apple/swift-argument-parser` | `from: "1.8.2"` | `1.8.2` | Typed command parsing |
 | `hummingbird-project/hummingbird` | `.upToNextMinor(from: "2.23.0")` | `2.23.0` | HTTP host shell |
-| `computer-mcp/swift-sdk` | `exact: "0.13.1-computer-mcp.1"` | `0.13.1-computer-mcp.1` | MCP protocol and transports |
+| `computer-mcp/swift-sdk` | `exact: "0.13.2-computer-mcp.1"` | [`0.13.2-computer-mcp.1`](https://github.com/computer-mcp/swift-sdk/blob/0.13.2-computer-mcp.1/FORK.md) | MCP protocol and transports; decode errors retain request ids and HTTP errors complete their POST |
 | `apple/swift-http-types` | `from: "1.8.0"` | `1.8.0` | HTTP request and response types |
 | `swiftlang/swift-subprocess` | `.upToNextMinor(from: "1.0.2")` | `1.0.2` | Process execution |
 

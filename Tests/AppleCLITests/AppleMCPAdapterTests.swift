@@ -20,23 +20,24 @@ struct AppleMCPAdapterTests {
   )
   func mcpServerRejectsIntegersOutsideSignedIntRange(literal: String, field: String) async throws {
     let runner = FakeMCPRunner()
+    let requestID = 2
     let numericField = field == "_meta" ? "\"_meta\":{\"sequence\":\(literal)}," : ""
     let numericArgument = field == "_meta" ? "" : ",\"\(field)\":\(literal)"
     let request = Data(
       """
-      {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{\(numericField)"name":"apple_cli_command_catalog","arguments":{"target":"notes"\(numericArgument)}}}
+      {"jsonrpc":"2.0","id":\(requestID),"method":"tools/call","params":{\(numericField)"name":"apple_cli_command_catalog","arguments":{"target":"notes"\(numericArgument)}}}
       """.utf8)
 
     #expect(throws: DecodingError.self) {
       try JSONDecoder().decode(Request<CallTool>.self, from: request)
     }
     let response = try await callMCPServer(request, runner: runner)
+    #expect(response.id == .number(requestID))
     guard case .failure(let error) = response.result else {
-      Issue.record("Expected an SDK parse error for an unsupported integer.")
+      Issue.record("Expected an SDK invalid-params error for an unsupported integer.")
       return
     }
-    #expect(error == .parseError("Invalid message format"))
-    #expect(error.code == -32700)
+    #expect(error.code == -32602)
     #expect(runner.calls.isEmpty)
   }
 

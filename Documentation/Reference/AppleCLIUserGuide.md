@@ -110,13 +110,26 @@ The adapter exposes six CLI-derived tools:
 | `apple_cli_command_catalog` | Discover command paths and CLI-derived input schemas |
 | `apple_cli_run` | Execute a command with the CLI's validation and risk gates |
 
+The adapter uses the [Computer MCP Swift SDK `0.13.2-computer-mcp.1`](https://github.com/computer-mcp/swift-sdk/blob/0.13.2-computer-mcp.1/FORK.md).
 MCP request integers must fit the signed 64-bit range, including values in
 `_meta`. An integer outside `-9223372036854775808` through
-`9223372036854775807` is rejected by the SDK with JSON-RPC parse error `-32700`
-before the adapter runs. In-range values still follow the tool's numeric
-bounds, such as `timeoutSeconds` from 1 through 120.
+`9223372036854775807` is rejected with JSON-RPC invalid params `-32602` and the
+request's own id before the adapter runs. In-range integers retain their exact
+values and follow the tool's numeric bounds, such as `timeoutSeconds` from 1
+through 120.
+
+The SDK recovers the request envelope independently of params decoding.
+Invalid JSON receives `-32700` with a null id; other undecodable params receive
+`-32602` with the request's id. An invalid request object receives `-32600`
+with its readable id, or a null id. Notifications receive no reply, and an
+undecodable response is never routed as a request.
 
 ### Streamable HTTP
+
+HTTP decode errors return on the carrying POST or request stream, preserving
+numeric and string id types for response routing. HTTP batches are rejected
+with `-32600` and a null id. An `initialize` with undecodable params creates no
+session.
 
 Start the HTTP transport on loopback:
 
