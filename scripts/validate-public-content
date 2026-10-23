@@ -10,7 +10,7 @@ do {
   var arguments = CommandLine.arguments.dropFirst().makeIterator()
   while let option = arguments.next() {
     if option == "--help" || option == "-h" {
-      print("Usage: Scripts/validate-public-content [--artifact FILE ...]")
+      print("Usage: scripts/validate-public-content [--artifact FILE ...]")
       print("Check public source files for credential/path patterns and local links; scan optional release artifacts for machine-local paths.")
       exit(0)
     }

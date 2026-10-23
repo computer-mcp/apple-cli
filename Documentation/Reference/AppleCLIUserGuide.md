@@ -19,7 +19,7 @@ apple <target> <resource?> <action> --help
 When running from a development checkout, use:
 
 ```bash
-Scripts/bootstrap
+scripts/bootstrap
 swift run apple --help
 swift run apple <target> --help
 ```

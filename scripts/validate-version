@@ -10,7 +10,7 @@ import sys
 
 
 SOURCE = Path(__file__).resolve().parents[1]
-checker = runpy.run_path(str(SOURCE / "Scripts/verify-release"))
+checker = runpy.run_path(str(SOURCE / "scripts/verify-release"))
 
 
 def main():

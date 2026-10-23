@@ -18,7 +18,7 @@ struct StubError: LocalizedError {
 func usage() {
   print("""
     Usage:
-      Scripts/notes-private-framework-generate-link-stubs [--sdk-root <path>] [--output-root <path>] [--framework <name>]...
+      scripts/notes-private-framework-generate-link-stubs [--sdk-root <path>] [--output-root <path>] [--framework <name>]...
 
     Generates local Notes link inputs from the selected macOS SDK, preserving
     system install names and removing allowed/allowable-client restrictions.
@@ -76,7 +76,7 @@ func sourceTBD(_ framework: String, sdk: URL) throws -> URL {
     let candidate = root.appendingPathComponent(suffix)
     if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
   }
-  throw StubError("Selected SDK \(sdk.path) is missing \(framework).tbd. Select an SDK containing all six Notes frameworks, then rerun Scripts/bootstrap.")
+  throw StubError("Selected SDK \(sdk.path) is missing \(framework).tbd. Select an SDK containing all six Notes frameworks, then rerun scripts/bootstrap.")
 }
 
 func removingAllowedClients(_ text: String) -> (text: String, removed: Int) {

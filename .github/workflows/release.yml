@@ -13,10 +13,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: xcode-27
@@ -34,21 +30,15 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .build/repositories
-            .build/checkouts
-          key: dependencies-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.resolved') }}
       - name: Build and accept the tagged archive
         id: candidate
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          Scripts/validate-public-content
+          scripts/validate-public-content
           python3 -B -m unittest discover -s Tests/ReleaseTools
-          Scripts/package-release --tag "$RELEASE_TAG" --jobs 2
-          Scripts/verify-release --tag "$RELEASE_TAG" --run-tests --github-output
+          scripts/package-release --tag "$RELEASE_TAG" --jobs 2
+          scripts/verify-release --tag "$RELEASE_TAG" --run-tests --github-output
           printf 'artifact_name=%s\n' "$CANDIDATE_ARTIFACT" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -85,4 +75,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.build.outputs.tag }}
           RELEASE_SOURCE_COMMIT: ${{ needs.build.outputs.source_commit }}
-        run: Scripts/publish-release
+        run: scripts/publish-release

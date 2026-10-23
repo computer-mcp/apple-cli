@@ -178,12 +178,6 @@ Current architecture truth lives in `Documentation/Architecture/`:
   facts into architecture truth. External sources are inputs for target-local
   reuse decisions, not the source of this repository's architecture.
 
-## Brand Delivery
-
-README headers and the social preview come from the Computer MCP organization
-`.github` repository through `.github/brand/brand.lock.json`. Update them only
-with that repository's `python3 Brand/brand.py sync`; CI verifies the lock.
-
 ## Implementation Boundary
 
 Keep target ownership independent. The package declares exactly two executable

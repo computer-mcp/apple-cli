@@ -12,5 +12,5 @@ fi
 task_sdk=$(/usr/bin/xcrun --sdk macosx --show-sdk-path)
 task_output=${APPLE_CLI_NOTES_PRIVATE_FRAMEWORK_STUBS:-"$task_root/.build/notes-private-framework-link-stubs/current"}
 cd "$task_root"
-/usr/bin/xcrun swift Scripts/notes-private-framework-generate-link-stubs \
+/usr/bin/xcrun swift scripts/notes-private-framework-generate-link-stubs \
   --sdk-root "$task_sdk" --output-root "$task_output"

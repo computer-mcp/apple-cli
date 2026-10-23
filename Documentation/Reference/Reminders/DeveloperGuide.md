@@ -8,7 +8,7 @@ Ordinary usage lives in `UserGuide.md`.
 
 ## Framework Header Generation
 
-`Scripts/reminderkit-normalize-full-dump` generates the official `ReminderKit`
+`scripts/reminderkit-normalize-full-dump` generates the official `ReminderKit`
 and `ReminderKitInternal` module surfaces from one dump or a digest-checked
 versioned input manifest. It shares declaration merging and complete output
 publication with the Notes generation command. See [Framework Header Generation](../FrameworkGeneration.md)

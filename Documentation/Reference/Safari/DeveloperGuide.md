@@ -7,7 +7,7 @@ listed in [Capability List](../../Architecture/Safari/CapabilityList.md).
 ## Package-Local Tests
 
 ```bash
-Scripts/bootstrap
+scripts/bootstrap
 xcrun swift test --filter Safari --force-resolved-versions
 ```
 

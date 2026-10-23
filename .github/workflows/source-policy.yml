@@ -1,0 +1,19 @@
+name: Source policy checks
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [master]
+  merge_group:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  policy:
+    uses: computer-mcp/github-workflows/.github/workflows/policy.yml@53ecce59bf7ed184528b2f7894c864f338932d37
+    with:
+      declaration-revision: 5c54a40cb7953db7472ebbefd3db608036b7b3ab
+      path-exceptions: |
+        Tests/ReleaseTools/test_public_content.py

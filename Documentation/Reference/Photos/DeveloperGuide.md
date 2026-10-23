@@ -11,7 +11,7 @@ The current command surface and safety gates are documented in
 From the repository root, run:
 
 ```bash
-Scripts/bootstrap
+scripts/bootstrap
 xcrun swift test --filter Photos --force-resolved-versions
 ```
 
