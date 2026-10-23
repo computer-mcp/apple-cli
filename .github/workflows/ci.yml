@@ -4,13 +4,14 @@ on:
   push:
     branches: [master]
   pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -47,3 +48,9 @@ jobs:
           name: validation-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: .build/release-validation
           if-no-files-found: ignore
+  validate:
+    if: always()
+    needs: [package]
+    uses: computer-mcp/github-workflows/.github/workflows/result.yml@d65bc20504f39c3a30232d67043abeca43d2c7b1
+    with:
+      needs-json: ${{ toJSON(needs) }}

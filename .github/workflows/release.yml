@@ -13,10 +13,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: xcode-27
@@ -34,12 +30,6 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            .build/repositories
-            .build/checkouts
-          key: dependencies-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Package.resolved') }}
       - name: Build and accept the tagged archive
         id: candidate
         env:

@@ -69,3 +69,10 @@ texts and `THIRD_PARTY_NOTICES.md` together. Version selection follows
 [VERSIONING](VERSIONING.md).
 See the [release reference](Documentation/Reference/Release.md) for candidate packaging,
 compatibility evidence and publishing boundaries.
+
+## Source Policy Exceptions
+
+`Tests/ReleaseTools/test_public_content.py` contains synthetic home-directory
+paths to verify that public-content validation rejects machine-local paths in
+documents and release artifacts while allowing test fixtures. The source policy
+exempts this file from path checks; attribution checks still apply.
