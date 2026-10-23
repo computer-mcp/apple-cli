@@ -34,7 +34,7 @@ checks, and post-write verification. Direct Notes SQLite writes are rejected.
 The current intake path follows the Reminders pattern:
 
 ```bash
-Scripts/notes-private-framework-normalize-full-dump \
+scripts/notes-private-framework-normalize-full-dump \
   --dump-root <ipsw-class-dump-root> \
   --sources-root Sources
 ```
@@ -58,7 +58,7 @@ when direct linking needs SDK allowed-client metadata removed. The overlays
 must preserve system framework install names and should be audited before
 production code relies on direct typed private class references.
 
-From the repository root, run `Scripts/bootstrap` before the first build.
+From the repository root, run `scripts/bootstrap` before the first build.
 The default Notes target links the generated framework stub overlay at
 `.build/notes-private-framework-link-stubs/current`. Bootstrap uses the selected
 Xcode SDK, preserves system install names, and records SDK/toolchain and input

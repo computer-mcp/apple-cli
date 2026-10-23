@@ -450,7 +450,7 @@ struct NormalizationFixture {
       .deletingLastPathComponent().deletingLastPathComponent()
     return try CLISubprocess.run(
       .path("/usr/bin/xcrun"),
-      arguments: ["swift", repository.appendingPathComponent("Scripts/\(profile.script)").path,
+      arguments: ["swift", repository.appendingPathComponent("scripts/\(profile.script)").path,
         "--sources-root", (sourcesRoot ?? output).path] + (inputManifest.map { ["--input-manifest", $0.path] } ?? ["--dump-root", dump.path]) + extra,
       timeoutSeconds: 90)
   }

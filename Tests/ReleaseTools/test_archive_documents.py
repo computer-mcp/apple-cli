@@ -11,7 +11,7 @@ import unittest
 
 
 SOURCE = Path(__file__).resolve().parents[2]
-checker = runpy.run_path(str(SOURCE / "Scripts/verify-release"))
+checker = runpy.run_path(str(SOURCE / "scripts/verify-release"))
 VALIDATION_DOCUMENTS = [
     "Documentation/Reference/Release.md",
     "VERSIONING.md",

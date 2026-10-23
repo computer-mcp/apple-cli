@@ -138,7 +138,7 @@ func main() throws {
     if option == "--help" || option == "-h" {
       message(
         """
-        Usage: Scripts/package-release [--output DIRECTORY] [--tag TAG] [--jobs COUNT]
+        Usage: scripts/package-release [--output DIRECTORY] [--tag TAG] [--jobs COUNT]
         Build and test a clean, committed source candidate and create a
         macOS arm64 archive, SHA-256 checksum, and provenance manifest.
         --tag verifies an existing tag at HEAD against the source version.
@@ -174,7 +174,7 @@ func main() throws {
       throw ReleaseError.invalid("Missing release input: \(file).")
     }
   }
-  var versionArguments = ["python3", root.appendingPathComponent("Scripts/validate-version").path]
+  var versionArguments = ["python3", root.appendingPathComponent("scripts/validate-version").path]
   if let tag { versionArguments += ["--tag", tag] }
   let version = try run("/usr/bin/env", versionArguments)
   let architecture = try run("/usr/bin/uname", ["-m"])
@@ -213,7 +213,7 @@ func main() throws {
     validation.append(["check": label, "result": "passed", "log_sha256": try digest(log)])
   }
   message("Bootstrap selected SDK inputs")
-  try run(root.appendingPathComponent("Scripts/bootstrap").path, [])
+  try run(root.appendingPathComponent("scripts/bootstrap").path, [])
   var testEnvironment = ProcessInfo.processInfo.environment
   testEnvironment.removeValue(forKey: "APPLE_CLI_RUN_NOTES_INTEGRATION_TESTS")
   testEnvironment.removeValue(forKey: "APPLE_CLI_BIN")
@@ -310,7 +310,7 @@ func main() throws {
   }
   try validate(
     "installed-release-content",
-    ["swift", root.appendingPathComponent("Scripts/validate-public-content").path]
+    ["swift", root.appendingPathComponent("scripts/validate-public-content").path]
       + (["apple", "apple-cli-mcp"] + runtimeNames.sorted()).flatMap {
         ["--artifact", bin.appendingPathComponent($0).path]
       }, environment: testEnvironment)

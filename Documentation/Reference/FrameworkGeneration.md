@@ -5,8 +5,8 @@ names. Their generation commands share an Objective-C declaration merger and
 retain separate module configurations:
 
 ```bash
-Scripts/notes-private-framework-normalize-full-dump --dump-root <dump-root> --sources-root <sources-root>
-Scripts/reminderkit-normalize-full-dump --dump-root <dump-root> --sources-root <sources-root>
+scripts/notes-private-framework-normalize-full-dump --dump-root <dump-root> --sources-root <sources-root>
+scripts/reminderkit-normalize-full-dump --dump-root <dump-root> --sources-root <sources-root>
 ```
 
 Notes generates `NotesSupport`, `NotesHTML`, `NotesShared`, `NotesUI`,
@@ -20,7 +20,7 @@ Use exactly one of `--dump-root` and `--input-manifest`. A versioned manifest
 follows [FrameworkInputManifest.schema.json](FrameworkInputManifest.schema.json):
 
 ```bash
-Scripts/notes-private-framework-normalize-full-dump \
+scripts/notes-private-framework-normalize-full-dump \
   --input-manifest <manifest.json> \
   --sources-root <sources-root> \
   --report <diagnostic-report.json>

@@ -58,7 +58,7 @@ Keep the same selected Xcode for bootstrap and build. `DEVELOPER_DIR`, when set,
 selects it for both scripts and `xcrun` commands.
 
 ```bash
-Scripts/bootstrap
+scripts/bootstrap
 xcrun swift build --force-resolved-versions
 xcrun swift test --force-resolved-versions
 xcrun swift build -c release --force-resolved-versions

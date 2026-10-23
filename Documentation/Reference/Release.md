@@ -1,9 +1,9 @@
 # Release
 
 Release status: packaging, archive acceptance and GitHub publication are
-implemented by [package-release](https://github.com/computer-mcp/apple-cli/blob/master/Scripts/package-release),
-[verify-release](https://github.com/computer-mcp/apple-cli/blob/master/Scripts/verify-release),
-[publish-release](https://github.com/computer-mcp/apple-cli/blob/master/Scripts/publish-release)
+implemented by [package-release](https://github.com/computer-mcp/apple-cli/blob/master/scripts/package-release),
+[verify-release](https://github.com/computer-mcp/apple-cli/blob/master/scripts/verify-release),
+[publish-release](https://github.com/computer-mcp/apple-cli/blob/master/scripts/publish-release)
 and the [release workflow](https://github.com/computer-mcp/apple-cli/blob/master/.github/workflows/release.yml).
 Version selection, compatibility review and tag signature verification are
 manual.
@@ -19,7 +19,7 @@ dependencies and target-specific validation limits.
 
 | Shipped component | Version meaning | Version source | Mirrors and derived fields | Update and read-only check |
 | --- | --- | --- | --- | --- |
-| `apple` and its target commands | Shared product version | `CLIVersion.current` in `Sources/Utility/CLIVersion.swift` | `apple --version`, archive identity and provenance | Edit the declaration manually; `Scripts/validate-version`; `CLIExecutableTests` |
+| `apple` and its target commands | Shared product version | `CLIVersion.current` in `Sources/Utility/CLIVersion.swift` | `apple --version`, archive identity and provenance | Edit the declaration manually; `scripts/validate-version`; `CLIExecutableTests` |
 | `apple-cli-mcp` | Same product version | The same `CLIVersion.current` | `apple-cli-mcp --version`, MCP initialization `serverInfo.version` | Same declaration; `CLIExecutableTests`, `AppleMCPAdapterTests` and `MCPExecutableTests` |
 
 Both executable products release together. Target modules and source skills
@@ -100,17 +100,17 @@ and need compatibility, lockfile and dependency-notice review.
 | Field or artifact | Authority and production | Read-only verification |
 | --- | --- | --- |
 | Executable version and MCP `serverInfo.version` | Compiled from `CLIVersion.current` | Executable and MCP initialization tests; packager checks both staged `--version` results |
-| Release notes | Matching entry in `CHANGELOG.md`; publisher renders that entry and source/Actions links | `Scripts/validate-version [--tag TAG]` and publisher input validation |
-| Archive basename | `apple-cli-VERSION-macos-arm64`, derived by `Scripts/package-release` | `Scripts/verify-release` compares names, source version, tag and architecture |
+| Release notes | Matching entry in `CHANGELOG.md`; publisher renders that entry and source/Actions links | `scripts/validate-version [--tag TAG]` and publisher input validation |
+| Archive basename | `apple-cli-VERSION-macos-arm64`, derived by `scripts/package-release` | `scripts/verify-release` compares names, source version, tag and architecture |
 | `.provenance.json` and embedded `provenance.json` | Packager records source commit/tree, lock digest and dependencies, environment, link inputs, linked libraries, run paths, binary/runtime hashes and successful validation-log hashes | Verifier checks source identity, lock digest, required checks, archive contents and embedded/adjacent manifest equality, apart from the adjacent archive digest |
 | `.tar.gz.sha256` | Packager hashes the archive bytes | Verifier recomputes the archive digest and exact checksum contents |
-| `.verification.json` | `Scripts/verify-release --run-tests` records archive/provenance/checksum hashes, checker hash, tested environment, successful checks and test-log digest; Actions adds run identity | `Scripts/verify-release --require-verification` checks identity, hashes, required checks and positive test/suite counts |
+| `.verification.json` | `scripts/verify-release --run-tests` records archive/provenance/checksum hashes, checker hash, tested environment, successful checks and test-log digest; Actions adds run identity | `scripts/verify-release --require-verification` checks identity, hashes, required checks and positive test/suite counts |
 
 Provenance and verification receipts use `schema_version: 1`. Provenance also
 records a build timestamp. Build timestamps and compiler output can vary; the
 packager does not claim bit-for-bit rebuilds.
 
-[Scripts/validate-version](https://github.com/computer-mcp/apple-cli/blob/master/Scripts/validate-version)
+[scripts/validate-version](https://github.com/computer-mcp/apple-cli/blob/master/scripts/validate-version)
 requires exactly one canonical declaration in the supported version format.
 For untagged validation, a changelog whose sole section is `Unreleased` may be
 empty. Otherwise it requires exactly one nonempty entry for the product
@@ -131,8 +131,8 @@ repository, source, artifact or receipt identity fails validation.
    then run the source gates:
 
    ```bash
-   Scripts/validate-version --json
-   Scripts/validate-public-content
+   scripts/validate-version --json
+   scripts/validate-public-content
    python3 -B -m unittest discover -s Tests/ReleaseTools
    ```
 
@@ -140,8 +140,8 @@ repository, source, artifact or receipt identity fails validation.
    dependency notices. From its clean checkout, build and accept the archive:
 
    ```bash
-   Scripts/package-release --jobs 2
-   Scripts/verify-release --run-tests
+   scripts/package-release --jobs 2
+   scripts/verify-release --run-tests
    ```
 
    The packager bootstraps SDK link inputs, builds tests, runs default
@@ -168,8 +168,8 @@ repository, source, artifact or receipt identity fails validation.
    to both shared steps:
 
    ```bash
-   Scripts/package-release --tag vVERSION --jobs 2
-   Scripts/verify-release --tag vVERSION --run-tests
+   scripts/package-release --tag vVERSION --jobs 2
+   scripts/verify-release --tag vVERSION --run-tests
    ```
 
    Packaging creates no tag, remote push or GitHub release. CI runs the source
@@ -190,7 +190,7 @@ repository, source, artifact or receipt identity fails validation.
    prerelease flag. The publication step does not rebuild or re-sign.
 
 The release scripts require Python 3.12 or newer for archive validation.
-`Scripts/verify-release --require-verification` checks accepted files and the
+`scripts/verify-release --require-verification` checks accepted files and the
 receipt without executing macOS programs, as used by the Linux publisher.
 Local candidate acceptance is development evidence; formal publication requires
 the release workflow's accepted files and run identity. Installation and
@@ -243,12 +243,12 @@ values.
 
 | Operation | Existing command or explicit manual procedure | Required access |
 | --- | --- | --- |
-| Version update and check | Manually edit `CLIVersion.current` and changelog; `Scripts/validate-version [--tag TAG] [--json]`. Automated version selection/update is not established. | Source write for edits; read for validation |
-| Source/documentation checks | `Scripts/validate-public-content`; `python3 -B -m unittest discover -s Tests/ReleaseTools` | Source read; temporary fixture writes; Swift toolchain |
-| Candidate validation and build | `Scripts/package-release [--output DIRECTORY] [--tag TAG] [--jobs COUNT]`, then `Scripts/verify-release [--directory DIRECTORY] [--tag TAG] --run-tests` | Clean source; native macOS arm64, Xcode/SDK and writable build output |
-| Existing accepted-file check | `Scripts/verify-release [--directory DIRECTORY] [--tag TAG] --require-verification` | Clean matching source and artifact read; Python 3.12+ |
+| Version update and check | Manually edit `CLIVersion.current` and changelog; `scripts/validate-version [--tag TAG] [--json]`. Automated version selection/update is not established. | Source write for edits; read for validation |
+| Source/documentation checks | `scripts/validate-public-content`; `python3 -B -m unittest discover -s Tests/ReleaseTools` | Source read; temporary fixture writes; Swift toolchain |
+| Candidate validation and build | `scripts/package-release [--output DIRECTORY] [--tag TAG] [--jobs COUNT]`, then `scripts/verify-release [--directory DIRECTORY] [--tag TAG] --run-tests` | Clean source; native macOS arm64, Xcode/SDK and writable build output |
+| Existing accepted-file check | `scripts/verify-release [--directory DIRECTORY] [--tag TAG] --require-verification` | Clean matching source and artifact read; Python 3.12+ |
 | Status and interrupted-run recovery | Inspect the Actions run and artifact manually; rerun its failed publication job with the original accepted files. A standalone status/recovery command is not established. | Actions read; workflow rerun permission |
-| Acceptance and publication | Existing-tag release workflow; its publish job invokes `Scripts/publish-release [--directory DIRECTORY]` | Workflow environment, accepted artifact and scoped GitHub release write |
+| Acceptance and publication | Existing-tag release workflow; its publish job invokes `scripts/publish-release [--directory DIRECTORY]` | Workflow environment, accepted artifact and scoped GitHub release write |
 | Cleanup | Manually inventory and remove owned reproducible output; no cleanup command is established. | Write access to the owned output |
 
 Output defaults to `.build/releases`. One verification directory contains just

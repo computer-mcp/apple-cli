@@ -172,7 +172,7 @@ def verify(directory, source, tag=None, require_verification=False):
         require(receipt["archive"] == {"filename": archive.name, "sha256": archive_hash}, "Verification archive digest mismatch")
         require(receipt["provenance"] == {"filename": manifest_path.name, "sha256": digest(manifest_path)}, "Verification provenance digest mismatch")
         require(receipt["checksum"] == {"filename": checksum.name, "sha256": digest(checksum)}, "Verification checksum digest mismatch")
-        require(receipt["checker"] == {"path": "Scripts/verify-release", "sha256": digest(Path(__file__))}, "Archive checker identity mismatch")
+        require(receipt["checker"] == {"path": "scripts/verify-release", "sha256": digest(Path(__file__))}, "Archive checker identity mismatch")
         checks_passed(receipt["validation"], ARCHIVE_CHECKS)
         require(receipt["artifact_content"] == {"files_scanned": files_scanned, "machine_local_path_matches": 0}, "Archive content receipt mismatch")
         test = next(item for item in receipt["validation"] if item["check"] == "unpacked-cli-and-mcp")
@@ -217,7 +217,7 @@ def accept_executables(source, manifest, archive, manifest_path, checksum, verif
         "archive": {"filename": archive.name, "sha256": digest(archive)},
         "provenance": {"filename": manifest_path.name, "sha256": digest(manifest_path)},
         "checksum": {"filename": checksum.name, "sha256": digest(checksum)},
-        "checker": {"path": "Scripts/verify-release", "sha256": digest(Path(__file__))},
+        "checker": {"path": "scripts/verify-release", "sha256": digest(Path(__file__))},
         "artifact_content": {"files_scanned": files_scanned, "machine_local_path_matches": 0},
         "tested_macos": subprocess.check_output(["sw_vers", "-productVersion"], text=True).strip(),
         "architecture": platform.machine(),

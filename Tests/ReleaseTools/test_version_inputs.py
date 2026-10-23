@@ -10,7 +10,7 @@ import unittest
 
 
 SOURCE = Path(__file__).resolve().parents[2]
-checker = runpy.run_path(str(SOURCE / "Scripts/verify-release"))
+checker = runpy.run_path(str(SOURCE / "scripts/verify-release"))
 validate = checker["validate_version_inputs"]
 
 
@@ -162,7 +162,7 @@ class VersionInputTests(unittest.TestCase):
     def test_cli_returns_metadata_without_modifying_source(self):
         before = {path: path.read_bytes() for path in [self.version_file, self.changelog]}
         result = subprocess.run(
-            [sys.executable, str(SOURCE / "Scripts/validate-version"), "--source", str(self.source), "--json"],
+            [sys.executable, str(SOURCE / "scripts/validate-version"), "--source", str(self.source), "--json"],
             check=True, text=True, capture_output=True,
         )
         self.assertEqual(json.loads(result.stdout), {
@@ -175,7 +175,7 @@ class VersionInputTests(unittest.TestCase):
         self.write_source("0.1.0-alpha.01")
         before = self.version_file.read_bytes()
         result = subprocess.run(
-            [sys.executable, str(SOURCE / "Scripts/validate-version"), "--source", str(self.source)],
+            [sys.executable, str(SOURCE / "scripts/validate-version"), "--source", str(self.source)],
             text=True, capture_output=True,
         )
         self.assertEqual(result.returncode, 1)
@@ -189,7 +189,7 @@ class VersionInputTests(unittest.TestCase):
             "[Guide](Documentation/Reference/ReleaseGuide.md)\n\n## 0.0.1\n\nOld changes.\n",
         )
         self.assertEqual(validate(self.source), "0.1.0-alpha.1")
-        publisher = runpy.run_path(str(SOURCE / "Scripts/publish-release"))
+        publisher = runpy.run_path(str(SOURCE / "scripts/publish-release"))
         notes = publisher["release_notes"]
         notes.__globals__["SOURCE"] = self.source
         body = notes({

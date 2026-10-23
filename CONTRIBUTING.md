@@ -50,10 +50,10 @@ changes that touch scripts, tests, package manifests, or generated package
 contents, also run the repository package validation commands.
 
 ```bash
-Scripts/validate-public-content
-Scripts/validate-version
+scripts/validate-public-content
+scripts/validate-version
 python3 -B -m unittest discover -s Tests/ReleaseTools
-Scripts/bootstrap
+scripts/bootstrap
 xcrun swift build --force-resolved-versions
 xcrun swift test --force-resolved-versions
 ```
