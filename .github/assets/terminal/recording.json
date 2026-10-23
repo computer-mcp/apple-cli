@@ -1,0 +1,13 @@
+{
+  "title": "Preview a notification with apple-cli",
+  "steps": [
+    {
+      "command": "apple --version",
+      "output": "0.1.0"
+    },
+    {
+      "command": "apple notifications preview --title Build --body Done --json --pretty",
+      "output": "{\n  \"data\" : {\n    \"externalAction\" : false,\n    \"notification\" : {\n      \"body\" : \"Done\",\n      \"title\" : \"Build\"\n    }\n  },\n  \"meta\" : {\n    \"target\" : \"notifications\"\n  },\n  \"ok\" : true,\n  \"warnings\" : [\n\n  ]\n}"
+    }
+  ]
+}

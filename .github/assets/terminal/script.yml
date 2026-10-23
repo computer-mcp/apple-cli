@@ -1,0 +1,5 @@
+title: Preview a notification with apple-cli
+executable: apple
+steps:
+  - run: apple --version
+  - run: apple notifications preview --title Build --body Done --json --pretty
