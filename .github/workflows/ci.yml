@@ -48,9 +48,17 @@ jobs:
           name: validation-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: .build/release-validation
           if-no-files-found: ignore
+  demo:
+    needs: package
+    uses: computer-mcp/github-workflows/.github/workflows/terminal-demo.yml@53ecce59bf7ed184528b2f7894c864f338932d37
+    with:
+      artifact: apple-cli-macos-arm64-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+      archive: apple-cli-*-macos-arm64.tar.gz
+      executable: apple-cli-*-macos-arm64/bin/apple
+      runner: xcode-27
   validate:
     if: always()
-    needs: [package]
-    uses: computer-mcp/github-workflows/.github/workflows/result.yml@d65bc20504f39c3a30232d67043abeca43d2c7b1
+    needs: [package, demo]
+    uses: computer-mcp/github-workflows/.github/workflows/result.yml@53ecce59bf7ed184528b2f7894c864f338932d37
     with:
       needs-json: ${{ toJSON(needs) }}
