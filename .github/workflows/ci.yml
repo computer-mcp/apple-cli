@@ -50,7 +50,7 @@ jobs:
           if-no-files-found: ignore
   demo:
     needs: package
-    uses: computer-mcp/github-workflows/.github/workflows/terminal-demo.yml@53ecce59bf7ed184528b2f7894c864f338932d37
+    uses: computer-mcp/github-workflows/.github/workflows/terminal-demo.yml@4359ca27a4637460ba8d3f6461e42701f76f647a
     with:
       artifact: apple-cli-macos-arm64-candidate-${{ github.run_id }}-${{ github.run_attempt }}
       archive: apple-cli-*-macos-arm64.tar.gz
@@ -59,6 +59,6 @@ jobs:
   validate:
     if: always()
     needs: [package, demo]
-    uses: computer-mcp/github-workflows/.github/workflows/result.yml@53ecce59bf7ed184528b2f7894c864f338932d37
+    uses: computer-mcp/github-workflows/.github/workflows/result.yml@4359ca27a4637460ba8d3f6461e42701f76f647a
     with:
       needs-json: ${{ toJSON(needs) }}
