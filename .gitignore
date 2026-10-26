@@ -1,5 +1,4 @@
 .DS_Store
-/.agent/
 /.build
 __pycache__/
 *.pyc
@@ -17,3 +16,7 @@ DerivedData/
 !.env.template
 *.p12
 *.pfx
+/.agent/*
+!/.agent/instructions/
+!/.agent/agents.json
+!/.agent/agents.resolved
