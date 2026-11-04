@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.5 - 2026-11-04
+
+- Resolve Notes attachment search indexing through `ICReindexer.reindexer()`
+  and `ICReindexing`, with runtime signature checks. This restores executable
+  startup on macOS 27.2, where the previously linked reindexer class is absent,
+  while preserving selected-attachment indexing gates, URI privacy and completion
+  verification.
 - Adopt the [Computer MCP Swift SDK fork `0.13.2-computer-mcp.1`](https://github.com/computer-mcp/swift-sdk/blob/0.13.2-computer-mcp.1/FORK.md).
   Undecodable params, including integers outside the signed `Int` range in
   `_meta` and numeric tool arguments, return JSON-RPC `-32602` with the request's

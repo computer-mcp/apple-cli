@@ -465,7 +465,7 @@ extension NotesCommand {
       "title": draft.attachment.title ?? "",
       "type_uti": draft.attachment.typeUTI ?? "",
       "media_filename": draft.attachment.mediaFilename ?? "",
-      "backend_calls": "ICCDCSIReindexer.reindexSearchableItemsWithObjectIDURIs",
+      "backend_calls": "ICReindexing.reindexSearchableItemsWithObjectIDURIs",
     ]
   }
 
@@ -804,7 +804,7 @@ extension NotesCommand {
     result: NotesAttachmentSearchIndexWriteResult,
     operation: String
   ) -> NotesMutationVerificationReport {
-    let expectedImplementationCall = "ICCDCSIReindexer.reindexSearchableItemsWithObjectIDURIs"
+    let expectedImplementationCall = "ICReindexing.reindexSearchableItemsWithObjectIDURIs"
     let implementationCallAccepted = result.backendCalls.contains(expectedImplementationCall)
     let completionAccepted = result.completionStatus == "completed"
     let familyAccepted = result.attachmentFamily == draft.attachmentFamily
@@ -858,7 +858,7 @@ extension NotesCommand {
         message: "Notes recognized text search indexing requires a private-framework CoreSpotlight reindexer.",
         details: [
           "capability": "attachment_search_index_mutation",
-          "required_module": "NotesSupport.ICCDCSIReindexer",
+          "required_module": "NotesSupport.ICReindexing",
         ]
       )
     }

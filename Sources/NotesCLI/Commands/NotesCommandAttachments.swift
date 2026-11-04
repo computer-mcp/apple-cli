@@ -3695,7 +3695,7 @@ extension NotesCommand {
         appleCapability: "export_generate_or_index_recognized_text",
         command: "attachments recognized-text export|generate --id NOTE_ID --attachment ATTACHMENT_ID --output PATH; attachments recognized-text index --id NOTE_ID --attachment ATTACHMENT_ID",
         mechanism: "typed_private_notes_framework_attachment_searchable_text_reader+private_attachment_media_reader+dynamic_vision_artifact_writer+notes_corespotlight_reindexer",
-        requiredImplementation: "ICAttachment/ICAttachmentModel searchableTextContent readback, private attachment media/PDF bytes plus command-layer text artifact writer, or ICCDCSIReindexer object-URI reindexing",
+        requiredImplementation: "ICAttachment/ICAttachmentModel searchableTextContent readback, private attachment media/PDF bytes plus command-layer text artifact writer, or ICReindexing.reindexSearchableItemsWithObjectIDURIs",
         requiredVerifier: "private_attachment_searchable_text_or_media_readback+artifact_hash+attachment_family+corespotlight_reindexer_completion",
         safetyGate: "allow-artifact-action/readback; allow-persistent-action/readback",
         privacyBoundary: "artifact_hash_or_object_uri_hash_without_printing_recognized_text_pixels_or_raw_core_data_uri",
