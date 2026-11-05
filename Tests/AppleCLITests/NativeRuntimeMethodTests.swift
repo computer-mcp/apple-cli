@@ -14,6 +14,8 @@ import Utility
     try require(target, owner: owner, selector: "saveWithError:", result: "B", arguments: ["^@"])
     try require(target, owner: owner, selector: "saveWithError:", result: "B", arguments: ["^r@"])
     try require(target, owner: owner, selector: "acceptsObject:", result: "v", arguments: ["@\"NSObject\""])
+    try require(target, owner: owner, selector: "acceptsObject:completionHandler:",
+      result: "v", arguments: ["@", "@?"], receiver: RuntimeMethodChild())
   }
 
   @Test(arguments: ["notes", "reminders"])
@@ -29,6 +31,7 @@ import Utility
       (NSStringFromClass(RuntimeMethodFixture.self), "saveWithError:", false, "B", ["@"], "signature_mismatch"),
       (NSStringFromClass(RuntimeMethodFixture.self), "acceptsOptions:", false, "v", ["q"], "signature_mismatch"),
       (NSStringFromClass(RuntimeMethodFixture.self), "acceptsObject:", false, "v", ["@?"], "signature_mismatch"),
+      (NSStringFromClass(RuntimeMethodFixture.self), "acceptsObject:completionHandler:", false, "v", ["@", "@"], "signature_mismatch"),
     ]
     for (owner, selector, classMethod, result, arguments, reason) in cases {
       do {
@@ -137,6 +140,9 @@ private class RuntimeMethodFixture: NSObject {
   }
   @objc func acceptsOptions(_ options: UInt64) { calls += 1 }
   @objc func acceptsObject(_ object: NSObject?) { calls += 1 }
+  @objc func acceptsObject(_ object: NSObject?, completionHandler: @convention(block) () -> Void) {
+    calls += 1
+  }
 }
 
 @objc(AppleCLIRuntimeMethodChild)

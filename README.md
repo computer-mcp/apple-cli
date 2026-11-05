@@ -72,8 +72,12 @@ is a build setting; runtime support requires validation on the intended OS and a
 
 ### Releases
 
-No release has been published yet. From the first release, two channels install it on macOS
-arm64.
+Releases install on macOS arm64 through two channels.
+
+| macOS | Version |
+| --- | --- |
+| 27.0 | v0.1.0-alpha.4 |
+| 27.2 | v0.1.0-alpha.5 |
 
 **Homebrew**, from the organization tap, which installs both executables and their runtime
 libraries from the accepted GitHub release and declares the tested macOS requirement:

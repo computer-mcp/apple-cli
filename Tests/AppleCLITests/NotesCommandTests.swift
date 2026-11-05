@@ -6343,7 +6343,7 @@ struct NotesCommandTests {
     #expect(normalized?["requested_attachment"] as? String == image.contentIdentifier)
     #expect(normalized?["attachment_family"] as? String == "photo_image")
     #expect(
-      normalized?["backend_calls"] as? String == "ICCDCSIReindexer.reindexSearchableItemsWithObjectIDURIs")
+      normalized?["backend_calls"] as? String == "ICReindexing.reindexSearchableItemsWithObjectIDURIs")
     #expect(implementation.attachmentSearchIndexDrafts.isEmpty)
     #expect((dryRun.stdout ?? "").contains("Private framework search index text") == false)
 
@@ -6396,7 +6396,7 @@ struct NotesCommandTests {
     #expect(executedData?["family"] as? String == "photo_image")
     #expect(executedData?["completionStatus"] as? String == "completed")
     #expect(
-      executedData?["backendCalls"] as? [String] == ["ICCDCSIReindexer.reindexSearchableItemsWithObjectIDURIs"])
+      executedData?["backendCalls"] as? [String] == ["ICReindexing.reindexSearchableItemsWithObjectIDURIs"])
     #expect((executedData?["objectIDURISHA256"] as? String)?.isEmpty == false)
     #expect(verification?["verified"] as? Bool == true)
     #expect(
@@ -20849,7 +20849,7 @@ final class TestNotesImplementation: NotesReading, NotesAccountScopedListing, No
       throw CLIError(code: .notFound, message: "Note was not found.", details: ["id": draft.noteID])
     }
     attachmentSearchIndexDrafts.append(draft)
-    let implementationCall = "ICCDCSIReindexer.reindexSearchableItemsWithObjectIDURIs"
+    let implementationCall = "ICReindexing.reindexSearchableItemsWithObjectIDURIs"
     return NotesAttachmentSearchIndexWriteResult(
       noteID: draft.noteID,
       attachment: draft.attachment,

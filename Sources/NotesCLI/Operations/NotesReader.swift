@@ -1907,13 +1907,21 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
         ]
       )
     }
-    guard let reindexer = ICCDCSIReindexer.sharedReindexer() as? ICCDCSIReindexer else {
+    let operation = "notes.attachments.recognized-text.index"
+    try NotesRuntimeMethod(owner: "ICReindexer", selector: "reindexer",
+      scope: .classMethod, returnType: "@")
+      .require(operation: operation)
+    guard let reindexer = ICReindexer.reindexer() as? any ICReindexing else {
       throw CLIError(
         code: .backendUnavailable,
         message: "Notes CoreSpotlight reindexer is unavailable.",
-        details: ["required_class": "ICCDCSIReindexer"]
+        details: ["required_class": "ICReindexer"]
       )
     }
+    try NotesRuntimeMethod(owner: "ICReindexing",
+      selector: "reindexSearchableItemsWithObjectIDURIs:completionHandler:",
+      returnType: "v", argumentTypes: ["@", "@?"])
+      .require(operation: operation, receiver: reindexer as? NSObject)
 
     let semaphore = DispatchSemaphore(value: 0)
     let completion: @convention(block) () -> Void = {
@@ -1932,7 +1940,7 @@ struct NotesReader: NotesReading, NotesFolderPurgeReading, NotesTagReading, Note
       )
     }
 
-    let implementationCall = "ICCDCSIReindexer.reindexSearchableItemsWithObjectIDURIs"
+    let implementationCall = "ICReindexing.reindexSearchableItemsWithObjectIDURIs"
     return NotesAttachmentSearchIndexWriteResult(
       noteID: draft.noteID,
       attachment: record,

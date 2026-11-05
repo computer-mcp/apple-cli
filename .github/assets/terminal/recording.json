@@ -3,7 +3,7 @@
   "steps": [
     {
       "command": "apple --version",
-      "output": "0.1.0"
+      "output": "0.1.0-alpha.5"
     },
     {
       "command": "apple notifications preview --title Build --body Done --json --pretty",
