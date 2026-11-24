@@ -72,7 +72,8 @@ Secondary resources remain explicit, such as `apple calendar events list`,
   available, safety-gated `lists update --title/--color/--icon` through structured
   Reminders.app scripting, safety-gated `lists create/delete`, read-only
   `tags list` and `sections list`, ReminderKit-backed visible URL/link-card
-  writes, file/image attachment add/remove, item tag set/add/remove/clear, tags
+  writes, file attachment inspection and artifact-gated export, file/image
+  attachment add/remove, item tag set/add/remove/clear, tags
   rename/delete, section create/rename/delete/reorder, item section membership, and subtask create/move/promote,
   urgent reminder state, shared assignment, and
   `lists update --type standard|shopping` plus `--pinned/--sort`, and

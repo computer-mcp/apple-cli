@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.0-alpha.6 - 2026-11-24
+
+- Reminders gains `attachments list` and `attachments export` for identifying
+  attachments and copying original files. The CLI and MCP expose attachment
+  IDs, availability, and SHA-512 digests. Export supports a dry run and refuses
+  to replace existing files.
+
 ## 0.1.0-alpha.5 - 2026-11-04
 
 - Resolve Notes attachment search indexing through `ICReindexer.reindexer()`

@@ -83,6 +83,20 @@ not authorize writes or replace the target-local CLI parser.
 Mutating and external-action workflows still go through `apple_cli_run` and the
 same target-local `--dry-run` and `--allow-*` rules as the CLI.
 
+For attachment exports, call `apple_cli_command_catalog` with
+`{"target":"reminders","maxDepth":2}` to discover the attachment commands.
+Then call `apple_cli_run` with CLI arguments. For example, inspect the attached
+files and preview a bulk export with these two tool inputs:
+
+```json
+{"target":"reminders","arguments":["attachments","list","--id","REMINDER_ID"]}
+{"target":"reminders","arguments":["attachments","export","--id","REMINDER_ID","--all","--output","/path/to/new-directory","--dry-run"]}
+```
+
+The CLI JSON envelope is in the tool's `stdout`. The path is on the host running
+`apple-cli-mcp`. Apply `--allow-artifact-action` for an authorized export.
+[Reminders attachment commands](Reminders/UserGuide.md#tags-sections-subtasks-attachments-and-assignments)
+
 ## MCP Setup
 
 The optional `apple-cli-mcp` executable adapts the same CLI commands for MCP

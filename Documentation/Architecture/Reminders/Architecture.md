@@ -111,9 +111,31 @@ extensions. Helper names describe concrete behavior, such as
 | Read-only Reminders `SQLiteReader` | Enrichment, doctor diagnostics, and post-write verification. | Reads bounded local evidence for fields that Reminders.app persists outside the regular model shape. |
 | Apple Reminders User Guide / installed app | Product capability baseline. | Defines user-visible candidates before they become accepted CLI commands. |
 
-All writes flow through ReminderKit save requests. SQLite reading stays
+All Reminders data writes flow through ReminderKit save requests. SQLite reading stays
 read-only and supports verifier evidence for CloudKit-owned, account-owned, and
 Reminders.app-owned state.
+
+## Attachment Inspection And Export
+
+The attachment commands use the read-only ReminderKit attachment context to
+obtain original file URLs. The SQLite reader resolves reminder selectors across
+stores, scopes file records to the matched reminder and account, and supplies
+original names and stored digests. Native and SQLite attachment records match
+by attachment UUID, owner, kind, and UTI. The normal reminder read and
+attachment mutation contracts keep their existing metadata shape.
+
+The resolver verifies any stored SHA-512 against the original bytes. When the
+native URL is unavailable, it can use a digest-named regular file from that
+account's attachment cache. Unknown schemas, unavailable downloads, identity
+conflicts, and unverifiable bytes produce explicit outcomes. The read and
+export payloads expose attachment metadata and requested destinations. Source
+URLs and cache paths stay inside the resolver.
+
+Export is a filesystem artifact action. Dry run resolves and verifies the
+selection without writing. Execution streams verified bytes to private staging
+under the opened destination parent and publishes with exclusive rename. A
+bulk export publishes the new directory after every selected file is staged
+and verified.
 
 ## ReminderKit Import Boundary
 
