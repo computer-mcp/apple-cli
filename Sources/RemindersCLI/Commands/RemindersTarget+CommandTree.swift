@@ -354,8 +354,38 @@ extension RemindersTarget {
 
   public struct Attachments: ParsableCommand {
     public static let configuration = CommandConfiguration(
-      commandName: "attachments", subcommands: [Add.self, Remove.self])
+      commandName: "attachments", subcommands: [List.self, Export.self, Add.self, Remove.self])
     public init() {}
+
+    public struct List: Leaf {
+      public static let configuration = CommandConfiguration(
+        commandName: "list", abstract: "Inspect attachment identities and local availability.")
+      public static let positionals = ["attachments", "list"]
+      @OptionGroup var sharedOptions: RemindersReadSharedOptions
+      public var shared: CLISharedOptions { sharedOptions.shared }
+      @Option(help: "Reminder ID.") var id: String
+      public var targetOptions: RemindersTargetOptions { RemindersTargetOptions(id: id) }
+      public init() {}
+    }
+
+    public struct Export: Leaf {
+      public static let configuration = CommandConfiguration(
+        commandName: "export", abstract: "Export original attachment bytes.",
+        discussion: "Choose --attachment or --all. Use --dry-run to check the export or --allow-artifact-action to write it.")
+      public static let positionals = ["attachments", "export"]
+      @OptionGroup public var shared: CLISharedOptions
+      @Option(help: "Reminder ID.") var id: String
+      @Option(help: "Attachment ID or unique exact original filename.") var attachment: String?
+      @Flag(help: "Export all file attachments together.") var all = false
+      @Option(help: "New file path, or new directory path with --all.") var output: String
+      public var targetOptions: RemindersTargetOptions {
+        var options = RemindersTargetOptions(id: id, attachment: attachment)
+        options.output = output
+        options.allAttachments = all
+        return options
+      }
+      public init() {}
+    }
 
     public struct Add: Leaf {
       public static let configuration = CommandConfiguration(

@@ -43,6 +43,7 @@ public struct RemindersTargetOptions: ParsableArguments, Sendable {
   @Option public var section: String?
   @Option public var tag: String?
   @Option public var attachment: String?
+  @Option public var output: String?
   @Option public var assignee: String?
   @Option public var assignment: String?
   @Option public var file: String?
@@ -76,6 +77,7 @@ public struct RemindersTargetOptions: ParsableArguments, Sendable {
   @Flag(name: .customLong("clear-tags")) public var clearTags = false
   @Flag(name: .customLong("clear-messaging-person")) public var clearMessagingPerson = false
   @Flag(name: .customLong("include-completed")) public var includeCompleted = false
+  @Flag(name: .customLong("all")) public var allAttachments = false
 
   public init() {
     self.init(list: nil)
@@ -191,6 +193,7 @@ public struct RemindersTargetOptions: ParsableArguments, Sendable {
     self.section = section
     self.tag = tag
     self.attachment = attachment
+    self.output = nil
     self.assignee = assignee
     self.assignment = assignment
     self.file = file
@@ -224,6 +227,7 @@ public struct RemindersTargetOptions: ParsableArguments, Sendable {
     self.clearTags = clearTags
     self.clearMessagingPerson = clearMessagingPerson
     self.includeCompleted = includeCompleted
+    self.allAttachments = false
   }
 
   public var cliTargetOptions: [String: String] {
@@ -268,6 +272,7 @@ public struct RemindersTargetOptions: ParsableArguments, Sendable {
       ("section", section),
       ("tag", tag),
       ("attachment", attachment),
+      ("output", output),
       ("assignee", assignee),
       ("assignment", assignment),
       ("file", file),
@@ -306,6 +311,7 @@ public struct RemindersTargetOptions: ParsableArguments, Sendable {
       ("clear-tags", clearTags),
       ("clear-messaging-person", clearMessagingPerson),
       ("include-completed", includeCompleted),
+      ("all", allAttachments),
     ])
   }
 }

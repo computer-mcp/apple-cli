@@ -22,14 +22,13 @@ extension RemindersSQLiteReader {
   }
 
   func sqliteStoreFiles(in directory: URL) -> [RemindersStoreFileRecord] {
-    guard
-      let urls = try? FileManager.default.contentsOfDirectory(
-        at: directory,
-        includingPropertiesForKeys: [.fileSizeKey, .isReadableKey],
-        options: [.skipsHiddenFiles])
-    else {
-      return []
-    }
+    (try? discoverSQLiteStoreFiles(in: directory)) ?? []
+  }
+
+  func discoverSQLiteStoreFiles(in directory: URL) throws -> [RemindersStoreFileRecord] {
+    let urls = try FileManager.default.contentsOfDirectory(
+      at: directory, includingPropertiesForKeys: [.fileSizeKey, .isReadableKey],
+      options: [.skipsHiddenFiles])
 
     return
       urls

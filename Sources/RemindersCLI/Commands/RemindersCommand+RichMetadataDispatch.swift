@@ -292,6 +292,8 @@ extension RemindersCommand {
           parentReminder: nil
         )
       }
+    case ["attachments", "list"], ["attachments", "export"]:
+      return try runAttachmentReadCommand(options)
     case ["attachments", "add"]:
       try validateTargetOptions(options, allowedOptions: ["id", "file"])
       try validateMutationIntent(options)

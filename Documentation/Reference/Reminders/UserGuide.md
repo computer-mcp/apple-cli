@@ -290,7 +290,84 @@ apple reminders subtasks move --id REMINDER_ID --parent-id PARENT_REMINDER_ID --
 apple reminders subtasks promote --id REMINDER_ID --dry-run --json
 ```
 
-Use `attachments` commands for file/image attachment intent:
+Use `attachments list` to inspect a reminder's attachments. Pass the reminder
+ID from `apple reminders read`, then use the returned attachment ID to export
+the exact original. A unique exact filename also works as a selector.
+
+```bash
+apple reminders attachments list --id REMINDER_ID --json
+apple reminders attachments export --id REMINDER_ID --attachment ATTACHMENT_ID \
+  --output ./sample.txt --dry-run --json
+apple reminders attachments export --id REMINDER_ID --attachment ATTACHMENT_ID \
+  --output ./sample.txt --allow-artifact-action --json
+apple reminders attachments export --id REMINDER_ID --all \
+  --output ./reminder-files --allow-artifact-action --json
+shasum -a 512 ./sample.txt
+```
+
+An attachment list echoes the selected reminder ID and includes stable attachment IDs.
+Optional file metadata appears when available. The list contains no source
+filesystem paths.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "reminderId": "REMINDER_ID",
+    "attachments": [
+      {
+        "id": "33333333-0000-4000-8000-000000000001",
+        "fileName": "sample.txt",
+        "kind": "file",
+        "typeIdentifier": "public.plain-text",
+        "sizeBytes": 3,
+        "sha512": "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+        "localAvailable": true,
+        "status": "available",
+        "integrity": "stored_sha512"
+      }
+    ]
+  },
+  "meta": {"target": "reminders"},
+  "warnings": []
+}
+```
+
+Export returns `data.reminderId`, `data.files`, and
+`data.skippedAttachmentIds`. Each file contains `attachmentId`, the original
+`fileName` and `typeIdentifier` when available, the absolute output `path`,
+`sizeBytes`, `sha512`, and `integrity`. Use the returned digest to verify the
+exported file with `shasum -a 512`.
+
+`stored_sha512` means the bytes matched the original attachment record's stored
+digest. `native_original` means the identified ReminderKit attachment supplied
+the original file and Apple CLI computed its digest. A hash-verified account
+cache file is a local copy of the original. Thumbnails and link-card previews
+are excluded from file export. A URL attachment lists as `unsupported_type`
+and its ID appears in `skippedAttachmentIds` in a bulk export.
+
+Use a new file path for a single export and a new directory path for `--all`.
+The parent directory must already exist. A batch preserves safe original
+filenames, adds numeric suffixes for collisions, and uses attachment IDs when
+a filename is absent or unsafe. If any selected file is unavailable or fails
+verification, the batch fails before the destination is published. Export
+rejects existing destinations, symlinks in the destination path, traversal
+components, and paths inside the Reminders container.
+
+Reminders may retain metadata before downloading an iCloud attachment.
+`missing_local_file` and `missing_content_hash` indicate that the verified
+original is unavailable locally. Open the attachment in Reminders and retry
+after it downloads. `unreadable`, `ambiguous_local_file`, and
+`integrity_mismatch` identify local resolution failures. Export reads local
+data and creates only the requested output artifact.
+
+SQLite compatibility depends on the installed macOS store schema and the
+host's read access. When the index cannot be read, an explicit
+`x-apple-reminderkit://REMCDReminder/UUID` object ID can still use a readable
+native attachment context. The cache fallback supports recognized active
+file records with a stored SHA-512.
+
+Use `attachments add` and `attachments remove` to edit the reminder:
 
 ```bash
 apple reminders attachments add --id REMINDER_ID --file /path/to/image.png --dry-run --json

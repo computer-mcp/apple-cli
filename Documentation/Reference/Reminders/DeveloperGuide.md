@@ -137,7 +137,8 @@ The behavior families that must remain covered by Swift Testing include:
 - visible URL create/set and clear
 - item tag set, add/remove, clear, tag rename, and tag delete
 - section create, rename, delete, reorder, and item section assignment
-- file attachment add and remove
+- file attachment add and remove, identity-scoped inspection, SHA-512 export
+  verification, artifact authorization, and filesystem collision handling
 - subtask create, move, and promote
 - urgent state set and clear
 - list type, pin, sort, and sidebar order
